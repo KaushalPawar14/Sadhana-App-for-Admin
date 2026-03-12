@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "365753789029",
+    "project_id": "folk-sadhana-app",
+    "storage_bucket": "folk-sadhana-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:365753789029:android:0013c1a4ba0d0ff634f48c",
+        "android_client_info": {
+          "package_name": "com.example.folk_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHKtv3ElstlJkSBtkEAGFloRfK8SPognk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:365753789029:android:f0c04ff622aeb51934f48c",
+        "android_client_info": {
+          "package_name": "com.example.folk_guide_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHKtv3ElstlJkSBtkEAGFloRfK8SPognk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
