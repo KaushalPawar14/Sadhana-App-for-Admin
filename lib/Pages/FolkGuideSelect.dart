@@ -7,7 +7,7 @@ import 'package:sizer/sizer.dart';
 import '../utils/ColorProvider.dart';
 
 class FolkGuideSelectionPage extends StatelessWidget {
-  final List<String> folkGuides = ["SBSD", "MMGD"];
+  final List<String> folkGuides = ["SBSD", "AMHD"];
 
   FolkGuideSelectionPage({super.key});
 

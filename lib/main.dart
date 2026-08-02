@@ -13,6 +13,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:lottie/lottie.dart';
 import 'dart:async';
 
+import 'Services/UpdateToken.dart';
+
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   print("Handling background message: ${message.messageId}");
@@ -43,6 +45,10 @@ void main() async {
 
     FirebaseCM firebaseCM = FirebaseCM();
     await firebaseCM.initNotifications();
+
+    if (savedGuide != null) {
+      await updateAdminFcmToken(savedGuide);
+    }
 
     await NotificationManager().prepareMissingReports();
     await _prepareNotifications();
@@ -174,9 +180,19 @@ class _SplashScreenState extends State<SplashScreen>
                   "Now it's easy to check Sadhana daily",
                   textAlign: TextAlign.center,
                   style: TextStyle(
+                    fontFamily: 'PlayfairDisplay', // elegant serif font
                     color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 20, // slightly larger
+                    fontWeight: FontWeight.w700, // bold for emphasis
+                    letterSpacing: 1.2, // spacing between letters
+                    height: 1.3, // line height
+                    shadows: [
+                      Shadow(
+                        offset: Offset(2, 2),
+                        blurRadius: 4,
+                        color: Colors.black26, // subtle shadow
+                      ),
+                    ],
                   ),
                 ),
               ),

@@ -87,6 +87,9 @@ class NotificationSenderService {
           "notification": {
             "title": title,
             "body": body
+          },
+          'android': {
+            'priority': 'HIGH'
           }
         }
       };
@@ -103,7 +106,12 @@ class NotificationSenderService {
       );
     }
 
-    await Future.wait(requests);
+    for (var request in requests) {
+      final response = await request;
+
+      print("Status: ${response.statusCode}");
+      print("Body: ${response.body}");
+    }
   }
 }
 
