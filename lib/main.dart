@@ -7,6 +7,7 @@ import 'package:folk_guide_app/utils/ColorProvider.dart';
 import 'package:folk_guide_app/utils/data_range_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 import 'Services/MissingReportNotification.dart';
 import 'Services/Notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -112,7 +113,14 @@ class _GuideIdentityGateState extends State<GuideIdentityGate> {
 
   @override
   Widget build(BuildContext context) {
-    final user = FolkIdentityService.currentUser;
+    return StreamBuilder<supabase.AuthState>(
+      stream: FolkIdentityService.authStateChanges,
+      builder: (context, snapshot) =>
+          _buildForUser(context, FolkIdentityService.currentUser),
+    );
+  }
+
+  Widget _buildForUser(BuildContext context, supabase.User? user) {
     if (user == null) {
       return Scaffold(
         body: SafeArea(
@@ -163,6 +171,7 @@ class _GuideIdentityGateState extends State<GuideIdentityGate> {
     }
 
     return FutureBuilder<Map<String, dynamic>?>(
+      key: ValueKey(user.id),
       future: FolkIdentityService.loadCurrentProfile(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {

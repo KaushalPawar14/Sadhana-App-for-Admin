@@ -15,6 +15,9 @@ class FolkIdentityService {
 
   static User? get currentUser => client?.auth.currentUser;
 
+  static Stream<AuthState> get authStateChanges =>
+      client?.auth.onAuthStateChange ?? const Stream<AuthState>.empty();
+
   static Future<void> initialize() async {
     AppConfiguration.debugValidate();
     if (_initialized || !AppConfiguration.hasSupabaseConfiguration) return;

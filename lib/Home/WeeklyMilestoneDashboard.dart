@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:folk_guide_app/Pages/Competition.dart';
 import 'package:folk_guide_app/Pages/StudentJourneyProfile.dart';
+import 'package:folk_guide_app/Services/AssignedStudentRepository.dart';
+import 'package:folk_guide_app/Services/FolkIdentityService.dart';
+import 'package:folk_guide_app/config/AppConfiguration.dart';
 
 class WeeklyMilestoneDashboard extends StatelessWidget {
   const WeeklyMilestoneDashboard({super.key, required this.guideName});
@@ -39,6 +42,8 @@ class WeeklyMilestoneDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final liveAssignmentsEnabled = AppConfiguration.readsSupabase &&
+        FolkIdentityService.currentUser != null;
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6F2),
       body: SafeArea(
@@ -50,9 +55,11 @@ class WeeklyMilestoneDashboard extends StatelessWidget {
               decoration: BoxDecoration(
                   color: const Color(0xFFFFF1CE),
                   borderRadius: BorderRadius.circular(16)),
-              child: const Text(
-                'Prototype with representative students. Live figures will come from Supabase.',
-                style: TextStyle(
+              child: Text(
+                liveAssignmentsEnabled
+                    ? 'Private test mode: assigned-student pulse is live from Supabase; planning targets below remain representative.'
+                    : 'Prototype with representative students. Sign in to the Supabase test mode for assigned-student data.',
+                style: const TextStyle(
                     color: Color(0xFF795218),
                     fontWeight: FontWeight.w700,
                     fontSize: 12),
@@ -68,6 +75,10 @@ class WeeklyMilestoneDashboard extends StatelessWidget {
             const Text('Monday plan · 10–16 August 2026',
                 style: TextStyle(
                     color: Color(0xFF69756E), fontWeight: FontWeight.w600)),
+            if (liveAssignmentsEnabled) ...[
+              const SizedBox(height: 18),
+              const _AssignedStudentPulse(),
+            ],
             const SizedBox(height: 18),
             const Row(
               children: [
@@ -409,4 +420,151 @@ class _FocusStudent {
   final String reason;
   final String action;
   final String due;
+}
+
+class _AssignedStudentPulse extends StatelessWidget {
+  const _AssignedStudentPulse();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<AssignedStudentSnapshot>>(
+      future: const AssignedStudentRepository().load(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return const _PulseMessage(
+            icon: Icons.cloud_off_rounded,
+            message:
+                'Assigned-student data could not be loaded. Check the test identity and guide assignment.',
+          );
+        }
+        final students = snapshot.data ?? const <AssignedStudentSnapshot>[];
+        if (students.isEmpty) {
+          return const _PulseMessage(
+            icon: Icons.person_add_alt_1_rounded,
+            message:
+                'This guide has no active student assignments in the test database yet.',
+          );
+        }
+        final recent = students
+            .where((student) => (student.daysSinceEntry ?? 999) <= 1)
+            .length;
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEAF4ED),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFCDE2D3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.sync_rounded, color: Color(0xFF315F45)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${students.length} assigned · $recent recent submissions',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF294936),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ...students.take(4).map(
+                    (student) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          CircleAvatar(
+                            radius: 15,
+                            backgroundColor: const Color(0xFF315F45),
+                            child: Text(
+                              '${student.chantingRounds ?? 0}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${student.fullName}${student.isSynthetic ? ' · TEST' : ''}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    color: Color(0xFF294936),
+                                  ),
+                                ),
+                                Text(
+                                  student.focusReason,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF5F7567),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              const Text(
+                'Circle values are the latest reported chanting rounds. No message is sent from this view.',
+                style: TextStyle(
+                  color: Color(0xFF52705D),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PulseMessage extends StatelessWidget {
+  const _PulseMessage({required this.icon, required this.message});
+
+  final IconData icon;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFE4E8E2)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: const Color(0xFF69756E)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  color: Color(0xFF69756E),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
 }

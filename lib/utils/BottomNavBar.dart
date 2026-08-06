@@ -8,6 +8,8 @@ import 'package:folk_guide_app/utils/MalaLoading.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../Pages/FolkGuideSelect.dart';
+import '../Services/FolkIdentityService.dart';
+import '../config/AppConfiguration.dart';
 import 'ColorProvider.dart';
 
 class CurvedNavBar extends StatefulWidget {
@@ -57,9 +59,18 @@ class _CurvedNavBarState extends State<CurvedNavBar> {
     );
 
     if (confirm ?? false) {
-      await FirebaseAuth.instance.signOut();
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('selected_guide');
+
+      if (AppConfiguration.googleOnlyAuthEnabled) {
+        await FolkIdentityService.signOut();
+        if (mounted) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        }
+        return;
+      }
+
+      await FirebaseAuth.instance.signOut();
 
       if (mounted) {
         Navigator.pushReplacement(context,
