@@ -2,8 +2,8 @@ import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:folk_guide_app/Home/MainPage.dart';
-import 'package:folk_guide_app/Pages/BoysDetails.dart';
-import 'package:folk_guide_app/Pages/Competition.dart';
+import 'package:folk_guide_app/Home/WeeklyMilestoneDashboard.dart';
+import 'package:folk_guide_app/Home/OperationsCenter.dart';
 import 'package:folk_guide_app/utils/MalaLoading.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,7 +19,7 @@ class CurvedNavBar extends StatefulWidget {
 
 class _CurvedNavBarState extends State<CurvedNavBar> {
   int currentIdx = 1; // Set default index to 1 for CalendarPage
-  final List<String> titles = ['Folk analysis', 'FOLK Boys', 'Other tasks'];
+  final List<String> titles = ['Weekly Plan', 'FOLK Boys', 'Operations'];
   late String adminName = widget.Guidename;
   bool isLoading = true; // Flag to indicate loading state
   late List<Widget> screens; // ✅ declare late
@@ -29,9 +29,11 @@ class _CurvedNavBarState extends State<CurvedNavBar> {
     super.initState();
     // Initialize screens with placeholders first
     screens = [
-      CompetitionPage(), // Placeholder for CompetitionPage
-      DashboardScreen(selectedGuide: adminName,),
-      AdminControlPage()
+      WeeklyMilestoneDashboard(guideName: adminName),
+      DashboardScreen(
+        selectedGuide: adminName,
+      ),
+      OperationsCenterPage(guideName: adminName)
     ];
 
     isLoading = false;
@@ -99,7 +101,7 @@ class _CurvedNavBarState extends State<CurvedNavBar> {
           child: CurvedNavigationBar(
             items: const <Widget>[
               Icon(
-                Icons.dataset_outlined,
+                Icons.track_changes_rounded,
                 size: 30,
                 color: Colors.white,
               ),
@@ -109,7 +111,7 @@ class _CurvedNavBarState extends State<CurvedNavBar> {
                 color: Colors.white,
               ),
               Icon(
-                Icons.person,
+                Icons.dashboard_customize_outlined,
                 size: 30,
                 color: Colors.white,
               ),
