@@ -1,30 +1,48 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:folk_guide_app/main.dart';
+import 'package:folk_guide_app/Home/WeeklyMilestoneDashboard.dart';
+import 'package:folk_guide_app/Pages/StudentJourneyProfile.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('weekly plan clearly labels synthetic data', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: WeeklyMilestoneDashboard(guideName: 'Subala Sundar Das'),
+      ),
+    );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(find.textContaining('Subala Sundar Das'), findsWidgets);
+    expect(find.textContaining('representative'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Students to focus on'),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Students to focus on'), findsOneWidget);
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  testWidgets('student profile keeps LIT private and ABCDE separate', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: StudentJourneyProfilePage(
+          studentName: 'Aarav P.',
+          cohort: 'SVNIT · First year',
+        ),
+      ),
+    );
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Private LIT assessment'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('ABCDE journey'),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('ABCDE journey'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.textContaining('Why this guidance'),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.textContaining('Why this guidance'), findsOneWidget);
   });
 }

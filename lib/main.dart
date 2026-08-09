@@ -7,6 +7,7 @@ import 'package:folk_guide_app/utils/ColorProvider.dart';
 import 'package:folk_guide_app/utils/data_range_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 import 'Services/MissingReportNotification.dart';
 import 'Services/Notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,6 +15,8 @@ import 'package:lottie/lottie.dart';
 import 'dart:async';
 
 import 'Services/UpdateToken.dart';
+import 'Services/FolkIdentityService.dart';
+import 'config/AppConfiguration.dart';
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
@@ -24,6 +27,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   String? savedGuide = prefs.getString('selected_guide');
+  await FolkIdentityService.initialize();
 
   runApp(
     MultiProvider(
@@ -84,9 +88,111 @@ class MyApp extends StatelessWidget {
           child: MaterialApp(
             debugShowCheckedModeBanner: false,
             title: 'Folk Sadhana',
-            home: SplashScreen(savedGuide: savedGuide),
+            home: AppConfiguration.canUsePrivatePreview
+                ? const CurvedNavBar('Subala Sundar Das')
+                : AppConfiguration.googleOnlyAuthEnabled
+                    ? GuideIdentityGate(savedGuide: savedGuide)
+                    : SplashScreen(savedGuide: savedGuide),
           ),
         );
+      },
+    );
+  }
+}
+
+class GuideIdentityGate extends StatefulWidget {
+  final String? savedGuide;
+  const GuideIdentityGate({super.key, this.savedGuide});
+
+  @override
+  State<GuideIdentityGate> createState() => _GuideIdentityGateState();
+}
+
+class _GuideIdentityGateState extends State<GuideIdentityGate> {
+  bool isLoading = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<supabase.AuthState>(
+      stream: FolkIdentityService.authStateChanges,
+      builder: (context, snapshot) =>
+          _buildForUser(context, FolkIdentityService.currentUser),
+    );
+  }
+
+  Widget _buildForUser(BuildContext context, supabase.User? user) {
+    if (user == null) {
+      return Scaffold(
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Icon(Icons.supervisor_account, size: 72),
+                const SizedBox(height: 20),
+                const Text(
+                  'FOLK Guide',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Sign in with the Google account authorized by the FOLK HOD.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 28),
+                FilledButton.icon(
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          setState(() => isLoading = true);
+                          try {
+                            await FolkIdentityService.signInWithGoogle();
+                          } finally {
+                            if (mounted) setState(() => isLoading = false);
+                          }
+                        },
+                  icon: isLoading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.login),
+                  label: const Text('Continue with Google'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return FutureBuilder<Map<String, dynamic>?>(
+      key: ValueKey(user.id),
+      future: FolkIdentityService.loadCurrentProfile(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        }
+        final role = snapshot.data?['role'];
+        if (role != 'guide' && role != 'hod') {
+          return const Scaffold(
+            body: Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'This Google account has not been assigned as a FOLK guide.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          );
+        }
+        return SplashScreen(savedGuide: widget.savedGuide);
       },
     );
   }
@@ -222,7 +328,6 @@ Future<void> _requestNotificationPermissions() async {
 }
 
 Future<void> _prepareNotifications() async {
-
   final manager = NotificationManager();
 
   await manager.prepareMissingReports();
