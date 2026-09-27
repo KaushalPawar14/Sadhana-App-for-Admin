@@ -12,7 +12,20 @@
           "package_name": "com.example.folk_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "365753789029-baffercl50no877dd7n9g0ncqoufopm9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.folk_app",
+            "certificate_hash": "c9bedb34edce9cb317ff5c84097f319a1ea8d117"
+          }
+        },
+        {
+          "client_id": "365753789029-jnr8s1c5pca3nk5bvooparll1j4oqsv6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAHKtv3ElstlJkSBtkEAGFloRfK8SPognk"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "365753789029-jnr8s1c5pca3nk5bvooparll1j4oqsv6.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     },
@@ -31,7 +49,12 @@
           "package_name": "com.example.folk_guide_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "365753789029-jnr8s1c5pca3nk5bvooparll1j4oqsv6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAHKtv3ElstlJkSBtkEAGFloRfK8SPognk"
@@ -39,7 +62,118 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "365753789029-jnr8s1c5pca3nk5bvooparll1j4oqsv6.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:365753789029:android:36a51352fd0b7b2e34f48c",
+        "android_client_info": {
+          "package_name": "org.folksurat.guides"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "365753789029-0tnpjpnsk8lteuo7cq04lf64de86lshd.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "org.folksurat.guides",
+            "certificate_hash": "c1f0d949e20e7846f8e9d7b24dc43ce618ce9550"
+          }
+        },
+        {
+          "client_id": "365753789029-d9og02dlfdettga8naflrirec345s8qg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "org.folksurat.guides",
+            "certificate_hash": "fc3c9ec0885c34087903331c591abf0b1990e1b2"
+          }
+        },
+        {
+          "client_id": "365753789029-q2btuuiel2re08f52cpen113ljgjjinf.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "org.folksurat.guides",
+            "certificate_hash": "c9bedb34edce9cb317ff5c84097f319a1ea8d117"
+          }
+        },
+        {
+          "client_id": "365753789029-jnr8s1c5pca3nk5bvooparll1j4oqsv6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHKtv3ElstlJkSBtkEAGFloRfK8SPognk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "365753789029-jnr8s1c5pca3nk5bvooparll1j4oqsv6.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:365753789029:android:cd7e4d746816047534f48c",
+        "android_client_info": {
+          "package_name": "org.folksurat.students"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "365753789029-5apch3m9eibt4tl46grho9ad1unv0c3r.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "org.folksurat.students",
+            "certificate_hash": "c9bedb34edce9cb317ff5c84097f319a1ea8d117"
+          }
+        },
+        {
+          "client_id": "365753789029-fgst5qrqej4lo2bogg8pjp2vccvucfeq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "org.folksurat.students",
+            "certificate_hash": "62336b4e09d918c6ba9c99708ec199d87c6a8b3a"
+          }
+        },
+        {
+          "client_id": "365753789029-gv1f6c7ia6fu9h3p8j4kiii7jutuq1qr.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "org.folksurat.students",
+            "certificate_hash": "3589ddd86fe99386d4338325c96bae992e96fd2e"
+          }
+        },
+        {
+          "client_id": "365753789029-jnr8s1c5pca3nk5bvooparll1j4oqsv6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHKtv3ElstlJkSBtkEAGFloRfK8SPognk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "365753789029-jnr8s1c5pca3nk5bvooparll1j4oqsv6.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

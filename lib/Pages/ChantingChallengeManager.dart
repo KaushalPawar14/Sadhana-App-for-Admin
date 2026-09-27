@@ -1,0 +1,1123 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+
+import '../Services/Notifications.dart';
+import '../Services/UpdateFCM.dart';
+import '../utils/ColorProvider.dart';
+import '../utils/GuideRoster.dart';
+import '../utils/NotificationPrefs.dart';
+import '../utils/Snackbar.dart';
+
+/// Chanting Challenges — a COLLECTIVE roster target.
+///
+/// A guide sets one target for a date ("500 rounds on Ekadashi"). Every student
+/// on their roster contributes their own rounds, and the **sum** across the
+/// roster is what has to reach the target. The whole roster succeeds together.
+///
+/// ⚠️ **This replaced a per-student model on 2026-08-14.** The first version
+/// showed each student as individually achieved or not. That was a misreading:
+/// it made a large target impossible for any one student and turned a shared
+/// goal into a list of individual failures. **There is no per-student pass/fail
+/// anywhere in this screen** — a student has either contributed rounds or has
+/// not submitted yet.
+///
+/// ⚠️ **Nothing here computes progress.** The running total, the achieved flag
+/// and the missed flag are all written server-side by
+/// `functions/challenges.js` — two Firestore triggers that fire on a sadhana
+/// report write, plus a daily 02:00 IST sweep that closes expired challenges.
+/// Every total is updated inside a Firestore transaction, because two students
+/// submitting at once would otherwise lose one of the increments.
+///
+/// ⚠️ **A student's contribution is locked at their first report for the target
+/// date** (changed 2026-08-14). A later edit to that report is ignored, so the
+/// total only ever grows — a collective figure a guide has already announced to
+/// their roster can never change, or be retracted, underneath them.
+///
+/// Firestore:
+///   chantingChallenges/{autoId}                          — created here
+///     currentTotal, status ("active"|"achieved"|"missed"), achievedAt, closedAt
+///   chantingChallengeContributions/{challengeId}_{uid}    — read-only here
+class ChantingChallengeManagerPage extends StatefulWidget {
+  const ChantingChallengeManagerPage({super.key});
+
+  @override
+  State<ChantingChallengeManagerPage> createState() =>
+      _ChantingChallengeManagerPageState();
+}
+
+class _ChantingChallengeManagerPageState
+    extends State<ChantingChallengeManagerPage> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  String? _selectedGuide;
+
+  bool get _isHod => _selectedGuide == kHodGuideId;
+
+  bool _sending = false;
+
+  /// Part 2 — HOD guide-selection. Empty means the existing default: no
+  /// filter, every student (Part 2 item 4). Irrelevant/unused for a
+  /// non-HOD guide, who always creates for their own single roster exactly
+  /// as before.
+  final Set<String> _selectedGuideIds = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGuide();
+  }
+
+  Future<void> _loadGuide() async {
+    final guide = await UpdateTokenService().getSavedGuide();
+    if (mounted) setState(() => _selectedGuide = guide);
+  }
+
+  /// The same date-id format the sadhana collections use, so the Cloud
+  /// Function matches on a plain string with no parsing or timezone ambiguity.
+  String _dateKey(DateTime date) => DateFormat('dd-MM-yyyy').format(date);
+
+  // ---------------------------------------------------------------------------
+  // Create + notify
+  // ---------------------------------------------------------------------------
+
+  /// Notifies every student on this challenge's roster.
+  ///
+  /// Reuses `SubmissionStatusPage`'s targeting exactly: scope `users` by
+  /// `guideId`, then read each student's own `notification/{name}.FCMToken`.
+  ///
+  /// ⚠️ Deliberately NOT `MissingReportService.fetchMissingTokens()` — that
+  /// helper iterates the whole `notification` collection with no guide filter,
+  /// so it would broadcast one guide's challenge to every student in FOLK.
+  ///
+  /// [selectedGuideIds] is the HOD's picked-guides set (Part 2) — empty for
+  /// a non-HOD guide (irrelevant, always their own single roster below) and
+  /// for an HOD explicitly choosing "all students" (Part 2 item 4, the
+  /// existing default, kept as the explicit no-filter case).
+  Future<(int sent, int total)> _notifyRoster(
+    String guide,
+    String name,
+    int targetRounds,
+    DateTime targetDate,
+    Set<String> selectedGuideIds,
+  ) async {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> studentDocs;
+
+    if (!_isHod) {
+      // Unchanged from before this feature.
+      final snap = await _firestore
+          .collection('users')
+          .where('guideId', isEqualTo: guide)
+          .get();
+      studentDocs = snap.docs;
+    } else if (selectedGuideIds.isEmpty) {
+      // Unchanged from before this feature — the explicit "no filter" case.
+      final snap = await _firestore.collection('users').get();
+      studentDocs = snap.docs;
+    } else {
+      // Part 2 item 2: union of students across every selected guide — one
+      // query per guide (the same shape the existing single-guide query
+      // already uses), merged and de-duplicated by doc id rather than
+      // inventing a different query mechanism (Rule 1). A student cannot
+      // appear twice even if `guideId` were somehow ambiguous, since `users`
+      // documents are keyed by uid.
+      final byUid = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+      for (final g in selectedGuideIds) {
+        final snap = await _firestore
+            .collection('users')
+            .where('guideId', isEqualTo: g)
+            .get();
+        for (final doc in snap.docs) {
+          byUid[doc.id] = doc;
+        }
+      }
+      studentDocs = byUid.values.toList();
+    }
+
+    final names = <String>[];
+    var optedOut = 0;
+    for (final doc in studentDocs) {
+      final studentName = (doc.data()['name'] ?? '').toString();
+      if (studentName.isEmpty) continue;
+
+      // Preference gate (added 2026-08-19). This loop already holds the user
+      // document, so the check costs **no extra read** — unlike the two
+      // name-keyed send paths, which need a lookup to bridge name -> uid.
+      // Absent preference means send.
+      if (!studentWantsFromData(
+          doc.data(), StudentNotificationPref.chantingChallenge)) {
+        optedOut++;
+        continue;
+      }
+
+      names.add(studentName);
+    }
+
+    var sent = 0;
+    for (final studentName in names) {
+      try {
+        final tokenDoc =
+            await _firestore.collection('notification').doc(studentName).get();
+        final token = tokenDoc.data()?['FCMToken'];
+        if (token is! String || token.isEmpty) continue;
+
+        // Tone matched to the existing sends. Worded as a shared goal, since
+        // that is what it is — no student is being asked to reach the target
+        // alone.
+        await FirebaseCM().sendTokenNotification(
+          token,
+          "Hare Krishna Prabhu !! 🙏",
+          "Together we chant: \"$name\" — "
+              "$targetRounds rounds as a group on "
+              "${DateFormat('dd MMM yyyy').format(targetDate)}. "
+              "Every round you chant counts towards it 📿",
+          // Deep-link payload (Master Task, 2026-09-10 — Part 3) — opens
+          // the student's own `ChantingCompetitionPage`, which resolves
+          // the live/active challenge for their own roster itself; no
+          // challengeId is needed for that reason (and this notification
+          // fires before the challenge doc's own id would even be useful
+          // client-side — the page's own listener finds it by guideId).
+          data: const {'dest': 'student_chanting'},
+        );
+        sent++;
+      } catch (_) {
+        // One unreachable student must not stop the rest of the roster.
+      }
+    }
+
+    // `names.length` is the notifiable roster, so a student who opted out is
+    // not counted as a failure in the "sent to X of Y" summary — they were
+    // never a target. `optedOut` is logged rather than surfaced: a guide does
+    // not need to know which students muted a category.
+    if (optedOut > 0) {
+      debugPrint("Challenge notification: $optedOut student(s) opted out");
+    }
+
+    return (sent, names.length);
+  }
+
+  Future<void> _openCreateSheet() async {
+    final guide = _selectedGuide;
+    if (guide == null) return;
+
+    // Fresh each time the sheet opens, so a selection from a previous
+    // challenge never lingers into the next one.
+    _selectedGuideIds.clear();
+
+    String name = '';
+    String rounds = '';
+    DateTime? targetDate;
+    String? error;
+
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text("New Challenge"),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextFormField(
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.sentences,
+                    onChanged: (v) => name = v,
+                    decoration: InputDecoration(
+                      labelText: "Challenge name",
+                      hintText: "e.g. Ekadashi together",
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    keyboardType: TextInputType.number,
+                    onChanged: (v) => rounds = v,
+                    decoration: InputDecoration(
+                      labelText: "Target rounds (whole roster)",
+                      hintText: "500",
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.now(),
+                        firstDate:
+                            DateTime.now().subtract(const Duration(days: 30)),
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                      );
+                      if (picked != null) {
+                        setDialogState(() => targetDate = picked);
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: "Target date",
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 14),
+                      ),
+                      child: Text(
+                        targetDate == null
+                            ? "Tap to choose"
+                            : DateFormat('dd MMM yyyy').format(targetDate!),
+                        style: TextStyle(
+                          color: targetDate == null
+                              ? Colors.grey.shade600
+                              : Colors.black87,
+                        ),
+                      ),
+                    ),
+                  ),
+                  // HOD-only: pick which guides' rosters this challenge
+                  // applies to. Not shown to a regular guide — they always
+                  // create for their own single roster, exactly as before.
+                  if (_isHod) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      "Guides (leave empty for all students)",
+                      style: TextStyle(
+                          fontSize: 12, color: Colors.grey.shade700),
+                    ),
+                    const SizedBox(height: 6),
+                    StreamBuilder<List<String>>(
+                      stream: guideRosterStream(),
+                      builder: (context, guideSnap) {
+                        final guides = (guideSnap.data ?? const <String>[])
+                            // The HOD themself is not a selectable roster —
+                            // there is no `users.guideId == kHodGuideId`
+                            // student to scope to.
+                            .where((g) => g != kHodGuideId)
+                            .toList();
+
+                        if (guides.isEmpty) {
+                          return Text(
+                            "No guides found",
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.grey.shade600),
+                          );
+                        }
+
+                        return Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: guides.map((g) {
+                            final selected = _selectedGuideIds.contains(g);
+                            return FilterChip(
+                              label: Text(g),
+                              selected: selected,
+                              onSelected: (v) => setDialogState(() {
+                                if (v) {
+                                  _selectedGuideIds.add(g);
+                                } else {
+                                  _selectedGuideIds.remove(g);
+                                }
+                              }),
+                              selectedColor: const Color(0xFF00695C)
+                                  .withOpacity(.15),
+                              checkmarkColor: const Color(0xFF00695C),
+                              labelStyle: TextStyle(
+                                color: selected
+                                    ? const Color(0xFF00695C)
+                                    : Colors.black87,
+                                fontWeight: selected
+                                    ? FontWeight.w700
+                                    : FontWeight.normal,
+                              ),
+                            );
+                          }).toList(),
+                        );
+                      },
+                    ),
+                  ],
+                  if (error != null) ...[
+                    const SizedBox(height: 10),
+                    Text(error!,
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.red.shade600)),
+                  ],
+                  const SizedBox(height: 10),
+                  Text(
+                    "This is a group target. Every student assigned to you is "
+                    "notified now, and their rounds for that date are added "
+                    "together automatically. It succeeds the moment the total "
+                    "reaches the target.\n\n"
+                    "Each student's first report for that date is what counts "
+                    "— later edits to it do not change the total.",
+                    style:
+                        TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text("Cancel"),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00695C)),
+                onPressed: () {
+                  final parsed = int.tryParse(rounds.trim());
+                  if (name.trim().isEmpty) {
+                    setDialogState(() => error = "Give the challenge a name");
+                    return;
+                  }
+                  if (parsed == null || parsed <= 0) {
+                    setDialogState(
+                        () => error = "Target rounds must be a whole number");
+                    return;
+                  }
+                  if (targetDate == null) {
+                    setDialogState(() => error = "Choose a target date");
+                    return;
+                  }
+                  Navigator.pop(dialogContext, true);
+                },
+                child: const Text("Create",
+                    style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (created != true || targetDate == null) return;
+
+    final targetRounds = int.parse(rounds.trim());
+    final date = targetDate!;
+
+    setState(() => _sending = true);
+
+    // Snapshot before the sheet's own state is gone (the dialog and its
+    // StatefulBuilder are already popped by this point).
+    final selectedGuideIds = Set<String>.from(_selectedGuideIds);
+
+    try {
+      await _firestore.collection('chantingChallenges').add({
+        'name': name.trim(),
+        'targetRounds': targetRounds,
+        // The string the Cloud Function matches on.
+        'targetDateKey': _dateKey(date),
+        // Kept alongside it for display, sorting and the deadline sweep.
+        'targetDate': Timestamp.fromDate(date),
+        // Unchanged from before this feature: the creator's own id, still
+        // read by the original (now first-clause-of-OR) guideId match.
+        'guideId': guide,
+        'createdBy': guide,
+        'createdAt': FieldValue.serverTimestamp(),
+        'status': 'active',
+        // Seeded explicitly so the trigger's transaction always has a number
+        // to add its delta to, rather than treating a missing field as zero.
+        'currentTotal': 0,
+        // Additive (Rule 12 — justified in functions/challenges.js, the
+        // field's first read site). Only ever set on an HOD-created
+        // challenge; a guide's own challenge never carries either field, so
+        // `checkChallengesFor`'s two new OR clauses simply never match it —
+        // the guide-created path is otherwise untouched.
+        if (_isHod && selectedGuideIds.isNotEmpty)
+          'guideIds': selectedGuideIds.toList(),
+        if (_isHod && selectedGuideIds.isEmpty) 'allStudents': true,
+      });
+
+      final (sent, total) = await _notifyRoster(
+          guide, name.trim(), targetRounds, date, selectedGuideIds);
+
+      if (!mounted) return;
+      setState(() => _sending = false);
+      showSnackbar(
+        context,
+        sent == total
+            ? "Challenge created · $sent students notified"
+            : "Challenge created · notified $sent of $total "
+                "(the rest have no notification token)",
+        Colors.green,
+        Icons.check_circle,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _sending = false);
+      showSnackbar(
+          context, "Could not create the challenge", Colors.red, Icons.error);
+    }
+  }
+
+  /// Master Task Part 1 (2026-09-10) — permanently deletes a challenge:
+  /// the challenge doc itself (which carries `summarySeenBy` as one of its
+  /// own fields — nothing separate to clean up there) AND every one of
+  /// its `chantingChallengeContributions` rows (a top-level collection,
+  /// not a subcollection, so it needs its own explicit query+delete —
+  /// same shape `StudentDeletion.dart`'s own `_deleteWhereEquals` already
+  /// uses for exactly this collection when a STUDENT is deleted, just
+  /// filtered on `challengeId` here instead of `studentUid`; that helper
+  /// is file-private to `StudentDeletion.dart` so it cannot be imported,
+  /// but the pattern — query by equality, batch-delete the matches — is
+  /// reused, not reinvented).
+  ///
+  /// ⚠️ **Never touches `sadhana-reports`/`hostel-sadhana` (Rule 14/15).**
+  /// A student's own submitted report is the source data a contribution
+  /// was computed FROM; deleting the challenge only removes this
+  /// feature's own bookkeeping about it, never the report itself.
+  ///
+  /// ⚠️ **Permission enforced here, in code — not only by which cards the
+  /// list query happens to show.** A non-HOD guide's own challenges are
+  /// `createdBy == guide`; an HOD-created challenge that reaches a guide's
+  /// roster via `guideIds`/`allStudents` is NOT theirs to delete even
+  /// though it appears in their list (exactly the same "visible in the
+  /// list, but not yours to mutate" gap `_setStatus` already had — this
+  /// function does not share that gap).
+  Future<void> _deleteChallenge(
+    String docId,
+    String name,
+    Map<String, dynamic> data,
+  ) async {
+    final createdBy = (data['createdBy'] ?? '').toString();
+    final guide = _selectedGuide;
+
+    if (!_isHod && (guide == null || createdBy != guide)) {
+      showSnackbar(
+        context,
+        "Only the guide who created this challenge, or the HOD, can delete it.",
+        Colors.red,
+        Icons.lock_outline,
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Delete this challenge?"),
+        content: Text(
+          "\"${name.isEmpty ? '(untitled)' : name}\" and every student's "
+          "contribution to it will be permanently deleted. This cannot be "
+          "undone.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child:
+                const Text("Delete", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      // Bounded by one guide's roster in practice — nowhere near
+      // Firestore's 500-write batch limit, so no chunking is needed
+      // (unlike `StudentDeletion.dart`'s own helper, which has to handle
+      // an unbounded query result across a student's entire history).
+      final contribSnap = await _firestore
+          .collection('chantingChallengeContributions')
+          .where('challengeId', isEqualTo: docId)
+          .get();
+
+      final batch = _firestore.batch();
+      for (final doc in contribSnap.docs) {
+        batch.delete(doc.reference);
+      }
+      batch.delete(_firestore.collection('chantingChallenges').doc(docId));
+      await batch.commit();
+
+      if (!mounted) return;
+      showSnackbar(
+          context, "Challenge deleted", Colors.green, Icons.check_circle);
+    } catch (_) {
+      if (!mounted) return;
+      showSnackbar(context, "Could not delete the challenge", Colors.red,
+          Icons.error);
+    }
+  }
+
+  /// Closes an active challenge early, or reopens one the sweep closed.
+  ///
+  /// `achieved` is final and offers no action — a target that was reached
+  /// cannot be un-reached. Reopening a missed challenge clears `closedAt` so
+  /// the record does not claim two contradictory things at once.
+  Future<void> _setStatus(String docId, String status) async {
+    try {
+      await _firestore.collection('chantingChallenges').doc(docId).update({
+        'status': status,
+        'closedAt': status == 'missed'
+            ? FieldValue.serverTimestamp()
+            : FieldValue.delete(),
+      });
+      if (!mounted) return;
+      showSnackbar(context, status == 'active' ? "Reopened" : "Closed as missed",
+          Colors.green, Icons.check_circle);
+    } catch (_) {
+      if (!mounted) return;
+      showSnackbar(context, "Could not update", Colors.red, Icons.error);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // UI
+  // ---------------------------------------------------------------------------
+
+  /// The three collective states. Distinct colours so a guide can scan a list
+  /// without reading labels.
+  static (Color colour, IconData icon, String label) _statusStyle(
+      String status) {
+    switch (status) {
+      case 'achieved':
+        return (Colors.green.shade700, Icons.emoji_events, "Achieved");
+      case 'missed':
+        return (Colors.orange.shade800, Icons.timer_off_outlined, "Missed");
+      default:
+        return (const Color(0xFF00695C), Icons.bolt, "Active");
+    }
+  }
+
+  Widget _challengeCard(String docId, Map<String, dynamic> data) {
+    final name = (data['name'] ?? '').toString();
+    final target = data['targetRounds'] is num
+        ? (data['targetRounds'] as num).toInt()
+        : 0;
+    final total = data['currentTotal'] is num
+        ? (data['currentTotal'] as num).toInt()
+        : 0;
+    final status = (data['status'] ?? 'active').toString();
+    final (colour, icon, label) = _statusStyle(status);
+
+    final ts = data['targetDate'];
+    final dateText = ts is Timestamp
+        ? DateFormat('dd MMM yyyy').format(ts.toDate())
+        : (data['targetDateKey'] ?? '').toString();
+
+    // Clamped so an over-achieved total does not overflow the bar.
+    final fraction = target <= 0 ? 0.0 : (total / target).clamp(0.0, 1.0);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colour.withOpacity(.35)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(.05),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          )
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  name.isEmpty ? "(untitled)" : name,
+                  style: const TextStyle(
+                      fontSize: 15.5, fontWeight: FontWeight.w700),
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(
+                  color: colour.withOpacity(.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  children: [
+                    Icon(icon, size: 12, color: colour),
+                    const SizedBox(width: 4),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: colour,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // The collective figure, stated as a sum — never as a per-student
+          // score.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                "$total",
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: colour,
+                ),
+              ),
+              Text(
+                " / $target rounds together",
+                style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+              value: fraction,
+              minHeight: 7,
+              backgroundColor: Colors.grey.shade200,
+              valueColor: AlwaysStoppedAnimation<Color>(colour),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Icon(Icons.event, size: 15, color: Colors.grey.shade700),
+              const SizedBox(width: 5),
+              Text(dateText,
+                  style:
+                      TextStyle(fontSize: 12.5, color: Colors.grey.shade800)),
+              // Multi-guide/all-students metadata is shown to any viewer who
+              // can see this card — including a guide seeing an HOD
+              // challenge that reaches their own roster via `guideIds`
+              // (Part 2) — since "who else is in this" is useful information
+              // regardless of role. The plain singular "Guide: X" line stays
+              // HOD-only, as it already was: a regular guide's own
+              // single-guide challenges need no such label.
+              if (data['allStudents'] == true) ...[
+                const SizedBox(width: 12),
+                Text("All students",
+                    style:
+                        TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              ] else if (data['guideIds'] is List &&
+                  (data['guideIds'] as List).isNotEmpty) ...[
+                const SizedBox(width: 12),
+                Text(
+                  "Guides: ${(data['guideIds'] as List).join(', ')}",
+                  style:
+                      TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ] else if (_isHod &&
+                  (data['guideId'] ?? '').toString().isNotEmpty) ...[
+                const SizedBox(width: 12),
+                Text("Guide: ${data['guideId']}",
+                    style:
+                        TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              ],
+            ],
+          ),
+          // Was a `Row(mainAxisAlignment: spaceBetween)` — on a narrow
+          // screen, "Who contributed" plus Close/Reopen plus the delete
+          // icon can exceed the card's available width, and a release
+          // build silently CLIPS a `Row` overflow (no yellow/black banner
+          // like debug mode shows) instead of erasing it — the clipped
+          // side is whichever child `spaceBetween` pushed to the far
+          // edge, which for this row is the delete button. Same overflow
+          // bug class already confirmed elsewhere in this app (Part 4's
+          // Submissions-tile report). `Wrap` degrades to a second line
+          // instead of clipping, so every action stays reachable
+          // regardless of device width — the gating logic, the dialog,
+          // and the button itself are unchanged (Part 3: fix the real
+          // cause, do not add a second delete button).
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            runSpacing: 4,
+            children: [
+              TextButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  PageRouteBuilder(
+                    pageBuilder: (_, __, ___) => ChallengeContributionsPage(
+                      challengeId: docId,
+                      challengeName: name,
+                      target: target,
+                      total: total,
+                    ),
+                    transitionsBuilder: (_, animation, __, child) =>
+                        FadeTransition(opacity: animation, child: child),
+                  ),
+                ),
+                icon: const Icon(Icons.groups, size: 16),
+                label: const Text("Who contributed"),
+                style: TextButton.styleFrom(
+                    foregroundColor: Colors.grey.shade800),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // `achieved` is deliberately final — no close/reopen
+                  // action offered (unchanged by this task). Delete
+                  // (Master Task Part 1) is available in every status —
+                  // before, during, or after — per the product owner's
+                  // explicit instruction, and gated in code inside
+                  // [_deleteChallenge] itself, not only by this button's
+                  // visibility.
+                  if (status == 'active')
+                    TextButton(
+                      onPressed: () => _setStatus(docId, 'missed'),
+                      style: TextButton.styleFrom(
+                          foregroundColor: Colors.orange.shade800),
+                      child: const Text("Close"),
+                    )
+                  else if (status == 'missed')
+                    TextButton(
+                      onPressed: () => _setStatus(docId, 'active'),
+                      style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF00695C)),
+                      child: const Text("Reopen"),
+                    ),
+                  if (_isHod || (data['createdBy'] ?? '').toString() ==
+                      _selectedGuide)
+                    IconButton(
+                      tooltip: "Delete challenge",
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      color: Colors.red.shade700,
+                      // Shrunk from the default 48x48 min tap target —
+                      // reduces how easily this row's total width tips
+                      // into overflow on narrow screens in the first
+                      // place, while 40x40 stays a reasonable tap size.
+                      constraints: const BoxConstraints(
+                          minWidth: 40, minHeight: 40),
+                      padding: EdgeInsets.zero,
+                      onPressed: () => _deleteChallenge(docId, name, data),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ColorProvider>(
+      builder: (context, colorProvider, child) {
+        final guide = _selectedGuide;
+
+        return Scaffold(
+          backgroundColor: colorProvider.color,
+          appBar: AppBar(
+            elevation: 0,
+            backgroundColor: colorProvider.color,
+            leading: IconButton(
+              icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
+              onPressed: () => Navigator.pop(context),
+            ),
+            title: Text(
+              "Chanting Challenges",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: colorProvider.secondColor,
+                fontSize: 20,
+              ),
+            ),
+          ),
+          floatingActionButton: guide == null
+              ? null
+              : FloatingActionButton.extended(
+                  backgroundColor: const Color(0xFF00695C),
+                  onPressed: _sending ? null : _openCreateSheet,
+                  icon: _sending
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.add, color: Colors.white),
+                  label: Text(
+                    _sending ? "Notifying…" : "New Challenge",
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+          body: guide == null
+              ? const Center(child: CircularProgressIndicator())
+              : StreamBuilder<QuerySnapshot>(
+                  // HOD unfiltered, same as before. A non-HOD guide now also
+                  // sees an HOD-created challenge that reaches their roster
+                  // via `guideIds` (Part 2) — not just their own `guideId`
+                  // match — verified against real data to need no composite
+                  // index (each OR disjunct is its own single-field filter).
+                  stream: (_isHod
+                          ? _firestore.collection('chantingChallenges')
+                          : _firestore.collection('chantingChallenges').where(
+                              Filter.or(
+                                Filter('guideId', isEqualTo: guide),
+                                Filter('guideIds', arrayContains: guide),
+                                Filter('allStudents', isEqualTo: true),
+                              ),
+                            ))
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Text("Could not load challenges",
+                            style:
+                                TextStyle(color: colorProvider.secondColor)),
+                      );
+                    }
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final docs = snapshot.data!.docs.toList()
+                      // Sorted in Dart so no composite index is needed
+                      // alongside the guideId filter.
+                      ..sort((a, b) {
+                        final da =
+                            (a.data() as Map<String, dynamic>)['targetDate'];
+                        final dbb =
+                            (b.data() as Map<String, dynamic>)['targetDate'];
+                        if (da is! Timestamp) return 1;
+                        if (dbb is! Timestamp) return -1;
+                        return dbb.compareTo(da);
+                      });
+
+                    if (docs.isEmpty) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(34),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.self_improvement,
+                                  size: 46, color: Colors.grey.shade400),
+                              const SizedBox(height: 14),
+                              Text(
+                                "No challenges yet",
+                                style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: colorProvider.secondColor),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                "Set a rounds target for a date. Your students' "
+                                "rounds are added together automatically, and "
+                                "the roster reaches it as one.",
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: Colors.grey.shade600),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+
+                    return ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 92),
+                      children: docs
+                          .map((d) => _challengeCard(
+                              d.id, d.data() as Map<String, dynamic>))
+                          .toList(),
+                    );
+                  },
+                ),
+        );
+      },
+    );
+  }
+}
+
+/// Who contributed to one challenge, and how much.
+///
+/// ⚠️ **Not a scoreboard.** A student appears here with the rounds they
+/// submitted for the target date, or does not appear at all because they have
+/// not submitted yet. There is no pass, no fail and no ranking — the only
+/// verdict in this feature belongs to the roster as a whole.
+///
+/// Each figure is **locked at the student's first report** for the target date;
+/// a later edit to that report does not change it, so what is shown here is
+/// always exactly what was counted into the total.
+class ChallengeContributionsPage extends StatelessWidget {
+  final String challengeId;
+  final String challengeName;
+  final int target;
+  final int total;
+
+  const ChallengeContributionsPage({
+    super.key,
+    required this.challengeId,
+    required this.challengeName,
+    required this.target,
+    required this.total,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ColorProvider>(
+      builder: (context, colorProvider, child) {
+        return Scaffold(
+          backgroundColor: colorProvider.color,
+          appBar: AppBar(
+            elevation: 0,
+            backgroundColor: colorProvider.color,
+            leading: IconButton(
+              icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
+              onPressed: () => Navigator.pop(context),
+            ),
+            title: Text(
+              challengeName.isEmpty ? "Contributions" : challengeName,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: colorProvider.secondColor,
+                fontSize: 18,
+              ),
+            ),
+          ),
+          body: StreamBuilder<QuerySnapshot>(
+            // Single equality filter on challengeId — cheap at roster scale.
+            stream: FirebaseFirestore.instance
+                .collection('chantingChallengeContributions')
+                .where('challengeId', isEqualTo: challengeId)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              final docs = snapshot.data!.docs.toList()
+                ..sort((a, b) {
+                  final ra = (a.data() as Map<String, dynamic>)['rounds'];
+                  final rb = (b.data() as Map<String, dynamic>)['rounds'];
+                  final ia = ra is num ? ra.toInt() : 0;
+                  final ib = rb is num ? rb.toInt() : 0;
+                  return ib.compareTo(ia);
+                });
+
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: Text(
+                      "$total of $target rounds, from ${docs.length} "
+                      "student${docs.length == 1 ? '' : 's'} so far. "
+                      "Anyone not listed has not submitted a report for this "
+                      "date yet.\n\n"
+                      "Each figure is from that student's first report for the "
+                      "date and does not change afterwards.",
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        height: 1.4,
+                        color: colorProvider.secondColor.withOpacity(.8),
+                      ),
+                    ),
+                  ),
+                  if (docs.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        "No contributions yet.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 13, color: Colors.grey.shade600),
+                      ),
+                    ),
+                  ...docs.map((d) {
+                    final x = d.data() as Map<String, dynamic>;
+                    final rounds =
+                        x['rounds'] is num ? (x['rounds'] as num).toInt() : 0;
+                    final updated = x['updatedAt'];
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 9),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(13),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: const Color(0xFF00695C).withOpacity(.10),
+                            ),
+                            child: Center(
+                              child: Text(
+                                "$rounds",
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF00695C),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  (x['studentName'] ?? '').toString(),
+                                  style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                                if (updated is Timestamp)
+                                  Text(
+                                    DateFormat('dd MMM yyyy, hh:mm a')
+                                        .format(updated.toDate()),
+                                    style: TextStyle(
+                                        fontSize: 10.5,
+                                        color: Colors.grey.shade500),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            rounds == 1 ? "round" : "rounds",
+                            style: TextStyle(
+                                fontSize: 11.5, color: Colors.grey.shade600),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+}

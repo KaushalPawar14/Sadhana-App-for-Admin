@@ -1,15 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:folk_guide_app/utils/BottomNavBar.dart';
 import 'package:provider/provider.dart';
-import '../Home/MainPage.dart';
 import 'package:sizer/sizer.dart';
 
 import '../utils/ColorProvider.dart';
+import '../utils/GuideRoster.dart';
 
+/// Confirmed DEAD as of Master Task, 2026-09-14 ("Replace the Guide app's
+/// name picker with Google Sign-In, and add admin management") — kept per
+/// this project's established convention for superseded screens (see
+/// `Students/.../pages/Login.dart` for the same treatment), not deleted.
+///
+/// Guide identity is no longer self-selected — `Pages/GuideSignIn.dart`
+/// resolves it by matching the signed-in Google email against
+/// `adminUsers.email` and LOCKS it for the session (`utils/GuideAuthGate
+/// .dart`). Nothing live constructs this page any more: `main.dart`'s
+/// `SplashScreen` and `GuideSignIn.dart` both go straight to `CurvedNavBar`
+/// once identity resolves, or back to the sign-in screen if it doesn't —
+/// there is no third destination. `Home/FolkBoysEntry.dart` still contains
+/// a defensive (now unreachable) reference to this class — see that file's
+/// own comment on why it was left rather than removed.
 class FolkGuideSelectionPage extends StatelessWidget {
-  final List<String> folkGuides = ["SBSD", "AMHD"];
+  /// Fallback roster, used only while the live one is loading or if Firestore
+  /// is unreachable. Empty, not a hardcoded name list (`kSeedGuideIds` was
+  /// removed — `GuideRoster.dart` now has no seed fallback of its own) — a
+  /// guide picker that briefly shows nothing is preferable to one that
+  /// offers a name that might not be real.
+  final List<String> folkGuides = const <String>[];
 
-  FolkGuideSelectionPage({super.key});
+  const FolkGuideSelectionPage({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -34,10 +53,18 @@ class FolkGuideSelectionPage extends StatelessWidget {
       ),
       body: Padding(
         padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 2.h),
-        child: ListView.builder(
-          itemCount: folkGuides.length,
+        child: StreamBuilder<List<String>>(
+          stream: guideRosterStream(),
+          builder: (context, snapshot) {
+            // No hardcoded fallback names — an empty list while the stream
+            // is loading or if Firestore is unreachable, per this file's own
+            // header note.
+            final guides = snapshot.data ?? folkGuides;
+
+            return ListView.builder(
+          itemCount: guides.length,
           itemBuilder: (context, index) {
-            String guide = folkGuides[index];
+            String guide = guides[index];
             return AnimatedContainer(
               duration: const Duration(milliseconds: 400),
               curve: Curves.easeInOut,
@@ -116,6 +143,8 @@ class FolkGuideSelectionPage extends StatelessWidget {
                   ),
                 ),
               ),
+            );
+          },
             );
           },
         ),

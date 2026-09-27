@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.INTERNET"/>
 
     <application
-        android:label="Folk Sadhana"
+        android:label="FOLK Guides"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -43,6 +43,17 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Force-update task, 2026-09-10 — required for `url_launcher` to
+             reliably find a browser/the Play Store app on Android 11+
+             (API 30+) package-visibility restrictions
+             (https://developer.android.com/training/package-visibility);
+             without this, `launchUrl` on the update screen's "Update now"
+             button could silently fail to find a matching app on some
+             devices even though the browser/Play Store is installed. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
         </intent>
     </queries>
 </manifest>

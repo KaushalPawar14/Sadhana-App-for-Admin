@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 1.1.2+8
 
 environment:
   sdk: ^3.6.0
@@ -38,6 +38,9 @@ dependencies:
   firebase_messaging: ^15.1.6
   cloud_firestore: ^5.6.0
   firebase_auth: ^5.3.4
+  # Real authentication task, 2026-09-12 — same version already used by the
+  # Student app's Google Sign-In (Welcome.dart); reused, not newly chosen.
+  google_sign_in: ^6.2.1
   flutter_local_notifications: ^18.0.1
   http: ^1.2.2
   googleapis_auth: ^1.6.0
@@ -52,6 +55,15 @@ dependencies:
   cloud_functions: ^5.6.2
   curved_navigation_bar: ^1.0.6
   lottie: ^3.3.1
+  # Force-update task, 2026-09-10 — package_info_plus reads the REAL
+  # installed app's version/build number at runtime (not a compile-time
+  # constant), which is what a launch-time "are you on the required
+  # version" check needs. url_launcher opens the Play Store listing from
+  # the blocking update screen. Neither existed anywhere in this app
+  # before (checked first) — both are the standard, Flutter-team-
+  # maintained packages for exactly this, not a new pattern invented here.
+  package_info_plus: ^8.0.0
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_test:
@@ -81,6 +93,8 @@ flutter:
     - assets/emoji/splash_screen.json
     - assets/emoji/boy.json
     - assets/emoji/sadhana.json
+    - credentials/service-account.json
+    - credentials/gemini-key.json
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
 

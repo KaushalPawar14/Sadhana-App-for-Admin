@@ -61,13 +61,24 @@ class _CheckSadhanaScreenState extends State<BookReadingScreen> {
                 );
               }
 
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              if (!snapshot.hasData) {
                 return const Center(
                   child: Text("No books found."),
                 );
               }
 
-              final books = snapshot.data!.docs;
+              // Real student documents are keyed by student name. The newer
+              // per-book progress documents use "{uid}_{level}_{bookKey}", so
+              // any id containing an underscore is not a student.
+              final books = snapshot.data!.docs
+                  .where((doc) => !doc.id.contains('_'))
+                  .toList();
+
+              if (books.isEmpty) {
+                return const Center(
+                  child: Text("No books found."),
+                );
+              }
 
               return GridView.builder(
                 padding: const EdgeInsets.all(16),

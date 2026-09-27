@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:folk_guide_app/utils/Snackbar.dart';
 import 'package:provider/provider.dart';
 import '../utils/ColorProvider.dart';
+import '../utils/StudentNameGuard.dart';
 
 class AdminRegisterUserPage extends StatefulWidget {
   const AdminRegisterUserPage({super.key});
@@ -37,6 +38,18 @@ class _AdminRegisterUserPageState extends State<AdminRegisterUserPage>
     setState(() => isLoading = true);
 
     try {
+      // Unreachable dead code (its only caller, an "Add Hostelers" tile,
+      // was removed — kept per this project's convention). Fixed
+      // defensively in case it is ever resurrected: unique/normalized
+      // names task — StudentNameGuard.dart is the ONE shared
+      // implementation every account-creation path uses.
+      final name = normalizeStudentName(nameController.text);
+      if (await isStudentNameTaken(name)) {
+        setState(() => isLoading = false);
+        showSnackbar(context, kNameTakenMessage, Colors.red, Icons.error);
+        return;
+      }
+
       UserCredential userCredential =
       await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: emailController.text.trim(),
@@ -45,9 +58,13 @@ class _AdminRegisterUserPageState extends State<AdminRegisterUserPage>
 
       String uid = userCredential.user!.uid;
 
+      // `name` is written exactly ONCE, right here, at account creation.
+      // Do NOT add a way to edit it later — see StudentNameGuard.dart for
+      // why every name-keyed collection depends on it never changing after
+      // this point.
       await FirebaseFirestore.instance.collection('users').doc(uid).set({
         'uid': uid,
-        'name': nameController.text.trim(),
+        'name': name,
         'email': emailController.text.trim(),
         'role': 'Stay at Hostel',
         'createdAt': Timestamp.now(),

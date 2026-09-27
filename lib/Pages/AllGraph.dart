@@ -5,6 +5,16 @@ import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../utils/ColorProvider.dart';
 
+/// A full standalone page wrapping [GraphicalAnalysisSection] in its own
+/// `Scaffold`/`AppBar`. Kept for continuity, but its only caller
+/// (`Pages/GraphPageDashboard.dart`, a roster-picker: pick a student from a
+/// list, then land here) was removed in the task that moved graphical
+/// analysis onto `Home/Calendar.dart`'s own Scores tab — see this file's
+/// header note on [GraphicalAnalysisSection] for the real reasoning. This
+/// class is therefore currently unreachable from anywhere in the app, kept
+/// rather than deleted per this codebase's own established convention for
+/// an orphan that might still have a use (matching how `ScorecardSection`/
+/// `BadgesSection`/`BookProgressSection` were handled in `Pages/Profile.dart`).
 class AllGraph extends StatefulWidget {
   final String username, role;
   const AllGraph({super.key, required this.username, required this.role});
@@ -14,6 +24,70 @@ class AllGraph extends StatefulWidget {
 }
 
 class _ChantingGraphState extends State<AllGraph> {
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ColorProvider>(builder: (context, colorProvider, child) {
+      return Scaffold(
+        backgroundColor: colorProvider.color,
+        appBar: AppBar(
+          title: Text(
+            widget.username,
+            style: TextStyle(color: colorProvider.secondColor),
+          ),
+          backgroundColor: colorProvider.color,
+          iconTheme: IconThemeData(
+            color: colorProvider.secondColor,
+          ),
+        ),
+        body: GraphicalAnalysisSection(
+          username: widget.username,
+          role: widget.role,
+        ),
+      );
+    });
+  }
+}
+
+/// ⚠️ **Extracted this task from what used to be `_ChantingGraphState`'s own
+/// body, so `Home/Calendar.dart`'s new Scores tab can embed the exact same
+/// charts without a second copy of the fetch/state logic** — the same
+/// reasoning `utils/BookProgressData.dart` and `utils/CompetitionScore.dart`
+/// were extracted for, applied to a WIDGET rather than a pure data model
+/// (there is no meaningful data-only piece to pull out separately from the
+/// chart rendering itself, so this stays a `Pages/`-level widget, colocated
+/// with the already-public `MyPieChart`/`MyLineChart`/`TempleEntryChart`/
+/// `FinishTimingChart` chart primitives below, rather than moving to
+/// `utils/`, which this codebase reserves for non-widget logic).
+///
+/// **Behaviour is byte-for-byte unchanged** — every fetch method, every
+/// field, the whole `build()` content tree, all copied verbatim from the old
+/// `_ChantingGraphState`. The only difference is the missing `Scaffold`/
+/// `AppBar` wrapper, so this can be embedded as a SECTION inside another
+/// page's own body ([AllGraph] above supplies that wrapper for its own
+/// standalone-page use; `Home/Calendar.dart._scoresPanel` embeds this
+/// directly with no wrapper at all).
+///
+/// ⚠️ **Confirmed per-student, not roster-wide** — takes `{username, role}`,
+/// exactly like `Home/Calendar.dart` itself already does. The ROSTER-WIDE
+/// part of the old "Graphical Analysis" flow was `GraphPageDashboard.dart`,
+/// a student PICKER that then pushed this per-student content — never this
+/// content itself. Since `Home/Calendar.dart` is already opened for one
+/// specific student, embedding this directly skips the now-redundant picker
+/// step entirely rather than requiring any new scoping decision.
+class GraphicalAnalysisSection extends StatefulWidget {
+  final String username, role;
+  const GraphicalAnalysisSection({
+    super.key,
+    required this.username,
+    required this.role,
+  });
+
+  @override
+  State<GraphicalAnalysisSection> createState() =>
+      _GraphicalAnalysisSectionState();
+}
+
+class _GraphicalAnalysisSectionState extends State<GraphicalAnalysisSection> {
   bool loading = true;
   List<bool> chantingAutoZero = [];
   List<int> chantingRounds = [];
@@ -69,7 +143,10 @@ class _ChantingGraphState extends State<AllGraph> {
   }
 
   String getCollectionName() {
-    return widget.role == 'Stay at Hostel' ? 'hostel-sadhana' : 'sadhana-reports';
+    // Localites (Master Task, 2026-09-03) behave exactly like Hostel here.
+    return (widget.role == 'Stay at Hostel' || widget.role == 'Stay at Localite')
+        ? 'hostel-sadhana'
+        : 'sadhana-reports';
   }
 
   Future<void> fetchPieChartData() async {
@@ -260,22 +337,14 @@ class _ChantingGraphState extends State<AllGraph> {
   }
 
 
+  /// Content only — no `Scaffold`/`AppBar`, so this can be embedded as a
+  /// section inside another page's own body. See this class's own header
+  /// doc comment for why (and for [AllGraph] above, which supplies the
+  /// wrapper for the old standalone-page use).
   @override
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(builder: (context, colorProvider, child) {
-      return Scaffold(
-        backgroundColor: colorProvider.color,
-        appBar: AppBar(
-          title: Text(
-            widget.username,
-            style: TextStyle(color: colorProvider.secondColor),
-          ),
-          backgroundColor: colorProvider.color,
-          iconTheme: IconThemeData(
-            color: colorProvider.secondColor,
-          ),
-        ),
-        body: Center(
+      return Center(
           child: SingleChildScrollView(
             child: Column(
               children: [
@@ -489,8 +558,7 @@ class _ChantingGraphState extends State<AllGraph> {
               ],
             ),
           ),
-        ),
-      );
+        );
     });
   }
 }

@@ -43,3 +43,14 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/build/
+
+# ─── Credentials & secrets ───────────────────────────────
+.env
+credentials/service-account.json
+credentials/gemini-key.json
+# Whole folder excluded — every key under credentials/ is a live secret
+# (Dropbox, OpenAI, Zegocloud, Qdrant, ...), not just the two named above.
+/credentials/
+*.keystore
+*.jks

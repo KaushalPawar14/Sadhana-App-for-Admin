@@ -4,6 +4,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 
 import 'AccessToken.dart';
+import '../utils/NotificationRouter.dart';
 
 class FirebaseCM {
   final FirebaseMessaging firebaseMessaging = FirebaseMessaging.instance;
@@ -34,6 +35,26 @@ class FirebaseCM {
       InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       ),
+      // Deep-link routing (Master Task, 2026-09-10 — Part 3) — the ONE
+      // launch state `getInitialMessage()`/`onMessageOpenedApp` below
+      // cannot cover: the app already in the FOREGROUND when a
+      // notification arrives, which shows a LOCAL notification instead
+      // (`showLocalNotification`) whose tap was previously never handled
+      // at all. `payload` is `message.data` JSON-encoded (see
+      // `showLocalNotification`'s own updated comment), decoded back into
+      // a map here.
+      onDidReceiveNotificationResponse: (response) {
+        final payload = response.payload;
+        if (payload == null || payload.isEmpty) return;
+        try {
+          final data = jsonDecode(payload);
+          if (data is Map) {
+            routeNotification(Map<String, dynamic>.from(data));
+          }
+        } catch (_) {
+          // Malformed payload — fails safe, same as an unrecognised `dest`.
+        }
+      },
     );
 
     // Listen for messages in the background
@@ -78,6 +99,11 @@ class FirebaseCM {
           showWhen: false,
         ),
       ),
+      // Carries the SAME routing data this message arrived with (Master
+      // Task, 2026-09-10 — Part 3), so a tap on this locally-shown
+      // notification (the foreground case) routes exactly like a tap on
+      // a real system notification does.
+      payload: message.data.isEmpty ? null : jsonEncode(message.data),
     );
   }
 
@@ -85,12 +111,24 @@ class FirebaseCM {
   void handleMessageClick(RemoteMessage? message) {
     if (message != null) {
       print("Notification clicked: ${message.notification?.title}");
-      // Navigate to a specific screen or perform an action
+      routeNotification(message.data);
     }
   }
 
   // Send token notification to the admin (from the user app)
-  Future<void> sendTokenNotification(String token, String title, String message) async {
+  //
+  // [data] — deep-link routing payload (Master Task, 2026-09-10 — Part 3),
+  // optional and additive: every existing call site that doesn't pass it
+  // keeps sending exactly the notification it always did. FCM's REST `send`
+  // API requires `data` values to be strings, same as the Cloud Functions
+  // SDK's own `getMessaging().send({data})` — enforced here by the
+  // parameter's own type rather than left to each caller to remember.
+  Future<void> sendTokenNotification(
+    String token,
+    String title,
+    String message, {
+    Map<String, String>? data,
+  }) async {
     try {
       final body = {
         'message': {
@@ -99,6 +137,7 @@ class FirebaseCM {
             'body': message,
             'title': title,
           },
+          if (data != null) 'data': data,
         },
       };
 

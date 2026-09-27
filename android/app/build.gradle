@@ -8,12 +8,30 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+// Release signing (Play Store rejects a debug-signed upload) — standard
+// Flutter-documented approach (https://flutter.dev/to/reference-keystore),
+// adapted for where these two files actually live in this project:
+// `android/key.properties` and `android/folk-guides-key.jks`, i.e.
+// alongside this app module's PARENT (`android/`), not inside `android/app/`
+// itself. `rootProject.file(...)` (not the bare `file(...)` the docs show)
+// resolves relative to `android/` — Gradle's own root, the directory
+// `settings.gradle` lives in — matching both paths correctly; the bare,
+// module-relative `file(...)` from the docs would have looked inside
+// `android/app/` instead and silently found nothing.
+def keystorePropertiesFile = rootProject.file('key.properties')
+def keystoreProperties = new Properties()
+def hasKeystoreProperties = keystorePropertiesFile.exists()
+if (hasKeystoreProperties) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
-    namespace = "com.example.folk_guide_app"
-    compileSdk = flutter.compileSdkVersion
+    namespace = "org.folksurat.guides"
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        coreLibraryDesugaringEnabled true
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
     }
@@ -24,22 +42,55 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.folk_guide_app"
+        applicationId = "org.folksurat.guides"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdkVersion 23
+        minSdkVersion flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
-    buildTypes {
+    signingConfigs {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.debug
+            if (hasKeystoreProperties) {
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+                storeFile rootProject.file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+            }
         }
     }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.release
+        }
+    }
+}
+
+// Fail loudly — not with the confusing "APK signature verification failed"
+// / Play Console rejection a debug-signed upload would produce — when a
+// release variant is actually being assembled/bundled without
+// android/key.properties present. Scoped to release tasks specifically
+// (via the task graph, checked once it is ready) so a plain debug build or
+// `flutter run` keeps working for anyone without the keystore.
+gradle.taskGraph.whenReady { taskGraph ->
+    if (!hasKeystoreProperties &&
+            taskGraph.allTasks.any { it.name.toLowerCase().contains("release") }) {
+        throw new GradleException(
+            "android/key.properties is missing, so this release build cannot be " +
+            "signed. This project no longer falls back to debug signing for a " +
+            "release build — Play Store rejects a debug-signed upload outright. " +
+            "Create android/key.properties (storePassword, keyPassword, keyAlias, " +
+            "storeFile) next to android/folk-guides-key.jks before building a " +
+            "release."
+        )
+    }
+}
+
+dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
 }
 
 flutter {
