@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
-import '../utils/ColorProvider.dart';
+import '../theme/GuideColors.dart';
+import '../theme/GuideTheme.dart';
+import '../theme/GuideTokens.dart';
 import '../utils/GoalCompoundQueries.dart';
+import '../utils/GoalData.dart';
+import '../utils/GoalMetrics.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/Snackbar.dart';
+import '../widgets/GuideButtons.dart';
+import '../widgets/GuideSurface.dart';
+import '../widgets/GuideTiles.dart';
 import 'CompoundGoalHodReview.dart';
 import 'CompoundGoalProgressPage.dart';
 import 'GoalSetup.dart';
@@ -32,30 +38,17 @@ class GoalHomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ColorProvider>(
-      builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
-          appBar: AppBar(
-            elevation: 0,
-            backgroundColor: colorProvider.color,
-            leading: IconButton(
-              icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
-              onPressed: () => Navigator.pop(context),
-            ),
-            title: Text(
-              "Your targets",
-              style: TextStyle(
-                color: colorProvider.secondColor,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
+    final t = context.gText;
+    return GuideScaffold(
+      body: Column(
+        children: [
+          GuideTopBar(
+            title: "Your targets",
             actions: [
               if (_isHod)
-                IconButton(
+                GuideRoundButton(
+                  icon: Icons.rate_review_outlined,
                   tooltip: "Review guides' targets",
-                  icon: Icon(Icons.rate_review_outlined, color: colorProvider.secondColor),
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -65,64 +58,62 @@ class GoalHomePage extends StatelessWidget {
                 ),
             ],
           ),
-          body: StreamBuilder<List<CompoundTarget>>(
-            stream: compoundTargetsStream(guideId),
-            builder: (context, snap) {
-              final targets = (snap.data ?? const <CompoundTarget>[])
-                  .where((t) => t.isActive)
-                  .toList();
+          Expanded(
+            child: StreamBuilder<List<CompoundTarget>>(
+              stream: GoalData.instance.targets(guideId),
+              builder: (context, snap) {
+                final targets = (snap.data ?? const <CompoundTarget>[])
+                    .where((t) => t.isActive)
+                    .toList();
 
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-                children: [
-                  if (targets.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 24),
-                      child: Text(
-                        "No active targets yet. Create a compound target — "
-                        "\"N students each at a value\" — and get a real, "
-                        "AI-generated phase plan from your group's actual "
-                        "current numbers.",
-                        style: TextStyle(
-                          fontSize: 13,
-                          height: 1.4,
-                          color: colorProvider.secondColor.withOpacity(.75),
+                return ListView(
+                  // Room for the pinned "New target" button.
+                  padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 12,
+                      GuideSpace.pagePadding, 24),
+                  children: [
+                    if (targets.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Text(
+                          "No active targets yet. Create a compound target — "
+                          "\"N students each at a value\" — and get a real, "
+                          "AI-generated phase plan from your group's actual "
+                          "current numbers.",
+                          style: t.small.copyWith(height: 1.4),
                         ),
-                      ),
-                    )
-                  else
-                    ...targets.map((t) => _CompoundTargetCard(
-                          guideId: guideId,
-                          target: t,
-                        )),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => CompoundGoalSetupPage(guideId: guideId),
-                        ),
-                      ),
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text("New target"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF00695C),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
+                      )
+                    else
+                      ...targets.map((t) => _CompoundTargetCard(
+                            guideId: guideId,
+                            target: t,
+                          )),
+                  ],
+                );
+              },
+            ),
           ),
-        );
-      },
+          // Pinned at the bottom: a full-width brass button.
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  GuideSpace.pagePadding, 8, GuideSpace.pagePadding, 16),
+              child: GuidePrimaryButton(
+                label: "New target",
+                icon: Icons.add_rounded,
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CompoundGoalSetupPage(guideId: guideId),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
-
 }
 
 /// One target's card. A [StatefulWidget] (not a plain method on
@@ -181,85 +172,129 @@ class _CompoundTargetCardState extends State<_CompoundTargetCard> {
     final target = widget.target;
     final metric = target.metricInfo;
     final needsGeneration = target.totalPhases == 0;
+    final t = context.gText;
+    final g = context.g;
+    final pastel = switch (target.metric) {
+      kMetricChanting => GuidePastel.sage,
+      kMetricBooks => GuidePastel.sand,
+      _ => GuidePastel.mauve,
+    };
+    final fraction =
+        target.totalPhases == 0 ? 0.0 : target.currentPhase / target.totalPhases;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "${metric?.label ?? target.metric} — ${target.studentCountGoal} "
-            "students at ${target.perStudentValueGoal} ${metric?.unit ?? ''}",
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            needsGeneration
-                ? "No plan yet — generation didn't complete"
-                : "Phase ${target.currentPhase} of ${target.totalPhases}"
-                    "${target.pendingProposal != null ? " · proposal pending" : ""}",
-            style: TextStyle(
-              fontSize: 12,
-              color: needsGeneration ? Colors.red.shade700 : Colors.grey.shade600,
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (needsGeneration)
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _retrying ? null : _retry,
-                icon: _retrying
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.refresh, size: 16),
-                label: Text(_retrying ? "Generating…" : "Retry plan generation"),
-              ),
-            )
-          else
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: GuideCard(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => GoalWeeklyPhasePage(
-                          guideId: widget.guideId,
-                          targetId: target.targetId,
-                        ),
-                      ),
-                    ),
-                    child: const Text("This week"),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    gradient: g.pastel(pastel),
+                    borderRadius: BorderRadius.circular(GuideShape.iconTileRadius),
+                  ),
+                  child: Icon(
+                    target.metric == kMetricBooks
+                        ? Icons.menu_book_outlined
+                        : Icons.self_improvement_outlined,
+                    size: 20,
+                    color: GuideColors.onPastel,
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => CompoundGoalProgressPage(
-                          guideId: widget.guideId,
-                          targetId: target.targetId,
-                        ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(metric?.label ?? target.metric,
+                          style: t.cardTitle.copyWith(fontSize: 16, height: 1.3)),
+                      const SizedBox(height: 3),
+                      Text(
+                        "${target.studentCountGoal} students at "
+                        "${target.perStudentValueGoal} ${metric?.unit ?? ''}",
+                        style: t.small,
                       ),
-                    ),
-                    child: const Text("Progress"),
+                    ],
                   ),
                 ),
               ],
             ),
-        ],
+            const SizedBox(height: 14),
+            if (needsGeneration)
+              Text(
+                "No plan yet — generation didn't complete",
+                style: t.small.copyWith(color: g.danger),
+              )
+            else ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Flexible(
+                    child: Text(
+                      "Phase ${target.currentPhase} of ${target.totalPhases}"
+                      "${target.pendingProposal != null ? " · proposal pending" : ""}",
+                      style: t.caption,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text("${(fraction * 100).round()}%", style: t.caption),
+                ],
+              ),
+              const SizedBox(height: 6),
+              GuideProgressBar(value: fraction),
+            ],
+            const SizedBox(height: 14),
+            if (needsGeneration)
+              GuideSecondaryButton(
+                expand: true,
+                icon: _retrying ? null : Icons.refresh_rounded,
+                label: _retrying ? "Generating…" : "Retry plan generation",
+                onPressed: _retrying ? null : _retry,
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: GuideSecondaryButton(
+                      expand: true,
+                      label: "This week",
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => GoalWeeklyPhasePage(
+                            guideId: widget.guideId,
+                            targetId: target.targetId,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GuideSecondaryButton(
+                      expand: true,
+                      label: "Progress",
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => CompoundGoalProgressPage(
+                            guideId: widget.guideId,
+                            targetId: target.targetId,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
       ),
     );
   }

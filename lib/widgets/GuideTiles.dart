@@ -304,6 +304,52 @@ class GuidePastelRow extends StatelessWidget {
   }
 }
 
+/// The navy panel of the hero card (the same in both themes) with the three thin
+/// concentric rings top-right. [padding] is inside the panel.
+class GuideHeroPanel extends StatelessWidget {
+  const GuideHeroPanel({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.symmetric(vertical: 18),
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: GuideColors.heroGradient,
+        borderRadius: BorderRadius.circular(GuideShape.heroRadius),
+        boxShadow: const [
+          BoxShadow(color: GuideColors.heroShadow, blurRadius: 28, offset: Offset(0, 14)),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(GuideShape.heroRadius),
+        child: Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
+            const Positioned(
+              right: -48,
+              top: -60,
+              child: IgnorePointer(
+                child: RepaintBoundary(
+                  child: SizedBox(
+                      width: 170, height: 170, child: CustomPaint(painter: _RingsPainter())),
+                ),
+              ),
+            ),
+            Padding(padding: padding, child: child),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// One of the numbers in the hero card.
 class GuideHeroStat {
   const GuideHeroStat(this.value, this.label);
@@ -311,9 +357,8 @@ class GuideHeroStat {
   final String label;
 }
 
-/// The navy hero card (the same in both themes) with the three thin concentric
-/// rings top-right. [stats] are shown as equal columns with hairline dividers.
-/// The whole card is tappable when [onTap] is given.
+/// The hero card: a label and date range, then [stats] as equal columns with
+/// hairline dividers. The whole card is tappable when [onTap] is given.
 class GuideHeroCard extends StatelessWidget {
   const GuideHeroCard({
     super.key,
@@ -333,79 +378,52 @@ class GuideHeroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.gText;
-    final card = Container(
-      padding: const EdgeInsets.symmetric(vertical: 18),
-      decoration: BoxDecoration(
-        gradient: GuideColors.heroGradient,
-        borderRadius: BorderRadius.circular(GuideShape.heroRadius),
-        boxShadow: const [
-          BoxShadow(color: GuideColors.heroShadow, blurRadius: 28, offset: Offset(0, 14)),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(GuideShape.heroRadius),
-        child: Stack(
-          clipBehavior: Clip.hardEdge,
-          children: [
-            const Positioned(
-              right: -48,
-              top: -78,
-              child: IgnorePointer(
-                child: RepaintBoundary(
-                  child: SizedBox(
-                      width: 170, height: 170, child: CustomPaint(painter: _RingsPainter())),
-                ),
-              ),
-            ),
-            Column(
-              mainAxisSize: MainAxisSize.min,
+    final card = GuideHeroPanel(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Flexible(child: Text(label.toUpperCase(), style: t.heroLabel)),
-                      if (trailing != null) ...[
-                        const SizedBox(width: 8),
-                        Text(trailing!, style: t.heroCaption),
-                      ],
-                    ],
-                  ),
-                ),
-                IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (var i = 0; i < stats.length; i++) ...[
-                        if (i > 0) const VerticalDivider(width: 1, thickness: 1, color: GuideColors.heroDivider),
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(stats[i].value, style: t.heroNumber),
-                                const SizedBox(height: 7),
-                                Text(stats[i].label,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: t.heroCaption),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (footer != null)
-                  Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 0), child: footer),
+                Flexible(child: Text(label.toUpperCase(), style: t.heroLabel)),
+                if (trailing != null) ...[
+                  const SizedBox(width: 8),
+                  Text(trailing!, style: t.heroCaption),
+                ],
               ],
             ),
-          ],
-        ),
+          ),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < stats.length; i++) ...[
+                  if (i > 0)
+                    const VerticalDivider(width: 1, thickness: 1, color: GuideColors.heroDivider),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(stats[i].value, style: t.heroNumber),
+                          const SizedBox(height: 7),
+                          Text(stats[i].label,
+                              maxLines: 2, overflow: TextOverflow.ellipsis, style: t.heroCaption),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (footer != null)
+            Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 0), child: footer),
+        ],
       ),
     );
     return Semantics(

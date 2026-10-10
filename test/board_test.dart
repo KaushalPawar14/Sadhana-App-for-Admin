@@ -15,28 +15,10 @@ import 'package:folk_guide_app/utils/SeenMarkers.dart';
 import 'package:folk_guide_app/utils/StudentScope.dart';
 import 'package:folk_guide_app/widgets/GuideBoard.dart';
 
+import 'support/fake_snapshots.dart';
 import 'support/guide_test_support.dart';
 
 // ---------------------------------------------------------------- fake data
-class _Doc implements QueryDocumentSnapshot<Map<String, dynamic>> {
-  _Doc(this.id, this._data);
-  @override
-  final String id;
-  final Map<String, dynamic> _data;
-  @override
-  Map<String, dynamic> data() => _data;
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-class _Snap implements QuerySnapshot<Map<String, dynamic>> {
-  _Snap(this.docs);
-  @override
-  final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs;
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
 class FakeBoardData implements BoardData {
   FakeBoardData({required this.users, this.books = const {}, Map<String, String>? placementList})
       : placementList = placementList ?? {};
@@ -73,11 +55,11 @@ class FakeBoardData implements BoardData {
 
   @override
   Stream<QuerySnapshot<Map<String, dynamic>>> placements(String boardId) => Stream.value(
-      _Snap([for (final e in placementList.entries) _Doc(e.key, {'columnId': e.value, 'studentUid': e.key})]));
+      FakeSnap([for (final e in placementList.entries) FakeDoc(e.key, {'columnId': e.value, 'studentUid': e.key})]));
 
   @override
   Stream<QuerySnapshot<Map<String, dynamic>>> students() =>
-      Stream.value(_Snap([for (final e in users.entries) _Doc(e.key, e.value)]));
+      Stream.value(FakeSnap([for (final e in users.entries) FakeDoc(e.key, e.value)]));
 
   @override
   Future<void> ensureGuideBoard({required List<BoardDoc> all, required String hodGuide}) async {}
@@ -114,9 +96,9 @@ class FakeBoardData implements BoardData {
   Future<int?> chantingCommitment(String uid) async => uid == 'sg1' ? 16 : null;
 
   @override
-  Stream<QuerySnapshot<Map<String, dynamic>>> booksRead(StudentRef student) => Stream.value(_Snap([
+  Stream<QuerySnapshot<Map<String, dynamic>>> booksRead(StudentRef student) => Stream.value(FakeSnap([
         for (final e in (books[student.uid] ?? const {}).entries)
-          _Doc('${student.uid}_${e.key}', {
+          FakeDoc('${student.uid}_${e.key}', {
             'uid': student.uid,
             'level': e.key.split('_').first,
             'bookKey': e.key.substring(e.key.indexOf('_') + 1),
