@@ -44,6 +44,14 @@ List<AdminRole> rolesThatCanBeAddedBy(AdminRole actor) => switch (actor) {
       AdminRole.femaleEnabler => [AdminRole.femaleEnabler],
     };
 
+/// Whether an admin of role [actor] may remove an admin of role [target]: delete
+/// rights mirror add rights (HOD any admin, Guide Guides and Male Enablers, Male
+/// Enabler Male Enablers, Female Enabler Female Enablers). Mirrors `canRemoveRole`
+/// in functions/hierarchyCore.js; the server enforces it again, and also refuses
+/// removing yourself or the last HOD.
+bool canRemoveAdminRole(AdminRole actor, AdminRole target) =>
+    rolesThatCanBeAddedBy(actor).contains(target);
+
 /// An entry of the admin list the server returns (already filtered by the
 /// visibility matrix; `email` only for a HOD viewer or for yourself).
 class AdminSummary {

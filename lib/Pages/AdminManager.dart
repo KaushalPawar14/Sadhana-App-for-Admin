@@ -101,7 +101,9 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
             : 'Team: ${_nameOf(everyone, a.teamGuide)}')
         : null;
     final email = a.email;
-    final canManage = me.isHod;
+    // Editing stays HOD-only; removing follows what this role may add.
+    final canEdit = me.isHod;
+    final canRemove = a.id != me.id && canRemoveAdminRole(me.role, a.role);
     return ListTile(
       title: Text(a.displayName,
           style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -111,16 +113,17 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
         if (email != null && email.isNotEmpty) email,
         if (a.id != a.displayName) 'ID ${a.id}',
       ].join(' · ')),
-      trailing: canManage
+      trailing: (canEdit || canRemove)
           ? Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined),
-                  tooltip: 'Edit',
-                  onPressed: () => _openEditDialog(me, a, everyone),
-                ),
-                if (a.id != me.id)
+                if (canEdit)
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined),
+                    tooltip: 'Edit',
+                    onPressed: () => _openEditDialog(me, a, everyone),
+                  ),
+                if (canRemove)
                   IconButton(
                     icon: const Icon(Icons.delete_outline),
                     tooltip: 'Remove',
@@ -511,7 +514,7 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
   }
 
   // --------------------------------------------------------------------
-  // remove (HOD only)
+  // remove (the HOD any admin; others as far as they may add: see canRemoveAdminRole)
   // --------------------------------------------------------------------
 
   Future<void> _confirmRemove(AdminSummary a) async {

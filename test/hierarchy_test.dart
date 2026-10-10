@@ -275,11 +275,101 @@ void main() {
       expect(calls.any((c) => c.contains('dryRun: true')), isTrue);
     });
 
-    testWidgets('a non-HOD sees no edit or remove', (tester) async {
-      await pump(tester, profile('G', 'GUIDE'), (n, d) => n == 'listAdmins' ? {'admins': [a('G', 'GUIDE'), a('ME1', 'MALE_ENABLER', team: 'G')]} : null);
-      expect(find.byTooltip('Edit'), findsNothing);
-      expect(find.byTooltip('Remove'), findsNothing);
+    testWidgets('a Guide sees remove (never edit) on Guides and Male Enablers, not on himself or other roles', (tester) async {
+      await pump(tester, profile('G', 'GUIDE'), (n, d) => n == 'listAdmins'
+          ? {'admins': [a('G', 'GUIDE'), a('G2', 'GUIDE'), a('ME1', 'MALE_ENABLER', team: 'G'), a('H', 'HOD')]}
+          : null);
+      expect(find.byTooltip('Edit'), findsNothing, reason: 'editing stays HOD-only');
+      expect(find.byTooltip('Remove'), findsNWidgets(2), reason: 'G2 and ME1 only');
       expect(find.textContaining('Team: G Das'), findsOneWidget);
+    });
+
+    testWidgets('a Guide removing a Male Enabler gets the same confirmation, then the removal', (tester) async {
+      final calls = <String>[];
+      await pump(tester, profile('G', 'GUIDE'), (n, d) {
+        calls.add('$n ${d['id']} ${d['dryRun']}');
+        if (n == 'listAdmins') return {'admins': [a('G', 'GUIDE'), a('ME1', 'MALE_ENABLER', team: 'G')]};
+        if (n == 'removeAdmin') return {'studentCount': 1, 'teamlessEnablers': <String>[], 'removed': d['dryRun'] != true};
+        return null;
+      });
+      await tester.tap(find.byTooltip('Remove'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Are you sure? 1 student will become Unassigned.'), findsOneWidget);
+      await tester.tap(find.text('Remove'));
+      await tester.pumpAndSettle();
+      expect(calls.where((c) => c.startsWith('removeAdmin ME1')).length, 2, reason: 'a dry run, then the real removal');
+    });
+
+    // Who sees the remove control on whom: delete rights mirror add rights.
+    final everyone = [
+      a('H', 'HOD'), a('H2', 'HOD'), a('G', 'GUIDE'), a('G2', 'GUIDE'),
+      a('ME', 'MALE_ENABLER', team: 'G'), a('ME2', 'MALE_ENABLER'),
+      a('FE', 'FEMALE_ENABLER'), a('FE2', 'FEMALE_ENABLER'),
+    ];
+    final expectedRemovable = {
+      'H': ['H2', 'G', 'G2', 'ME', 'ME2', 'FE', 'FE2'],
+      'G': ['G2', 'ME', 'ME2'],
+      'ME': ['ME2'],
+      'FE': ['FE2'],
+    };
+    final roleOf = {'H': 'HOD', 'G': 'GUIDE', 'ME': 'MALE_ENABLER', 'FE': 'FEMALE_ENABLER'};
+    for (final entry in expectedRemovable.entries) {
+      testWidgets('${roleOf[entry.key]}: the remove control is on exactly ${entry.value.join(", ")}', (tester) async {
+        // the server's admin list is already filtered by the visibility matrix; the full
+        // list here is the worst case (the control must still follow the delete rule)
+        await pump(tester, profile(entry.key, roleOf[entry.key]!), (n, d) => n == 'listAdmins' ? {'admins': everyone} : null);
+        final shown = <String>[];
+        for (final tile in tester.widgetList<ListTile>(find.byType(ListTile))) {
+          final title = ((tile.title as Text).data ?? '').replaceAll(' Das', '');
+          final hasRemove = find.descendant(of: find.byWidget(tile), matching: find.byTooltip('Remove')).evaluate().isNotEmpty;
+          if (hasRemove) shown.add(title);
+        }
+        expect(shown, entry.value);
+        expect(find.byTooltip('Edit'), entry.key == 'H' ? findsNWidgets(everyone.length) : findsNothing);
+      });
+    }
+
+    for (final scale in [1.0, 1.3, 1.6]) {
+      for (final who in ['H', 'G', 'ME', 'FE']) {
+        testWidgets('text scale $scale, ${roleOf[who]}: the admin list has no overflow on 360 dp', (tester) async {
+          tester.platformDispatcher.textScaleFactorTestValue = scale;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          await pump(tester, profile(who, roleOf[who]!), (n, d) => n == 'listAdmins' ? {'admins': everyone} : null);
+          expect(tester.takeException(), isNull);
+          for (final r in tester.widgetList<IconButton>(find.byType(IconButton))) {
+            expect(r.onPressed, isNotNull);
+          }
+          final tooltips = find.byTooltip('Remove');
+          for (var i = 0; i < tooltips.evaluate().length; i++) {
+            final box = tester.getRect(tooltips.at(i));
+            expect(box.width, greaterThanOrEqualTo(40));
+            expect(box.right, lessThanOrEqualTo(360));
+          }
+        });
+      }
+    }
+
+    testWidgets('the server refusing a removal (last HOD, yourself, a role you may not) shows its message', (tester) async {
+      await pump(tester, profile('G', 'GUIDE'), (n, d) {
+        if (n == 'listAdmins') return {'admins': [a('G', 'GUIDE'), a('G2', 'GUIDE')]};
+        throw HierarchyException('permission-denied', 'You cannot remove this admin.');
+      });
+      await tester.tap(find.byTooltip('Remove'));
+      await tester.pumpAndSettle();
+      expect(find.text('You cannot remove this admin.'), findsOneWidget);
+    });
+
+    test('canRemoveAdminRole mirrors the server rule for every role pair', () {
+      for (final actor in AdminRole.values) {
+        for (final target in AdminRole.values) {
+          expect(canRemoveAdminRole(actor, target), rolesThatCanBeAddedBy(actor).contains(target), reason: '$actor -> $target');
+        }
+      }
+      expect(canRemoveAdminRole(AdminRole.hod, AdminRole.hod), isTrue);
+      expect(canRemoveAdminRole(AdminRole.guide, AdminRole.hod), isFalse);
+      expect(canRemoveAdminRole(AdminRole.guide, AdminRole.femaleEnabler), isFalse);
+      expect(canRemoveAdminRole(AdminRole.maleEnabler, AdminRole.guide), isFalse);
+      expect(canRemoveAdminRole(AdminRole.femaleEnabler, AdminRole.maleEnabler), isFalse);
     });
 
     testWidgets('Add Admin asks NAME and EMAIL; a Guide gets only Guide / Male Enabler choices; the server message is shown', (tester) async {
