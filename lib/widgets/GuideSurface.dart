@@ -54,9 +54,11 @@ class GuidePageBackground extends StatelessWidget {
   }
 }
 
-/// A screen on the Ink & Brass page: the page background and a status bar
-/// whose icons suit the theme. Pages bring their own top bar ([GuideTopBar]) or
-/// pass a Material [appBar] (transparent by the theme).
+/// A screen on the Ink & Brass page: the page colour with the top fade behind
+/// EVERYTHING (the Material app bar included, which the theme makes transparent),
+/// and a status bar whose icons suit the theme. Pages bring their own top bar
+/// ([GuideTopBar]) or pass a Material [appBar]. Takes the Scaffold parameters the
+/// app's screens use, so a screen converts by renaming `Scaffold` to this.
 class GuideScaffold extends StatelessWidget {
   const GuideScaffold({
     super.key,
@@ -64,27 +66,84 @@ class GuideScaffold extends StatelessWidget {
     this.appBar,
     this.floatingActionButton,
     this.floatingActionButtonLocation,
+    this.bottomNavigationBar,
     this.resizeToAvoidBottomInset,
+    this.extendBody = false,
+    this.drawer,
+    this.endDrawer,
   });
 
-  final Widget body;
+  final Widget? body;
   final PreferredSizeWidget? appBar;
   final Widget? floatingActionButton;
   final FloatingActionButtonLocation? floatingActionButtonLocation;
+  final Widget? bottomNavigationBar;
   final bool? resizeToAvoidBottomInset;
+  final bool extendBody;
+  final Widget? drawer;
+  final Widget? endDrawer;
 
   @override
   Widget build(BuildContext context) {
     final g = context.g;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: g.isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
-      child: Scaffold(
-        backgroundColor: g.pageBackground,
-        appBar: appBar,
-        floatingActionButton: floatingActionButton,
-        floatingActionButtonLocation: floatingActionButtonLocation,
-        resizeToAvoidBottomInset: resizeToAvoidBottomInset,
-        body: GuidePageBackground(child: body),
+      child: GuidePageBackground(
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: appBar,
+          floatingActionButton: floatingActionButton,
+          floatingActionButtonLocation: floatingActionButtonLocation,
+          bottomNavigationBar: bottomNavigationBar,
+          resizeToAvoidBottomInset: resizeToAvoidBottomInset,
+          extendBody: extendBody,
+          drawer: drawer,
+          endDrawer: endDrawer,
+          body: body,
+        ),
+      ),
+    );
+  }
+}
+
+/// The brass "Add ..." floating button: a fully rounded gradient pill, 48 dp tall,
+/// with the soft brass glow. Used as a Scaffold `floatingActionButton`.
+class GuideFab extends StatelessWidget {
+  const GuideFab({super.key, required this.label, required this.icon, required this.onPressed});
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.g;
+    return Semantics(
+      button: true,
+      label: label,
+      excludeSemantics: true,
+      child: PressScale(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onPressed,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            decoration: BoxDecoration(
+              gradient: g.primaryGradient,
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: [BoxShadow(color: g.brassGlow, blurRadius: 24, offset: const Offset(0, 12))],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 20, color: g.onPrimary),
+                const SizedBox(width: 8),
+                Text(label, style: context.gText.button.copyWith(color: g.onPrimary)),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
