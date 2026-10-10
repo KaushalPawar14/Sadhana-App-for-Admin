@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:folk_guide_app/Home/FolkBoysEntry.dart';
 import 'package:folk_guide_app/Pages/BoysDetails.dart';
 import 'package:folk_guide_app/Pages/Competition.dart';
-import 'package:folk_guide_app/utils/GuideRoster.dart';
+import 'package:folk_guide_app/utils/AdminProfile.dart';
 import 'package:folk_guide_app/utils/MalaLoading.dart';
 import 'package:folk_guide_app/utils/UnseenAggregates.dart';
 import 'package:folk_guide_app/utils/UnseenDot.dart';
@@ -64,7 +64,7 @@ class _CurvedNavBarState extends State<CurvedNavBar> {
 
   void _buildUnseenStreams() {
     final guide = adminName;
-    final isHod = guide == kHodGuideId;
+    final isHod = AdminProfileProvider.viewerIsHod;
 
     _tab0Unseen = UnseenAggregates.anyOf([
       UnseenAggregates.associationsUnseen(guide, isHod),

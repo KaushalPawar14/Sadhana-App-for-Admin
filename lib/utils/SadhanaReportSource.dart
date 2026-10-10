@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'AdminProfile.dart';
+import 'StudentScope.dart';
+
 /// Reads a student's sadhana report HISTORY across both residence-scoped
 /// collections, merged by date — Master Task 2026-09-11, "Read reports from
 /// both collections so history survives a residence change." Mirrors the
@@ -49,6 +52,31 @@ const List<String> kSadhanaReportCollections = [
   'hostel-sadhana',
 ];
 
+/// Lists a student's report dates in a way the security rules can prove: the
+/// date documents carry server-stamped `scopeGuide` / `scopeTeam` /
+/// `scopeGender`, so a non-HOD lists them through the viewer's own scope
+/// queries (own team + unassigned of their gender) — nothing comes back for a
+/// student outside their scope. Single-document reads need no such filter.
+_ScopedDates _scopedDates(String collection, String studentName) =>
+    _ScopedDates(_datesRef(collection, studentName));
+
+class _ScopedDates {
+  _ScopedDates(this._ref);
+  final CollectionReference<Map<String, dynamic>> _ref;
+
+  Future<QuerySnapshot<Map<String, dynamic>>> get() =>
+      StudentScope.mergedGet(_queries());
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> snapshots() =>
+      StudentScope.mergedStream(_queries());
+
+  List<Query<Map<String, dynamic>>> _queries() {
+    final profile = AdminProfileProvider.current;
+    if (profile == null) return [_ref];
+    return StudentScope(profile).historyQueriesOn(_ref);
+  }
+}
+
 CollectionReference<Map<String, dynamic>> _datesRef(
   String collection,
   String studentName,
@@ -68,7 +96,7 @@ Future<Map<String, Map<String, dynamic>>> fetchMergedDateReports(
   final merged = <String, Map<String, dynamic>>{};
   if (studentName.isEmpty) return merged;
   for (final collection in kSadhanaReportCollections) {
-    final snap = await _datesRef(collection, studentName).get();
+    final snap = await _scopedDates(collection, studentName).get();
     for (final doc in snap.docs) {
       merged.putIfAbsent(doc.id, () => doc.data());
     }
@@ -111,7 +139,7 @@ Stream<Set<String>> mergedAvailableDatesStream(String studentName) {
     onListen: () {
       for (final collection in kSadhanaReportCollections) {
         subs.add(
-          _datesRef(collection, studentName).snapshots().listen((snap) {
+          _scopedDates(collection, studentName).snapshots().listen((snap) {
             latest[collection] = snap.docs.map((d) => d.id).toSet();
             emit();
           }),

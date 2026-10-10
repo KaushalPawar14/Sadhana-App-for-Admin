@@ -2,9 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../Services/UpdateFCM.dart';
-import '../utils/GuideRoster.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/Snackbar.dart';
+import '../utils/StudentScope.dart';
 
 /// Per-student comment thread — Phase 5 of the Book Reading redesign
 /// (built 2026-08-23). Opened by the chat icon on a student's row in All Boys
@@ -64,10 +64,9 @@ import '../utils/Snackbar.dart';
 /// ---------------------------------------------------------------------------
 /// Access scope
 /// ---------------------------------------------------------------------------
-/// HOD reads and posts on any student. A non-HOD guide only on students
-/// currently assigned to them — the same `guideId` test Phase 2 applied to
-/// `Dashboard._usersQuery()`, reusing `getSavedGuide()` + [kHodGuideId] rather
-/// than inventing a second notion of role.
+/// A HOD reads and posts on any student. Every other admin only on the
+/// students they may manage under the role hierarchy (`StudentScope.canManage`,
+/// evaluated on the student's CURRENT `users` document).
 ///
 /// ⚠️ **Comments follow the STUDENT, not a guide's tenure.** A reassigned
 /// student's new guide inherits the whole existing thread. This is the
@@ -93,9 +92,10 @@ const String kStudentCommentsCollection = 'studentComments';
 
 /// Opens the thread for one student.
 ///
-/// [studentGuideId] is the student's CURRENT `users/{uid}.guideId`, used for the
-/// access test. Pass the empty string for an unassigned student — only the HOD
-/// can then post.
+/// [studentGuideId] is the student's `users/{uid}.guideId` as the caller knows
+/// it; the dialog re-reads the student's `users` document for the access test
+/// (guide, team and gender) and only falls back to this value when that read
+/// fails. Pass the empty string for an unassigned student.
 Future<void> showStudentCommentsDialog({
   required BuildContext context,
   required String studentUid,
@@ -137,20 +137,22 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
   bool _loadingGuide = true;
   bool _sending = false;
 
-  /// Same HOD test as `BoardsHome` and `Dashboard` — against [kHodGuideId],
-  /// never a literal.
-  bool get _isHod => _guide == kHodGuideId;
+  /// The student's current assignment, read in [_loadGuide].
+  StudentRef? _studentRef;
 
-  /// HOD anywhere; any other guide only on their own students.
+  bool get _isHod => AdminProfileProvider.viewerIsHod;
+
+  /// HOD anywhere; any other admin only on students they may manage.
   ///
-  /// A blank `_guide` fails closed: it can never equal a non-empty
-  /// `studentGuideId`, and an unassigned student's blank `guideId` is only
-  /// reachable by the HOD because the `_isHod` branch is checked first.
+  /// Fails closed: with no profile or no resolved student reference nothing
+  /// but the HOD branch can pass.
   bool get _canAccess {
     final g = _guide;
     if (g == null || g.isEmpty) return false;
     if (_isHod) return true;
-    return widget.studentGuideId.isNotEmpty && widget.studentGuideId == g;
+    final ref = _studentRef;
+    if (ref == null) return false;
+    return StudentScope.current().canManage(ref);
   }
 
   @override
@@ -167,10 +169,26 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
   }
 
   Future<void> _loadGuide() async {
-    final g = await UpdateTokenService().getSavedGuide();
+    final g = AdminProfileProvider.current?.id;
+    StudentRef ref;
+    try {
+      final doc =
+          await _firestore.collection('users').doc(widget.studentUid).get();
+      ref = StudentRef.fromUser(widget.studentUid, doc.data());
+    } catch (_) {
+      // Fall back to what the caller knew; gender stays blank, so only the
+      // HOD (who never needs the reference) can get through.
+      ref = StudentRef(
+        uid: widget.studentUid,
+        guideId: widget.studentGuideId,
+        teamGuide: '',
+        gender: '',
+      );
+    }
     if (!mounted) return;
     setState(() {
       _guide = g;
+      _studentRef = ref;
       _loadingGuide = false;
     });
   }
@@ -201,12 +219,10 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
         'text': text,
         'authorId': guide,
         'authorRole': _isHod ? 'HOD' : 'guide',
-        // Guide identity in this app *is* the name (`adminUsers` doc ids are
-        // guide names), so these two are the same string today. Both are stored
-        // because the display name is what a reader needs and an id is what a
-        // future lookup would need — keeping them separate now means a later
-        // rename does not have to rewrite history.
-        'authorName': guide,
+        // The admin id is permanent; the display name is what a reader needs.
+        // Both are stored so a later rename does not have to rewrite history.
+        'authorName':
+            AdminProfileProvider.current?.displayName ?? guide,
         'createdAt': FieldValue.serverTimestamp(),
       });
       _controller.clear();
@@ -378,6 +394,7 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
   }
 
   Widget _message(Map<String, dynamic> data) {
+    final authorId = (data['authorId'] ?? '').toString();
     final author = (data['authorName'] ?? data['authorId'] ?? '').toString();
     final role = (data['authorRole'] ?? '').toString();
     final text = (data['text'] ?? '').toString();
@@ -385,7 +402,7 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
 
     final isHodAuthor = role == 'HOD';
     // Own messages align right, the familiar chat convention.
-    final isMine = author == _guide;
+    final isMine = (authorId.isNotEmpty ? authorId : author) == _guide;
 
     final when = ts is Timestamp
         ? DateFormat('dd MMM yyyy · hh:mm a').format(ts.toDate())

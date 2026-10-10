@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../Services/UpdateFCM.dart';
 import '../utils/ColorProvider.dart';
-import '../utils/GuideRoster.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/ManualStudents.dart';
 import '../utils/Snackbar.dart';
 import 'AdminManager.dart';
+import 'NotificationSettings.dart';
 import 'SubmissionStatus.dart';
 // `AdminRegisterUserPage` is no longer imported here: its "Add Hostelers" tile
 // was removed on 2026-08-14. **The screen file was deliberately kept** — it
@@ -32,10 +33,9 @@ class _AdminControlPageState extends State<AdminControlPage> {
   /// pref is read, so the gated tile simply does not render on first frame.
   String? _selectedGuide;
 
-  /// The single HOD check for this screen — compares against [kHodGuideId],
-  /// never a literal, so changing the HOD in `GuideRoster.dart` moves this
-  /// gate with it and needs no edit here.
-  bool get _isHod => _selectedGuide == kHodGuideId;
+  /// The single HOD check for this screen — role based (several HODs are
+  /// possible; no id is special).
+  bool get _isHod => AdminProfileProvider.viewerIsHod;
 
   @override
   void initState() {
@@ -44,7 +44,8 @@ class _AdminControlPageState extends State<AdminControlPage> {
   }
 
   Future<void> _loadGuide() async {
-    final guide = await UpdateTokenService().getSavedGuide();
+    final guide = AdminProfileProvider.current?.id ??
+        await UpdateTokenService().getSavedGuide();
     if (mounted) setState(() => _selectedGuide = guide);
   }
 
@@ -76,14 +77,19 @@ class _AdminControlPageState extends State<AdminControlPage> {
     String? error;
     bool saving = false;
 
-    List<String> guides = const [];
-    if (_isHod) {
-      try {
-        guides = await guideRosterStream().first;
-      } catch (_) {
-        guides = const [];
-      }
-    }
+    final me = AdminProfileProvider.require();
+    // A Female Enabler adds females; a Guide / Male Enabler adds males; a HOD
+    // chooses. Females are only ever owned by Female Enablers, males by anyone
+    // but a Female Enabler.
+    String gender = me.isFemaleEnabler ? 'female' : 'male';
+    final admins = me.admins;
+    List<AdminSummary> ownersFor(String g) => [
+          for (final a in admins)
+            if (g == 'female'
+                ? a.role == AdminRole.femaleEnabler
+                : a.role != AdminRole.femaleEnabler)
+              a,
+        ];
 
     if (!mounted) return;
 
@@ -190,6 +196,7 @@ class _AdminControlPageState extends State<AdminControlPage> {
                   'name': name,
                   'mobileNumber': normalizedMobile,
                   'role': residence,
+                  'gender': gender,
                   if (guideForNewStudent != null &&
                       guideForNewStudent.isNotEmpty)
                     'guideId': guideForNewStudent,
@@ -245,6 +252,30 @@ class _AdminControlPageState extends State<AdminControlPage> {
                       ),
                     ),
                     const SizedBox(height: 10),
+                    if (_isHod) ...[
+                      DropdownButtonFormField<String>(
+                        value: gender,
+                        decoration:
+                            const InputDecoration(labelText: "Gender"),
+                        items: const [
+                          DropdownMenuItem(value: 'male', child: Text('Male')),
+                          DropdownMenuItem(
+                              value: 'female', child: Text('Female')),
+                        ],
+                        onChanged: saving
+                            ? null
+                            : (v) => setDialogState(() {
+                                  gender = v ?? gender;
+                                  // The owner must suit the gender.
+                                  if (assignedGuide != null &&
+                                      !ownersFor(gender)
+                                          .any((a) => a.id == assignedGuide)) {
+                                    assignedGuide = null;
+                                  }
+                                }),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
                     DropdownButtonFormField<String>(
                       value: residence,
                       decoration:
@@ -273,8 +304,9 @@ class _AdminControlPageState extends State<AdminControlPage> {
                         items: [
                           const DropdownMenuItem<String?>(
                               value: null, child: Text('Unassigned')),
-                          ...guides.map((g) => DropdownMenuItem<String?>(
-                              value: g, child: Text(g))),
+                          ...ownersFor(gender).map((a) =>
+                              DropdownMenuItem<String?>(
+                                  value: a.id, child: Text(a.displayName))),
                         ],
                         onChanged: saving
                             ? null
@@ -398,6 +430,18 @@ class _AdminControlPageState extends State<AdminControlPage> {
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const AdminManagerPage()),
+        ),
+      ),
+
+      /// Hierarchy project: which students and which kinds of events notify
+      /// this admin (saved on the server; applied when notifications route).
+      _taskTile(
+        icon: Icons.notifications_active_outlined,
+        label: "Notifications",
+        accent: Colors.purple,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const NotificationSettingsPage()),
         ),
       ),
     ];

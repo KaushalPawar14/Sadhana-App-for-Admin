@@ -9,10 +9,13 @@
 /// ---------------------------------------------------------------------------
 /// A drag may write, and this file only ever writes:
 ///
-///   Custom boards (`kBoardKindCustom`) -> `placements` ONLY.
 ///
-///   Board C (`kBoardKindGuideAssignment`) -> `placements` + the single field
-///     `users/{uid}.guideId`, and nothing else.
+///   Custom boards (`kBoardKindCustom`) -> `placements` ONLY.
+///   Board C (`kBoardKindGuideAssignment`) -> `placements` ONLY, from this
+///     file. The student's `guideId` is no longer written by the client at
+///     all (hierarchy project): every assignment goes through the server
+///     callable `HierarchyApi.instance.assignStudent`, which also files the
+///     placement when given a board/column/order.
 ///
 /// Board-level actions (not a drag): `createBoard`/`renameBoard`/
 /// `deleteBoard`/[setBoardSharedWith] each touch only the `boards/{id}`
@@ -49,7 +52,8 @@
 /// other student profile field. The Board C header stat reads `users.role` and
 /// never writes it.
 ///
-/// Rule 14/15 note: a reassignment is a **single-field `.update()`**. It does
+/// Rule 14/15 note: a reassignment (server-side, `assignStudent`) changes ONLY the
+/// student's assignment fields. It does
 /// not move, copy, rewrite or delete any of that student's history. Rows
 /// already stamped with the previous guide (`associations.guideId`,
 /// `flaggedChatMessages.guideId`, `chantingChallengeContributions.guideId`)
@@ -462,16 +466,14 @@ Future<void> renameBoard(String boardId, String title) =>
 
 /// Replaces the board's whole `sharedWith` list — Phase 4. The caller
 /// already gathers the intended final list (a set of checkboxes against
-/// `guideRosterStream()`), so this is a single overwrite, not an
+/// the admin list of the loaded `AdminProfile`), so this is a single overwrite, not an
 /// add/remove pair — simpler, and there is no ordering or per-entry
 /// metadata to preserve.
 ///
 /// ⚠️ Owner-only by convention at the call site (`isBoardOwner`) — this
 /// function itself does not re-check, matching every other write in this
 /// file (the whitelist is enforced by what each function touches, not by a
-/// permission check inside it; callers are trusted the same way
-/// `reassignGuide`'s own doc comment already states for its confirmation
-/// dialog).
+/// permission check inside it).
 Future<void> setBoardSharedWith({
   required String boardId,
   required List<String> sharedWith,
@@ -682,53 +684,14 @@ Future<void> movePlacement({
   }, SetOptions(merge: true));
 }
 
-/// Performs a real guide reassignment from the Guide Assignment board.
-///
-/// ⚠️ **Two writes, both whitelisted, and nothing else:**
-///   1. `users/{studentUid}.guideId` — a SINGLE-FIELD update. When
-///      [newGuideId] is null (a drop on "Unassigned") this is
-///      `FieldValue.delete()`, restoring the exact representation Step 0 found
-///      in production: **the field absent entirely**. Every reader in both
-///      apps and all five Cloud Functions coerces a missing field with
-///      `(data['guideId'] ?? '')`, so absence is the real unassigned state —
-///      writing `""` would work too but would introduce a second
-///      representation, so it is deliberately not done.
-///   2. the board's own `placements` document.
-///
-/// It does NOT move, copy, rewrite or delete any of the student's history.
-/// `associations`, `flaggedChatMessages`, `litAssessments`, `interactionLogs`
-/// and `chantingChallengeContributions` rows keep the `guideId` they were
-/// stamped with, by design — the caller's confirmation dialog states this to
-/// the HOD before this function is ever reached.
-///
-/// The caller MUST have shown that confirmation first. There is no code path
-/// into this function that does not go through it.
-Future<void> reassignGuide({
-  required String boardId,
-  required String studentUid,
-  required String? newGuideId,
-  required String columnId,
-  required int order,
-  required String movedBy,
-}) async {
-  await FirebaseFirestore.instance
-      .collection('users')
-      .doc(studentUid)
-      .update({
-    // A drop on "Unassigned" deletes the field rather than writing "" — see
-    // this function's doc comment for why absence is the correct
-    // representation.
-    'guideId': newGuideId ?? FieldValue.delete(),
-  });
+// A guide reassignment is NOT a client write any more (hierarchy project): the
+// old `reassignGuide` (a direct `users.guideId` update) was removed. Every
+// assignment / release goes through `HierarchyApi.instance.assignStudent`
+// (the server checks authority and gender, writes `guideId`/`teamGuide`, and —
+// when `boardId`/`columnId`/`order` are passed — also files the card's
+// placement on this board). `movePlacement` above stays for non-assignment
+// card moves on custom boards.
 
-  await movePlacement(
-    boardId: boardId,
-    studentUid: studentUid,
-    columnId: columnId,
-    order: order,
-    movedBy: movedBy,
-  );
-}
 
 // -----------------------------------------------------------------------------
 // Residence header stat — READ-ONLY
@@ -775,10 +738,15 @@ class ResidenceSplit {
 
   /// Reads so that the parts always visibly sum to the whole — an unknown
   /// count is shown rather than left as an unexplained gap.
-  String get label {
-    final boys = total == 1 ? '1 boy' : '$total boys';
-    if (total == 0) return 'No boys';
-    final base = '$boys — $folk FOLK / $hostel Hostel / $localite Localite';
+  String get label => labelFor(female: false);
+
+  /// Same, worded for the females lane ("girls") when [female] is true.
+  String labelFor({required bool female}) {
+    final one = female ? 'girl' : 'boy';
+    final many = female ? 'girls' : 'boys';
+    final who = total == 1 ? '1 $one' : '$total $many';
+    if (total == 0) return 'No $many';
+    final base = '$who — $folk FOLK / $hostel Hostel / $localite Localite';
     if (unknown == 0) return base;
     return '$base / $unknown no role';
   }

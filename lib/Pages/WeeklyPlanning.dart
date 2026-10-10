@@ -3,11 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../Services/UpdateFCM.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/CalendarQueries.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/GoalCompoundQueries.dart';
-import '../utils/GuideRoster.dart';
 import '../utils/PlanningQueries.dart';
 import 'GoalWeeklyPhasePage.dart';
 import 'OverdueAssociations.dart';
@@ -101,12 +100,12 @@ class _WeeklyPlanningPageState extends State<WeeklyPlanningPage> {
   }
 
   Future<void> _load() async {
-    final guide = await UpdateTokenService().getSavedGuide();
+    final profile = AdminProfileProvider.require();
 
     if (!mounted) return;
     setState(() {
-      _guide = guide;
-      _isHod = guide == kHodGuideId;
+      _guide = profile.id;
+      _isHod = profile.isHod;
       _loading = false;
     });
   }
@@ -211,7 +210,7 @@ class _WeeklyPlanningPageState extends State<WeeklyPlanningPage> {
 
   Widget _followUpSection(({DateTime start, DateTime end}) week) {
     return StreamBuilder<QuerySnapshot>(
-      stream: scopedInteractionLogsStream(_guide ?? ''),
+      stream: scopedInteractionLogsStream(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _sectionShell(
@@ -317,7 +316,7 @@ class _WeeklyPlanningPageState extends State<WeeklyPlanningPage> {
 
   Widget _overdueSection() {
     return StreamBuilder<QuerySnapshot>(
-      stream: scopedAssociationsStream(_guide ?? ''),
+      stream: scopedAssociationsStream(),
       builder: (context, snapshot) {
         final waiting = snapshot.connectionState == ConnectionState.waiting;
 

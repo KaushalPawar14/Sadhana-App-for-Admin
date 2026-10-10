@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../Services/HierarchyApi.dart';
+
 /// Manually-added ("offline roster") students — a guide can record a real
 /// student who chants but hasn't installed the app yet, so roadmap targets
 /// reflect reality rather than app adoption.
@@ -82,22 +84,21 @@ bool isValidNormalizedMobile(String normalized) =>
     RegExp(r'^\d{10}$').hasMatch(normalized);
 
 /// Part 3 item 5 — warn before saving if the number already exists on ANY
-/// user, manual or registered, and refuse to create a duplicate. A single
-/// equality filter, matching this project's established convention of never
-/// adding a composite-index query (see `GoalQueries.dart`'s own note on the
-/// same subject).
+/// user, manual or registered, and refuse to create a duplicate.
 ///
-/// Returns the conflicting document's data (so the caller can name who
-/// already holds the number), or `null` if the number is free.
+/// Hierarchy conversion — a client query over `users` by mobile number is a
+/// cross-student read the rules forbid, so the lookup is the server's
+/// `checkMobileTaken` callable (via [HierarchyApi]); it answers whether the
+/// number is taken and, if so, the holder's name.
+///
+/// Returns a map carrying at least `name` (so the caller can name who already
+/// holds the number), or `null` if the number is free. A failed call is
+/// rethrown, never read as "free".
 Future<Map<String, dynamic>?> findUserByMobileNumber(
   String normalizedMobile,
 ) async {
   if (normalizedMobile.isEmpty) return null;
-  final snap = await FirebaseFirestore.instance
-      .collection('users')
-      .where('mobileNumber', isEqualTo: normalizedMobile)
-      .limit(1)
-      .get();
-  if (snap.docs.isEmpty) return null;
-  return snap.docs.first.data();
+  final r = await HierarchyApi.instance.checkMobileTaken(normalizedMobile);
+  if (!r.taken) return null;
+  return {if (r.name.isNotEmpty) 'name': r.name};
 }

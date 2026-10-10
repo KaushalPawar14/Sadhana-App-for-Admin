@@ -158,6 +158,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart' show Color;
 
+import 'AdminProfile.dart';
+
 /// Own local copy — matches `GoalCompoundQueries.dart`'s own
 /// `kFunctionsRegion` constant, not shared, per this project's established
 /// per-file convention for small constants like this one.
@@ -309,8 +311,12 @@ class MandatoryEventPermissionError implements Exception {
   String toString() => message;
 }
 
+/// Hierarchy: the caller's `actingIsHod` flag is additionally confirmed
+/// against the signed-in admin's ROLE — only a HOD (any of several; no id is
+/// special) may touch mandatory events.
 void _assertCanMutate({required String scope, required bool actingIsHod}) {
-  if (scope == kScopeMandatory && !actingIsHod) {
+  if (scope == kScopeMandatory &&
+      !(actingIsHod && AdminProfileProvider.viewerIsHod)) {
     throw MandatoryEventPermissionError(
       'Only the HOD can create, edit or delete a mandatory calendar event.',
     );
@@ -713,10 +719,8 @@ Future<void> updateTextBlockWithEvents({
   final ownerGuideId = blockData['ownerGuideId'] as String?;
   _assertCanMutate(scope: scope, actingIsHod: actingIsHod);
 
-  final oldEventsSnap = await db
-      .collection('calendarEvents')
-      .where('sourceTextBlockId', isEqualTo: blockId)
-      .get();
+  final oldEventsSnap =
+      await _eventsOfBlock(db, blockId, scope, ownerGuideId);
 
   final batch = db.batch();
 
@@ -754,6 +758,26 @@ Future<void> updateTextBlockWithEvents({
   await batch.commit();
 }
 
+/// The events one text block produced. Hierarchy: the `scope` (and, for a
+/// personal block, `ownerGuideId`) equality filters are what let the security
+/// rules prove the read — mandatory events are readable by every admin,
+/// personal ones only by their owner.
+Future<QuerySnapshot<Map<String, dynamic>>> _eventsOfBlock(
+  FirebaseFirestore db,
+  String blockId,
+  String scope,
+  String? ownerGuideId,
+) {
+  var q = db
+      .collection('calendarEvents')
+      .where('sourceTextBlockId', isEqualTo: blockId)
+      .where('scope', isEqualTo: scope);
+  if (scope != kScopeMandatory) {
+    q = q.where('ownerGuideId', isEqualTo: ownerGuideId);
+  }
+  return q.get();
+}
+
 /// Part 5 item 3 — deletes a text block and EVERY event it produced, in one
 /// batch. Returns the count of events that were deleted, so the caller can
 /// show "this will delete N events" before committing — this function
@@ -772,12 +796,10 @@ Future<int> deleteTextBlockAndItsEvents({
   if (!blockSnap.exists) return 0;
 
   final scope = (blockSnap.data()?['scope'] ?? kScopePersonal).toString();
+  final ownerGuideId = blockSnap.data()?['ownerGuideId'] as String?;
   _assertCanMutate(scope: scope, actingIsHod: actingIsHod);
 
-  final eventsSnap = await db
-      .collection('calendarEvents')
-      .where('sourceTextBlockId', isEqualTo: blockId)
-      .get();
+  final eventsSnap = await _eventsOfBlock(db, blockId, scope, ownerGuideId);
 
   final batch = db.batch();
   for (final doc in eventsSnap.docs) {

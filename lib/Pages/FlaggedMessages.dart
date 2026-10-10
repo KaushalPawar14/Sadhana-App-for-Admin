@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../Services/UpdateFCM.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
-import '../utils/GuideRoster.dart';
 import '../utils/SeenMarkers.dart';
 import '../utils/SelectableDelete.dart';
+import '../utils/StudentScope.dart';
 
 /// Phase 7 — flagged student chat messages.
 ///
@@ -15,13 +15,14 @@ import '../utils/SelectableDelete.dart';
 /// function writes when it detects distress. It is deliberately flat rather
 /// than a query over `studentChats/{uid}/messages`: "every flagged message
 /// across my students" over the nested transcript needs a COLLECTION_GROUP
-/// index, while this is one equality filter on `guideId` — the same shape
-/// every other screen in this app uses.
+/// index, while this is one equality filter on the server-stamped scope
+/// fields (`StudentScope.historyStream`) — the same shape every other
+/// screen in this app uses.
 ///
 /// The transcript remains the source of truth; tapping an entry opens it.
 ///
-/// Scoping follows Section 2: SBSD sees every guide's flagged messages, any
-/// other guide sees only their own students'.
+/// Scoping follows the role hierarchy: a HOD sees every flagged message, any
+/// other admin only those of the students they may see.
 class FlaggedMessagesPage extends StatefulWidget {
   const FlaggedMessagesPage({super.key});
 
@@ -33,8 +34,14 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   String? _guide;
-  bool _isHod = false;
+  bool get _isHod => AdminProfileProvider.viewerIsHod;
   bool _loading = true;
+
+  /// HOD and Guide lists mix several admins' students, so the card names the owner.
+  bool get _showsGuideLabel {
+    final p = AdminProfileProvider.current;
+    return p != null && (p.isHod || p.isGuide);
+  }
 
   bool _selectionMode = false;
   final Set<String> _selectedIds = {};
@@ -46,11 +53,10 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
   }
 
   Future<void> _loadGuide() async {
-    final guide = await UpdateTokenService().getSavedGuide();
+    final guide = AdminProfileProvider.current?.id;
     if (!mounted) return;
     setState(() {
       _guide = guide;
-      _isHod = guide == kHodGuideId;
       _loading = false;
     });
     // Master Task 2026-09-10, Part 6 — opening this list is "seen" for
@@ -60,13 +66,10 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
     }
   }
 
-  /// One equality filter; sorted in Dart so no composite index is needed.
-  Stream<QuerySnapshot> _stream(String guide) {
-    final col = _firestore.collection('flaggedChatMessages');
-    return guide == kHodGuideId ?
-        col.snapshots() :
-        col.where('guideId', isEqualTo: guide).snapshots();
-  }
+  /// Scope-field equality filters only; sorted in Dart so no composite index
+  /// is needed.
+  Stream<QuerySnapshot> _stream(String guide) =>
+      StudentScope.current().historyStream('flaggedChatMessages');
 
   // ---------------------------------------------------------------------------
   // Multi-select + delete (Part 2). Shared mechanism — see
@@ -100,13 +103,22 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
     });
   }
 
-  /// Matches this screen's own read-access model exactly (Part 1 item 4):
-  /// the same `guideId` field `_stream` already filters on decides delete
-  /// permission too — HOD may delete anything, a regular guide only a
-  /// flagged message whose OWN `guideId` field equals their id.
+  /// Matches this screen's own read-access model: the server-stamped scope
+  /// fields `_stream` reads decide delete permission too — HOD may delete
+  /// anything, everyone else only a message about a student they may manage
+  /// (`StudentScope.canManage`). A record not yet stamped falls back to its
+  /// own `guideId` being the signed-in admin.
   Future<bool> _canDeleteFlagged(Map<String, dynamic> data) async {
     if (_isHod) return true;
-    return (data['guideId'] ?? '').toString() == (_guide ?? '');
+    if (!data.containsKey('scopeGuide')) {
+      return (data['guideId'] ?? '').toString() == (_guide ?? '');
+    }
+    return StudentScope.current().canManage(StudentRef(
+      uid: (data['studentUid'] ?? '').toString(),
+      guideId: (data['scopeGuide'] ?? '').toString(),
+      teamGuide: (data['scopeTeam'] ?? '').toString(),
+      gender: (data['scopeGender'] ?? '').toString(),
+    ));
   }
 
   Future<void> _deleteSelected() async {
@@ -345,7 +357,8 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
                 Text(
                   _isHod ?
                       "All students (HOD view)" :
-                      "Your students · ${_guide ?? ''}",
+                      "Your students · "
+                          "${AdminProfileProvider.current?.displayName ?? _guide ?? ''}",
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
               ],
@@ -382,7 +395,12 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
     final pastoralReason = (data['pastoralReason'] ?? '').toString();
     final studentName = (data['studentName'] ?? 'Unknown student').toString();
     final studentUid = (data['studentUid'] ?? '').toString();
-    final guideId = (data['guideId'] ?? '').toString();
+    // The current owner is the server-stamped `scopeGuide`; unstamped records
+    // fall back to the historic `guideId`.
+    final guideId = (data['scopeGuide'] ?? data['guideId'] ?? '').toString();
+    final guideName =
+        AdminProfileProvider.current?.adminById(guideId)?.displayName ??
+            guideId;
     final text = (data['text'] ?? '').toString();
     final when = data['createdAt'];
     final messageId = (data['messageId'] ?? '').toString();
@@ -532,12 +550,12 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
                   whenText,
                   style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                 ),
-                if (_isHod && guideId.isNotEmpty) ...[
+                if (_showsGuideLabel && guideId.isNotEmpty) ...[
                   const SizedBox(width: 12),
                   Icon(Icons.person_pin, size: 12, color: Colors.grey.shade600),
                   const SizedBox(width: 4),
                   Text(
-                    guideId,
+                    guideName,
                     style:
                         TextStyle(fontSize: 11, color: Colors.grey.shade600),
                   ),

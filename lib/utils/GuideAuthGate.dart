@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../Services/UpdateFCM.dart';
 import '../Services/UpdateToken.dart';
-import 'GuideRoster.dart';
+import 'AdminProfile.dart';
 
 /// Real authentication for the Guide app.
 ///
@@ -15,15 +15,14 @@ import 'GuideRoster.dart';
 /// Google Sign-In, and add admin management") — REBUILT: the picker is
 /// gone. A guide's identity is no longer self-selected at all; it is
 /// resolved by matching the signed-in email against `adminUsers.email`
-/// ([GuideRoster.resolveGuideIdentity]), and LOCKED for that session — there
+/// (the `getAdminProfile` callable), and LOCKED for that session — there
 /// is no code path anywhere in this app that lets a signed-in person become
 /// a DIFFERENT guide than the one their email resolves to (see
 /// `Guides/CLAUDE_PROGRESS.md` for the grep confirming this).
 ///
 /// `guideEmails/{email}` still exists, but its role changed: it is no
 /// longer a manually-curated allowlist — it's an auto-maintained MIRROR of
-/// `adminUsers.email`, written only by [GuideRoster.addGuide]/
-/// [GuideRoster.updateAdminEmail], read only by `firestore.rules`' own
+/// `adminUsers.email`, written only by the `addAdmin` / `updateAdmin` callables, read only by `firestore.rules`' own
 /// `isLikelyGuide()` (which cannot query `adminUsers` directly — see that
 /// file's header). Nothing in this class touches it.
 class GuideAuthGate {
@@ -43,11 +42,16 @@ class GuideAuthGate {
   /// admin — the caller must sign out and refuse entry in that case (see
   /// `Pages/GuideSignIn.dart`/`main.dart`'s `SplashScreen`).
   static Future<String?> resolveAndPersistIdentity(String? email) async {
-    final resolved = await resolveGuideIdentity(email);
-    if (resolved != null) {
-      await UpdateTokenService().saveSelectedGuide(resolved);
+    if (email == null || email.trim().isEmpty) return null;
+    // The server resolves who this is (from the sign-in itself) and returns the
+    // profile: role, display name, team, preferences. A non-admin gets null; a
+    // transient failure throws HierarchyException so the caller can keep the
+    // session and retry instead of signing a real admin out.
+    final profile = await AdminProfileProvider.instance.load();
+    if (profile != null) {
+      await UpdateTokenService().saveSelectedGuide(profile.id);
     }
-    return resolved;
+    return profile?.id;
   }
 
   /// Signs out of both Google and Firebase, and clears the resolved-
@@ -64,6 +68,7 @@ class GuideAuthGate {
     await clearAdminFcmTokenIfOurs();
     await GoogleSignIn().signOut();
     await FirebaseAuth.instance.signOut();
+    AdminProfileProvider.instance.clear();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('selected_guide');
   }

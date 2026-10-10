@@ -9,7 +9,7 @@
 /// logic byte-identical.** It was a private instance method on
 /// `_BookLinkManagerPageState`, so it could not be called from the new podcast
 /// screen at all. The alternative was a second copy, and two copies of "what
-/// counts as a downloadable link" is exactly the drift the `kHodGuideId`
+/// counts as a downloadable link" is exactly the drift the old HOD-id
 /// cleanup (Guide item 25) and the `associationOverdueSince()` extraction
 /// (Guide item 27) were done to eliminate. `BookLinkManager` now calls this and
 /// behaves exactly as before.

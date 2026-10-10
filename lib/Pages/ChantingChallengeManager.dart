@@ -3,12 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../Services/Notifications.dart';
-import '../Services/UpdateFCM.dart';
+import '../Services/HierarchyApi.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
-import '../utils/GuideRoster.dart';
-import '../utils/NotificationPrefs.dart';
 import '../utils/Snackbar.dart';
+import '../utils/StudentScope.dart';
 
 /// Chanting Challenges — a COLLECTIVE roster target.
 ///
@@ -51,9 +50,10 @@ class _ChantingChallengeManagerPageState
     extends State<ChantingChallengeManagerPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  String? _selectedGuide;
+  /// The signed-in admin's id (the creator id stamped on a challenge).
+  String get _selectedGuide => AdminProfileProvider.require().id;
 
-  bool get _isHod => _selectedGuide == kHodGuideId;
+  bool get _isHod => AdminProfileProvider.viewerIsHod;
 
   bool _sending = false;
 
@@ -62,17 +62,6 @@ class _ChantingChallengeManagerPageState
   /// non-HOD guide, who always creates for their own single roster exactly
   /// as before.
   final Set<String> _selectedGuideIds = <String>{};
-
-  @override
-  void initState() {
-    super.initState();
-    _loadGuide();
-  }
-
-  Future<void> _loadGuide() async {
-    final guide = await UpdateTokenService().getSavedGuide();
-    if (mounted) setState(() => _selectedGuide = guide);
-  }
 
   /// The same date-id format the sadhana collections use, so the Cloud
   /// Function matches on a plain string with no parsing or timezone ambiguity.
@@ -84,122 +73,44 @@ class _ChantingChallengeManagerPageState
 
   /// Notifies every student on this challenge's roster.
   ///
-  /// Reuses `SubmissionStatusPage`'s targeting exactly: scope `users` by
-  /// `guideId`, then read each student's own `notification/{name}.FCMToken`.
-  ///
-  /// ⚠️ Deliberately NOT `MissingReportService.fetchMissingTokens()` — that
-  /// helper iterates the whole `notification` collection with no guide filter,
-  /// so it would broadcast one guide's challenge to every student in FOLK.
+  /// The server builds the roster for the signed-in admin's role (a Guide's
+  /// team, an enabler's own students, or — for a HOD — the picked guides'
+  /// students / everyone) and applies each student's own notification
+  /// preference. The app no longer reads student tokens or preferences.
   ///
   /// [selectedGuideIds] is the HOD's picked-guides set (Part 2) — empty for
-  /// a non-HOD guide (irrelevant, always their own single roster below) and
-  /// for an HOD explicitly choosing "all students" (Part 2 item 4, the
-  /// existing default, kept as the explicit no-filter case).
+  /// everyone else, and for a HOD explicitly choosing "all students".
   Future<(int sent, int total)> _notifyRoster(
-    String guide,
     String name,
     int targetRounds,
     DateTime targetDate,
     Set<String> selectedGuideIds,
   ) async {
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> studentDocs;
+    final r = await HierarchyApi.instance.sendStudentNotification({
+      'kind': 'chanting_challenge',
+      'name': name,
+      'targetRounds': targetRounds,
+      'targetDate': DateFormat('yyyy-MM-dd').format(targetDate),
+      if (_isHod) 'ownerIds': selectedGuideIds.toList(),
+    });
 
-    if (!_isHod) {
-      // Unchanged from before this feature.
-      final snap = await _firestore
-          .collection('users')
-          .where('guideId', isEqualTo: guide)
-          .get();
-      studentDocs = snap.docs;
-    } else if (selectedGuideIds.isEmpty) {
-      // Unchanged from before this feature — the explicit "no filter" case.
-      final snap = await _firestore.collection('users').get();
-      studentDocs = snap.docs;
-    } else {
-      // Part 2 item 2: union of students across every selected guide — one
-      // query per guide (the same shape the existing single-guide query
-      // already uses), merged and de-duplicated by doc id rather than
-      // inventing a different query mechanism (Rule 1). A student cannot
-      // appear twice even if `guideId` were somehow ambiguous, since `users`
-      // documents are keyed by uid.
-      final byUid = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
-      for (final g in selectedGuideIds) {
-        final snap = await _firestore
-            .collection('users')
-            .where('guideId', isEqualTo: g)
-            .get();
-        for (final doc in snap.docs) {
-          byUid[doc.id] = doc;
-        }
-      }
-      studentDocs = byUid.values.toList();
-    }
+    final sent = (r['sent'] as num?)?.toInt() ?? 0;
+    final total = (r['total'] as num?)?.toInt() ?? 0;
+    final optedOut = (r['optedOut'] as num?)?.toInt() ?? 0;
 
-    final names = <String>[];
-    var optedOut = 0;
-    for (final doc in studentDocs) {
-      final studentName = (doc.data()['name'] ?? '').toString();
-      if (studentName.isEmpty) continue;
-
-      // Preference gate (added 2026-08-19). This loop already holds the user
-      // document, so the check costs **no extra read** — unlike the two
-      // name-keyed send paths, which need a lookup to bridge name -> uid.
-      // Absent preference means send.
-      if (!studentWantsFromData(
-          doc.data(), StudentNotificationPref.chantingChallenge)) {
-        optedOut++;
-        continue;
-      }
-
-      names.add(studentName);
-    }
-
-    var sent = 0;
-    for (final studentName in names) {
-      try {
-        final tokenDoc =
-            await _firestore.collection('notification').doc(studentName).get();
-        final token = tokenDoc.data()?['FCMToken'];
-        if (token is! String || token.isEmpty) continue;
-
-        // Tone matched to the existing sends. Worded as a shared goal, since
-        // that is what it is — no student is being asked to reach the target
-        // alone.
-        await FirebaseCM().sendTokenNotification(
-          token,
-          "Hare Krishna Prabhu !! 🙏",
-          "Together we chant: \"$name\" — "
-              "$targetRounds rounds as a group on "
-              "${DateFormat('dd MMM yyyy').format(targetDate)}. "
-              "Every round you chant counts towards it 📿",
-          // Deep-link payload (Master Task, 2026-09-10 — Part 3) — opens
-          // the student's own `ChantingCompetitionPage`, which resolves
-          // the live/active challenge for their own roster itself; no
-          // challengeId is needed for that reason (and this notification
-          // fires before the challenge doc's own id would even be useful
-          // client-side — the page's own listener finds it by guideId).
-          data: const {'dest': 'student_chanting'},
-        );
-        sent++;
-      } catch (_) {
-        // One unreachable student must not stop the rest of the roster.
-      }
-    }
-
-    // `names.length` is the notifiable roster, so a student who opted out is
-    // not counted as a failure in the "sent to X of Y" summary — they were
+    // `total` is the notifiable roster, so a student who opted out is not
+    // counted as a failure in the "sent to X of Y" summary — they were
     // never a target. `optedOut` is logged rather than surfaced: a guide does
     // not need to know which students muted a category.
     if (optedOut > 0) {
       debugPrint("Challenge notification: $optedOut student(s) opted out");
     }
 
-    return (sent, names.length);
+    return (sent, total);
   }
 
   Future<void> _openCreateSheet() async {
     final guide = _selectedGuide;
-    if (guide == null) return;
 
     // Fresh each time the sheet opens, so a selection from a previous
     // challenge never lingers into the next one.
@@ -295,15 +206,18 @@ class _ChantingChallengeManagerPageState
                           fontSize: 12, color: Colors.grey.shade700),
                     ),
                     const SizedBox(height: 6),
-                    StreamBuilder<List<String>>(
-                      stream: guideRosterStream(),
-                      builder: (context, guideSnap) {
-                        final guides = (guideSnap.data ?? const <String>[])
-                            // The HOD themself is not a selectable roster —
-                            // there is no `users.guideId == kHodGuideId`
-                            // student to scope to.
-                            .where((g) => g != kHodGuideId)
-                            .toList();
+                    Builder(
+                      builder: (context) {
+                        // Admins that can own male students (everyone but
+                        // Female Enablers), by display name.
+                        final guideAdmins = AdminProfileProvider.require()
+                            .admins
+                            .where((a) => a.role != AdminRole.femaleEnabler)
+                            .toList()
+                          ..sort((a, b) => a.displayName
+                              .toLowerCase()
+                              .compareTo(b.displayName.toLowerCase()));
+                        final guides = guideAdmins.map((a) => a.id).toList();
 
                         if (guides.isEmpty) {
                           return Text(
@@ -319,7 +233,10 @@ class _ChantingChallengeManagerPageState
                           children: guides.map((g) {
                             final selected = _selectedGuideIds.contains(g);
                             return FilterChip(
-                              label: Text(g),
+                              label: Text(AdminProfileProvider.require()
+                                      .adminById(g)
+                                      ?.displayName ??
+                                  g),
                               selected: selected,
                               onSelected: (v) => setDialogState(() {
                                 if (v) {
@@ -403,6 +320,7 @@ class _ChantingChallengeManagerPageState
 
     final targetRounds = int.parse(rounds.trim());
     final date = targetDate!;
+    final profile = AdminProfileProvider.require();
 
     setState(() => _sending = true);
 
@@ -418,8 +336,7 @@ class _ChantingChallengeManagerPageState
         'targetDateKey': _dateKey(date),
         // Kept alongside it for display, sorting and the deadline sweep.
         'targetDate': Timestamp.fromDate(date),
-        // Unchanged from before this feature: the creator's own id, still
-        // read by the original (now first-clause-of-OR) guideId match.
+        // The creator's own id (the screen lists a non-HOD's challenges by it).
         'guideId': guide,
         'createdBy': guide,
         'createdAt': FieldValue.serverTimestamp(),
@@ -432,22 +349,40 @@ class _ChantingChallengeManagerPageState
         // challenge; a guide's own challenge never carries either field, so
         // `checkChallengesFor`'s two new OR clauses simply never match it —
         // the guide-created path is otherwise untouched.
-        if (_isHod && selectedGuideIds.isNotEmpty)
-          'guideIds': selectedGuideIds.toList(),
+        // A report counts toward a challenge when the student's guideId is in
+        // `guideIds` (functions/challenges.js), so a Guide's Male Enablers
+        // must be listed next to him. A HOD keeps his picked guides / all.
+        'guideIds': profile.isHod
+            ? selectedGuideIds.toList()
+            : profile.isGuide
+                ? [guide, ...profile.myMaleEnablers.map((a) => a.id)]
+                : [guide],
         if (_isHod && selectedGuideIds.isEmpty) 'allStudents': true,
       });
 
-      final (sent, total) = await _notifyRoster(
-          guide, name.trim(), targetRounds, date, selectedGuideIds);
+      var sent = 0;
+      var total = 0;
+      var notifyFailed = false;
+      try {
+        final res = await _notifyRoster(
+            name.trim(), targetRounds, date, selectedGuideIds);
+        sent = res.$1;
+        total = res.$2;
+      } catch (_) {
+        // The challenge itself is saved; only the push failed.
+        notifyFailed = true;
+      }
 
       if (!mounted) return;
       setState(() => _sending = false);
       showSnackbar(
         context,
-        sent == total
-            ? "Challenge created · $sent students notified"
-            : "Challenge created · notified $sent of $total "
-                "(the rest have no notification token)",
+        notifyFailed
+            ? "Challenge created · could not notify students"
+            : sent == total
+                ? "Challenge created · $sent students notified"
+                : "Challenge created · notified $sent of $total "
+                    "(the rest have no notification token)",
         Colors.green,
         Icons.check_circle,
       );
@@ -491,7 +426,7 @@ class _ChantingChallengeManagerPageState
     final createdBy = (data['createdBy'] ?? '').toString();
     final guide = _selectedGuide;
 
-    if (!_isHod && (guide == null || createdBy != guide)) {
+    if (!_isHod && createdBy != guide) {
       showSnackbar(
         context,
         "Only the guide who created this challenge, or the HOD, can delete it.",
@@ -532,10 +467,10 @@ class _ChantingChallengeManagerPageState
       // Firestore's 500-write batch limit, so no chunking is needed
       // (unlike `StudentDeletion.dart`'s own helper, which has to handle
       // an unbounded query result across a student's entire history).
-      final contribSnap = await _firestore
-          .collection('chantingChallengeContributions')
-          .where('challengeId', isEqualTo: docId)
-          .get();
+      final contribSnap = await StudentScope.current().historyGet(
+        'chantingChallengeContributions',
+        extraEquals: {'challengeId': docId},
+      );
 
       final batch = _firestore.batch();
       for (final doc in contribSnap.docs) {
@@ -592,6 +527,14 @@ class _ChantingChallengeManagerPageState
       default:
         return (const Color(0xFF00695C), Icons.bolt, "Active");
     }
+  }
+
+  /// A guide's own challenge now also carries `guideIds` (his team), so the
+  /// "Guides: ..." label is only meaningful on a HOD-created challenge.
+  bool _createdByHod(String creatorId) {
+    final profile = AdminProfileProvider.require();
+    if (creatorId == profile.id) return profile.isHod;
+    return profile.adminById(creatorId)?.role == AdminRole.hod;
   }
 
   Widget _challengeCard(String docId, Map<String, dynamic> data) {
@@ -716,18 +659,20 @@ class _ChantingChallengeManagerPageState
                 Text("All students",
                     style:
                         TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-              ] else if (data['guideIds'] is List &&
+              ] else if (_createdByHod((data['createdBy'] ?? '').toString()) &&
+                  data['guideIds'] is List &&
                   (data['guideIds'] as List).isNotEmpty) ...[
                 const SizedBox(width: 12),
                 Text(
-                  "Guides: ${(data['guideIds'] as List).join(', ')}",
+                  "Guides: ${(data['guideIds'] as List).map((g) => AdminProfileProvider.require().adminById('$g')?.displayName ?? '$g').join(', ')}",
                   style:
                       TextStyle(fontSize: 11, color: Colors.grey.shade600),
                 ),
               ] else if (_isHod &&
                   (data['guideId'] ?? '').toString().isNotEmpty) ...[
                 const SizedBox(width: 12),
-                Text("Guide: ${data['guideId']}",
+                Text(
+                    "Guide: ${AdminProfileProvider.require().adminById('${data['guideId']}')?.displayName ?? data['guideId']}",
                     style:
                         TextStyle(fontSize: 11, color: Colors.grey.shade600)),
               ],
@@ -842,9 +787,7 @@ class _ChantingChallengeManagerPageState
               ),
             ),
           ),
-          floatingActionButton: guide == null
-              ? null
-              : FloatingActionButton.extended(
+          floatingActionButton: FloatingActionButton.extended(
                   backgroundColor: const Color(0xFF00695C),
                   onPressed: _sending ? null : _openCreateSheet,
                   icon: _sending
@@ -860,23 +803,14 @@ class _ChantingChallengeManagerPageState
                     style: const TextStyle(color: Colors.white),
                   ),
                 ),
-          body: guide == null
-              ? const Center(child: CircularProgressIndicator())
-              : StreamBuilder<QuerySnapshot>(
-                  // HOD unfiltered, same as before. A non-HOD guide now also
-                  // sees an HOD-created challenge that reaches their roster
-                  // via `guideIds` (Part 2) — not just their own `guideId`
-                  // match — verified against real data to need no composite
-                  // index (each OR disjunct is its own single-field filter).
+          body: StreamBuilder<QuerySnapshot>(
+                  // HOD reads every challenge; everyone else only the ones
+                  // they created (the rules can prove `guideId == me`).
                   stream: (_isHod
                           ? _firestore.collection('chantingChallenges')
-                          : _firestore.collection('chantingChallenges').where(
-                              Filter.or(
-                                Filter('guideId', isEqualTo: guide),
-                                Filter('guideIds', arrayContains: guide),
-                                Filter('allStudents', isEqualTo: true),
-                              ),
-                            ))
+                          : _firestore
+                              .collection('chantingChallenges')
+                              .where('guideId', isEqualTo: guide))
                       .snapshots(),
                   builder: (context, snapshot) {
                     if (snapshot.hasError) {
@@ -998,11 +932,11 @@ class ChallengeContributionsPage extends StatelessWidget {
             ),
           ),
           body: StreamBuilder<QuerySnapshot>(
-            // Single equality filter on challengeId — cheap at roster scale.
-            stream: FirebaseFirestore.instance
-                .collection('chantingChallengeContributions')
-                .where('challengeId', isEqualTo: challengeId)
-                .snapshots(),
+            // challengeId equality + the viewer's student scope (HOD: all).
+            stream: StudentScope.current().historyStream(
+              'chantingChallengeContributions',
+              extraEquals: {'challengeId': challengeId},
+            ),
             builder: (context, snapshot) {
               if (!snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());

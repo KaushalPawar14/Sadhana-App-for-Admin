@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../Services/UpdateFCM.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
-import '../utils/GuideRoster.dart';
 import '../utils/PlanningQueries.dart';
+import '../utils/StudentScope.dart';
 import 'AssociationManager.dart';
 
 /// Overdue associations dashboard (Phase 6, half 1, item 2).
@@ -21,8 +21,8 @@ import 'AssociationManager.dart';
 /// matched **in Dart**, exactly as `AssociationManager` does, so no composite
 /// index and no new collection are needed (Rule 12).
 ///
-/// Scoping follows Section 2: SBSD is the HOD and sees every guide's overdue
-/// items; any other guide sees only their own.
+/// Scoping follows the role hierarchy: a HOD sees every overdue item; any other
+/// admin sees those about the students they may see (`StudentScope`).
 class OverdueAssociationsPage extends StatefulWidget {
   const OverdueAssociationsPage({super.key});
 
@@ -32,25 +32,14 @@ class OverdueAssociationsPage extends StatefulWidget {
 }
 
 class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
-  String? _guide;
-  bool _isHod = false;
-  bool _loading = true;
+  final AdminProfile _profile = AdminProfileProvider.require();
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _associations =
+      StudentScope(_profile).historyStream('associations');
 
-  @override
-  void initState() {
-    super.initState();
-    _loadGuide();
-  }
+  bool get _isHod => _profile.isHod;
 
-  Future<void> _loadGuide() async {
-    final guide = await UpdateTokenService().getSavedGuide();
-    if (!mounted) return;
-    setState(() {
-      _guide = guide;
-      _isHod = guide == kHodGuideId;
-      _loading = false;
-    });
-  }
+  /// HOD and Guide lists mix several admins' records, so the card names the owner.
+  bool get _showsGuideLabel => _profile.isHod || _profile.isGuide;
 
   // The stream, the overdue predicate and the day count now live in
   // `utils/PlanningQueries.dart` so this screen and the weekly planning
@@ -74,10 +63,8 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
               ),
             ),
           ),
-          body: _loading
-              ? const Center(child: CircularProgressIndicator())
-              : StreamBuilder<QuerySnapshot>(
-                  stream: scopedAssociationsStream(_guide ?? ''),
+          body: StreamBuilder<QuerySnapshot>(
+                  stream: _associations,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
@@ -149,7 +136,7 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
                 Text(
                   _isHod
                       ? "All guides (HOD view)"
-                      : "Your students · ${_guide ?? ''}",
+                      : "Your students · ${_profile.displayName}",
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
               ],
@@ -180,7 +167,10 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
     final data = item.data;
     final status = (data['status'] ?? '').toString();
     final studentName = (data['studentName'] ?? 'Unknown student').toString();
-    final guideId = (data['guideId'] ?? '').toString();
+    // The current owner is the server-stamped `scopeGuide`; unstamped records
+    // fall back to the historic `guideId`.
+    final guideId = (data['scopeGuide'] ?? data['guideId'] ?? '').toString();
+    final guideName = _profile.adminById(guideId)?.displayName ?? guideId;
     final days = daysOverdue(item.since);
 
     final label = status == 'pending'
@@ -232,14 +222,14 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
           ),
 
           // Only useful when looking across guides.
-          if (_isHod && guideId.isNotEmpty) ...[
+          if (_showsGuideLabel && guideId.isNotEmpty) ...[
             const SizedBox(height: 4),
             Row(
               children: [
                 Icon(Icons.person_pin, size: 13, color: Colors.grey.shade600),
                 const SizedBox(width: 4),
                 Text(
-                  "Guide: $guideId",
+                  "Guide: $guideName",
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                 ),
               ],

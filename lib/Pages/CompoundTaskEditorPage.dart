@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/GoalCompoundQueries.dart';
 import '../utils/Snackbar.dart';
@@ -74,6 +75,11 @@ class _EditableValueTask {
 }
 
 class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
+  /// The caller's `isHod` flag, additionally confirmed against the signed-in
+  /// admin's ROLE (hierarchy: an Enabler or Guide only ever manages their own
+  /// targets; no id is special).
+  bool get _isHod => widget.isHod && AdminProfileProvider.viewerIsHod;
+
   bool _loading = true;
   String? _error;
   bool _saving = false;
@@ -321,14 +327,14 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
       return;
     }
 
-    if (widget.isHod && _noteController.text.trim().isEmpty) {
+    if (_isHod && _noteController.text.trim().isEmpty) {
       _showMessage("Add a short note explaining the change.");
       return;
     }
 
     setState(() => _saving = true);
     try {
-      if (widget.isHod) {
+      if (_isHod) {
         await proposeManualPhaseEdit(
           guideId: widget.guideId,
           targetId: widget.targetId,
@@ -422,7 +428,7 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
         const SizedBox(height: 16),
         _valueTasksSection(),
         const SizedBox(height: 20),
-        if (widget.isHod) ...[
+        if (_isHod) ...[
           TextField(
             controller: _noteController,
             maxLines: 2,
@@ -449,7 +455,7 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2))
-                : Text(widget.isHod ? "Send proposal" : "Save"),
+                : Text(_isHod ? "Send proposal" : "Save"),
           ),
         ),
       ],

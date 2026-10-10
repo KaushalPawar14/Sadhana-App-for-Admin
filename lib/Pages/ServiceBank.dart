@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../Services/UpdateFCM.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
-import '../utils/GuideRoster.dart';
 import '../utils/SeenMarkers.dart';
 import '../utils/ServiceAssignments.dart';
 import '../utils/ServiceBankContent.dart';
 import '../utils/Snackbar.dart';
+import '../utils/StudentScope.dart';
 
 /// Service Bank — replaces `Pages/DevotionalServiceManager.dart` entirely
 /// (Phase: Service Bank, Part 4). Reached from the same "D" tile on
@@ -25,53 +25,39 @@ class ServiceBankPage extends StatefulWidget {
 }
 
 class _ServiceBankPageState extends State<ServiceBankPage> {
-  String? _selectedGuide;
-
-  bool get _isHod => _selectedGuide == kHodGuideId;
+  // The signed-in admin (role-based hierarchy) — the profile is loaded before
+  // any screen is shown.
+  final String _selectedGuide = AdminProfileProvider.require().id;
 
   @override
   void initState() {
     super.initState();
-    _loadGuide();
-  }
-
-  Future<void> _loadGuide() async {
-    final guide = await UpdateTokenService().getSavedGuide();
-    if (mounted) setState(() => _selectedGuide = guide);
     // Master Task 2026-09-10, Part 6 — opening this screen is "seen" for
     // the serviceAssignments feature.
-    if (guide != null && guide.isNotEmpty) {
-      SeenMarkers.markSeen(guide, 'serviceAssignments');
+    if (_selectedGuide.isNotEmpty) {
+      SeenMarkers.markSeen(_selectedGuide, 'serviceAssignments');
     }
   }
 
   // ---------------------------------------------------------------------------
-  // Assign picker — Part 4 item 3: reuses the custom-board eligibility rule,
-  // not a second one (`guideCanManageStudent`, `utils/GuideRoster.dart`).
+  // Assign picker — Part 4 item 3: every student this admin may see (the
+  // role-based scope, `StudentScope`) is eligible.
   // ---------------------------------------------------------------------------
 
   Future<void> _openAssignPicker(ServiceBankEntry service) async {
     final guide = _selectedGuide;
-    if (guide == null || guide.isEmpty) {
+    if (guide.isEmpty) {
       showSnackbar(context, "Still loading your guide profile — try again in a moment",
           Colors.yellow, Icons.watch_later_outlined);
       return;
     }
 
-    final usersSnap = await FirebaseFirestore.instance.collection('users').get();
+    final usersSnap = await StudentScope.current().studentsGet();
     final eligible = <Map<String, String>>[];
     for (final doc in usersSnap.docs) {
       final data = doc.data();
       final name = (data['name'] ?? '').toString().trim();
       if (name.isEmpty) continue;
-      final studentGuideId = (data['guideId'] ?? '').toString().trim();
-      if (!guideCanManageStudent(
-        studentGuideId: studentGuideId,
-        viewerGuide: guide,
-        viewerIsHod: _isHod,
-      )) {
-        continue;
-      }
       eligible.add({'uid': doc.id, 'name': name});
     }
     eligible.sort((a, b) => a['name']!.compareTo(b['name']!));
@@ -333,7 +319,7 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
   // ---------------------------------------------------------------------------
 
   Widget _buildAssignedTab() {
-    return _AssignedTabBody(isHod: _isHod, viewerGuide: _selectedGuide ?? '');
+    return _AssignedTabBody(viewerGuide: _selectedGuide);
   }
 
   @override
@@ -376,10 +362,9 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
 /// by service, matching `Home/Calendar.dart`'s own chip-based `_Tab`/
 /// `_tabRow` pattern (Rule 1) rather than a second `TabBar`.
 class _AssignedTabBody extends StatefulWidget {
-  final bool isHod;
   final String viewerGuide;
 
-  const _AssignedTabBody({required this.isHod, required this.viewerGuide});
+  const _AssignedTabBody({required this.viewerGuide});
 
   @override
   State<_AssignedTabBody> createState() => _AssignedTabBodyState();
@@ -413,30 +398,21 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
         }
 
         return FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          // One users read to (a) scope to this guide's own roster (HOD sees
-          // all) and (b) resolve names — same eligibility rule as the
-          // assign picker (`guideCanManageStudent`), not a second one.
-          future: FirebaseFirestore.instance.collection('users').get(),
+          // One scoped users read to resolve names (the assignments stream
+          // is already scoped to this admin's visible students).
+          future: StudentScope.current().studentsGet(),
           builder: (context, usersSnap) {
             if (!usersSnap.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
 
             final names = <String, String>{};
-            final guideIds = <String, String>{};
             for (final doc in usersSnap.data!.docs) {
               final data = doc.data();
               names[doc.id] = (data['name'] ?? 'Unknown').toString();
-              guideIds[doc.id] = (data['guideId'] ?? '').toString().trim();
             }
 
-            final visible = assignSnap.data!.where((a) {
-              return guideCanManageStudent(
-                studentGuideId: guideIds[a.studentUid] ?? '',
-                viewerGuide: widget.viewerGuide,
-                viewerIsHod: widget.isHod,
-              );
-            }).toList();
+            final visible = assignSnap.data!;
 
             if (visible.isEmpty) {
               return Padding(

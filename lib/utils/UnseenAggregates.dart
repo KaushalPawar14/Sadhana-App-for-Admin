@@ -4,8 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'CalendarQueries.dart' show kScopeMandatory;
 import 'GoalCompoundQueries.dart' show kGuideTargetsCollection;
-import 'GuideRoster.dart';
 import 'SeenMarkers.dart';
+import 'StudentScope.dart';
 
 /// Shared, reusable "is this feature unseen for this guide" streams —
 /// Follow-up task, 2026-09-10, Part 2. Every one of these is used at
@@ -66,44 +66,38 @@ class UnseenAggregates {
     return controller.stream;
   }
 
+  // Hierarchy: every roster-wide stream below is scoped through
+  // [StudentScope] (HOD all; Guide his team + unassigned males; Enablers their
+  // own + unassigned of their gender). The `isHod` parameter is kept only so
+  // existing callers compile — the scope comes from the loaded admin profile.
+  static StudentScope get _scope => StudentScope.current();
+
   static Stream<bool> associationsUnseen(String guide, bool isHod) {
-    final col = FirebaseFirestore.instance.collection('associations');
     return SeenMarkers.unseenFrom(
-      _maxTimestamp(
-          (isHod ? col : col.where('guideId', isEqualTo: guide)).snapshots(),
-          'updatedAt'),
+      _maxTimestamp(_scope.historyStream('associations'), 'updatedAt'),
       SeenMarkers.seenAt(guide, 'associations'),
     );
   }
 
   static Stream<bool> expeditionReflectionsUnseen(String guide, bool isHod) {
-    final col =
-        FirebaseFirestore.instance.collection('expeditionRegistrations');
     return SeenMarkers.unseenFrom(
-      _maxTimestamp(
-          (isHod ? col : col.where('guideId', isEqualTo: guide)).snapshots(),
+      _maxTimestamp(_scope.historyStream('expeditionRegistrations'),
           'reflectionSubmittedAt'),
       SeenMarkers.seenAt(guide, 'expeditionReflections'),
     );
   }
 
   static Stream<bool> serviceAssignmentsUnseen(String guide, bool isHod) {
-    final col = FirebaseFirestore.instance.collection('serviceAssignments');
     return SeenMarkers.unseenFrom(
       _maxTimestamp(
-          (isHod ? col : col.where('assignedByGuideId', isEqualTo: guide))
-              .snapshots(),
-          'statusUpdatedAt'),
+          _scope.historyStream('serviceAssignments'), 'statusUpdatedAt'),
       SeenMarkers.seenAt(guide, 'serviceAssignments'),
     );
   }
 
   static Stream<bool> flaggedMessagesUnseen(String guide, bool isHod) {
-    final col = FirebaseFirestore.instance.collection('flaggedChatMessages');
     return SeenMarkers.unseenFrom(
-      _maxTimestamp(
-          (isHod ? col : col.where('guideId', isEqualTo: guide)).snapshots(),
-          'createdAt'),
+      _maxTimestamp(_scope.historyStream('flaggedChatMessages'), 'createdAt'),
       SeenMarkers.seenAt(guide, 'flaggedMessages'),
     );
   }
@@ -168,68 +162,37 @@ class UnseenAggregates {
     return controller.stream;
   }
 
-  /// Every student uid this guide's board shows a column for — mirrors
-  /// `Home/FolkBoysWorkspace.dart`'s own `_visibleColumns` rule EXACTLY
-  /// (HOD: everyone; any other guide: their own students PLUS Unassigned,
-  /// which is "visible to literally everyone" per that file's own header)
-  /// without calling into that file at all — a separate, read-only query
-  /// against `users`, never touching `_usersQuery`/`_visibleColumns`
-  /// themselves. One-time fetch, not a live stream: this app's own guide-
-  /// identity resolution is already a one-time read (`getSavedGuide()`),
-  /// and a roster changing (a student re-assigned) is a rare admin action,
-  /// not something this dot needs to reflect within the same session.
+  /// Every student uid this admin's board shows a column for — mirrors
+  /// `Home/FolkBoysWorkspace.dart`'s own `_visibleColumns` rule (HOD:
+  /// everyone; Guide: his team + unassigned males; Enablers: their own +
+  /// unassigned of their gender) without calling into that file at all — a
+  /// separate, read-only scoped query against `users`
+  /// ([StudentScope.studentsGet]), never touching `_usersQuery`/
+  /// `_visibleColumns` themselves. One-time fetch, not a live stream: this
+  /// app's own guide-identity resolution is already a one-time read, and a
+  /// roster changing (a student re-assigned) is a rare admin action, not
+  /// something this dot needs to reflect within the same session.
   static Future<List<String>> myRosterUids(String guide, bool isHod) async {
-    final snap = await FirebaseFirestore.instance.collection('users').get();
-    return snap.docs
-        .where((d) {
-          final studentGuideId = (d.data()['guideId'] ?? '').toString();
-          return isHod ||
-              studentGuideId.isEmpty ||
-              guideCanManageStudent(
-                studentGuideId: studentGuideId,
-                viewerGuide: guide,
-                viewerIsHod: isHod,
-              );
-        })
-        .map((d) => d.id)
-        .toList();
+    final snap = await _scope.studentsGet();
+    return snap.docs.map((d) => d.id).toList();
   }
 
   /// Roster-wide aggregate over `booksRead` — every student's own
   /// `commitmentSetAt` (only when `commitmentSetBy == 'guide'`, matching
   /// `_expandedDetail`'s own per-student check) compared against THAT
-  /// student's own cursor. `whereIn` handles up to 30 uids per query; a
-  /// roster larger than that is chunked (this app's real roster is under
-  /// 20 today, so this is headroom, not a currently-exercised path).
+  /// student's own cursor. Hierarchy: read through the scoped history query
+  /// (`scopeGuide`/`scopeTeam` stamps), which is provable by the rules and
+  /// replaces the old chunked `uid whereIn` over the roster.
   static Stream<bool> bookCommitmentsRosterUnseen(
-      String guide, bool isHod) async* {
-    final uids = await myRosterUids(guide, isHod);
-    if (uids.isEmpty) {
-      yield false;
-      return;
-    }
-
-    final chunks = <List<String>>[];
-    for (var i = 0; i < uids.length; i += 30) {
-      chunks.add(uids.sublist(i, i + 30 > uids.length ? uids.length : i + 30));
-    }
-
-    final perChunk = chunks.map((chunk) {
-      return FirebaseFirestore.instance
-          .collection('booksRead')
-          .where('uid', whereIn: chunk)
-          .snapshots();
-    }).toList();
-
+      String guide, bool isHod) {
     late StreamController<bool> controller;
-    final docsPerChunk = List<List<QueryDocumentSnapshot<Map<String, dynamic>>>?>.filled(
-        perChunk.length, null);
+    List<QueryDocumentSnapshot<Map<String, dynamic>>>? docs;
     Map<String, Timestamp>? cursors;
     final subs = <StreamSubscription>[];
 
     void emit() {
-      if (docsPerChunk.any((d) => d == null) || cursors == null) return;
-      final anyUnseen = docsPerChunk.expand((d) => d!).any((doc) {
+      if (docs == null || cursors == null) return;
+      final anyUnseen = docs!.any((doc) {
         if (doc.data()['commitmentSetBy'] != 'guide') return false;
         final ts = doc.data()['commitmentSetAt'];
         if (ts is! Timestamp) return false;
@@ -242,13 +205,10 @@ class UnseenAggregates {
 
     controller = StreamController<bool>.broadcast(
       onListen: () {
-        for (var i = 0; i < perChunk.length; i++) {
-          final idx = i;
-          subs.add(perChunk[idx].listen((snap) {
-            docsPerChunk[idx] = snap.docs;
-            emit();
-          }));
-        }
+        subs.add(_scope.historyStream('booksRead').listen((snap) {
+          docs = snap.docs;
+          emit();
+        }));
         subs.add(SeenMarkers.subCursors(guide, 'bookCommitments').listen((c) {
           cursors = c;
           emit();
@@ -261,7 +221,7 @@ class UnseenAggregates {
       },
     );
 
-    yield* controller.stream;
+    return controller.stream;
   }
 
   /// Roster-wide aggregate over `studentComments/{uid}/messages` — one

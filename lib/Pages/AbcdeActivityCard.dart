@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../utils/AbcdeActivity.dart';
 import '../utils/SadhanaReportSource.dart';
 import '../utils/ServiceAssignments.dart';
+import '../utils/StudentScope.dart';
 
 /// Phase 8 — the ABCDE activity card.
 ///
@@ -62,6 +63,27 @@ class AbcdeActivityCard extends StatefulWidget {
 
 class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  /// The student's current assignment, fetched once from their `users` doc
+  /// (the caller only hands us a uid + name). Lets every history read below
+  /// carry the scope filter the security rules can prove.
+  Future<StudentRef>? _refFuture;
+  Future<StudentRef> _studentRef() => _refFuture ??= _firestore
+      .collection('users')
+      .doc(widget.studentUid)
+      .get()
+      .then(StudentRef.fromDoc);
+
+  /// `collection where <uidField> == this student`, plus the scope constraint.
+  Future<Query<Map<String, dynamic>>> _scopedFor(
+      String collection, String uidField) async {
+    final ref = await _studentRef();
+    return StudentScope.current().constrainForStudent(
+        _firestore
+            .collection(collection)
+            .where(uidField, isEqualTo: widget.studentUid),
+        ref);
+  }
 
   bool _loading = true;
   bool _failed = false;
@@ -208,10 +230,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
   }
 
   Future<void> _loadAssociation() async {
-    final snapshot = await _firestore
-        .collection('associations')
-        .where('studentUid', isEqualTo: widget.studentUid)
-        .get();
+    final snapshot = await (await _scopedFor('associations', 'studentUid')).get();
 
     final now = DateTime.now();
     final ninetyDaysAgo = now.subtract(const Duration(days: 90));
@@ -258,10 +277,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
   }
 
   Future<void> _loadBooks() async {
-    final snapshot = await _firestore
-        .collection('booksRead')
-        .where('uid', isEqualTo: widget.studentUid)
-        .get();
+    final snapshot = await (await _scopedFor('booksRead', 'uid')).get();
 
     String title = '';
     String level = '';
@@ -308,10 +324,8 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
   /// separate, unrelated counter (see the Service Bank task's own Part 1);
   /// nothing about replacing the assignment system touches it.
   Future<void> _loadService() async {
-    final assignmentsSnap = await _firestore
-        .collection('serviceAssignments')
-        .where('studentUid', isEqualTo: widget.studentUid)
-        .get();
+    final assignmentsSnap =
+        await (await _scopedFor('serviceAssignments', 'studentUid')).get();
 
     var active = 0;
     var completed = 0;
@@ -341,10 +355,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
   }
 
   Future<void> _loadExpeditions() async {
-    final snapshot = await _firestore
-        .collection('expeditionRegistrations')
-        .where('studentUid', isEqualTo: widget.studentUid)
-        .get();
+    final snapshot = await (await _scopedFor('expeditionRegistrations', 'studentUid')).get();
 
     var reflected = 0;
     DateTime? mostRecent;

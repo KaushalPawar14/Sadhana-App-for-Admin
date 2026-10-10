@@ -3,9 +3,9 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
 
+import '../utils/AdminProfile.dart';
 import '../utils/CalendarQueries.dart';
 import '../utils/ColorProvider.dart';
-import '../utils/GuideRoster.dart';
 import '../utils/SeenMarkers.dart';
 import '../utils/Snackbar.dart';
 
@@ -35,7 +35,8 @@ class GuideCalendarPage extends StatefulWidget {
 }
 
 class _GuideCalendarPageState extends State<GuideCalendarPage> {
-  bool get _isHod => widget.selectedGuide == kHodGuideId;
+  // Role check (several HODs may exist; no id is special).
+  bool get _isHod => AdminProfileProvider.viewerIsHod;
 
   bool _loading = true;
   List<CalendarEvent> _events = [];

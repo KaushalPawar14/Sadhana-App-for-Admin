@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:folk_guide_app/utils/Snackbar.dart';
 import 'package:provider/provider.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/StudentNameGuard.dart';
 
@@ -22,6 +23,11 @@ class _AdminRegisterUserPageState extends State<AdminRegisterUserPage>
   bool isLoading = false;
   bool _isPasswordVisible = false;
   double _opacity = 0;
+
+  // Hierarchy: a Female Enabler can only add females, a Guide / Male Enabler
+  // only males; a HOD chooses (default male).
+  late String _gender = AdminProfileProvider.require().gender;
+  bool get _genderLocked => !AdminProfileProvider.viewerIsHod;
 
   @override
   void initState() {
@@ -50,6 +56,7 @@ class _AdminRegisterUserPageState extends State<AdminRegisterUserPage>
         return;
       }
 
+      final profile = AdminProfileProvider.require();
       UserCredential userCredential =
       await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: emailController.text.trim(),
@@ -67,6 +74,13 @@ class _AdminRegisterUserPageState extends State<AdminRegisterUserPage>
         'name': name,
         'email': emailController.text.trim(),
         'role': 'Stay at Hostel',
+        'gender': _gender,
+        // Owner = the creating admin; a HOD-created female stays unassigned
+        // (only a Female Enabler may own a female student). `teamGuide` is
+        // stamped by the server.
+        'guideId': (_gender == 'female' && !profile.isFemaleEnabler)
+            ? ''
+            : profile.id,
         'createdAt': Timestamp.now(),
         'createdBy': 'admin',
       });
@@ -190,7 +204,31 @@ class _AdminRegisterUserPageState extends State<AdminRegisterUserPage>
                         return null;
                       },
                     ),
-                    SizedBox(height: height * 0.04),
+                    SizedBox(height: height * 0.02),
+
+                    // Gender
+                    Row(
+                      children: [
+                        Text("Gender",
+                            style: TextStyle(color: colorProvider.secondColor)),
+                        for (final g in const ['male', 'female'])
+                          Expanded(
+                            child: RadioListTile<String>(
+                              value: g,
+                              groupValue: _gender,
+                              onChanged: _genderLocked
+                                  ? null
+                                  : (v) => setState(() => _gender = v!),
+                              title: Text(g == 'male' ? 'Male' : 'Female',
+                                  style: TextStyle(
+                                      color: colorProvider.secondColor)),
+                              contentPadding: EdgeInsets.zero,
+                              dense: true,
+                            ),
+                          ),
+                      ],
+                    ),
+                    SizedBox(height: height * 0.02),
 
                     // Button
                     AnimatedContainer(

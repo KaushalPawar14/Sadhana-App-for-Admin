@@ -1,9 +1,7 @@
 import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:http/http.dart' as http;
 
-import 'AccessToken.dart';
 import '../utils/NotificationRouter.dart';
 
 // Handle background notifications. Called by Firebase Messaging from native code, in
@@ -119,47 +117,4 @@ class FirebaseCM {
     }
   }
 
-  // Send token notification to the admin (from the user app)
-  //
-  // [data] — deep-link routing payload (Master Task, 2026-09-10 — Part 3),
-  // optional and additive: every existing call site that doesn't pass it
-  // keeps sending exactly the notification it always did. FCM's REST `send`
-  // API requires `data` values to be strings, same as the Cloud Functions
-  // SDK's own `getMessaging().send({data})` — enforced here by the
-  // parameter's own type rather than left to each caller to remember.
-  Future<void> sendTokenNotification(
-    String token,
-    String title,
-    String message, {
-    Map<String, String>? data,
-  }) async {
-    try {
-      final body = {
-        'message': {
-          'token': token,
-          'notification': {
-            'body': message,
-            'title': title,
-          },
-          if (data != null) 'data': data,
-        },
-      };
-
-      String url = 'https://fcm.googleapis.com/v1/projects/folk-sadhana-app/messages:send';
-      String accessKey = await AccessTokenFirebase().getAccessToken();
-
-      await http.post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessKey',
-        },
-        body: jsonEncode(body),
-      ).then((value) {
-        print('Status code ${value.statusCode}');
-      });
-    } catch (e) {
-      print('Error sending notification: $e');
-    }
-  }
 }

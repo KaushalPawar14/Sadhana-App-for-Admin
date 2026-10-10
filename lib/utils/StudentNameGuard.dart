@@ -30,7 +30,7 @@
 // expects real casing. Casing is folded ONLY inside isStudentNameTaken()'s
 // own comparison, never applied to what's written.
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 /// Trims leading/trailing whitespace and collapses internal runs of
 /// whitespace to a single space. This is the value written to
@@ -42,16 +42,15 @@ String normalizeStudentName(String raw) => raw.trim().replaceAll(RegExp(r'\s+'),
 /// check. "Ayush", "Ayush ", " ayush" and "Ayush  Kumar" vs "Ayush Kumar"
 /// are all detected as the relevant kind of match.
 ///
-/// Reads the whole `users` collection rather than a single `where`
-/// equality query — Firestore has no case-insensitive query operator, so
-/// an exact-match query on the stored (real-cased) name cannot catch a
-/// same-name-different-case collision. This project already does
-/// full-collection `users` reads elsewhere for admin operations (e.g.
-/// `Pages/BoysDetails.dart`'s guide-picker); the roster is small and
-/// account creation is a rare event, so this stays cheap without needing a
-/// second normalized-key field purely to make an indexed query possible
-/// (Rule 12 — a schema addition was considered and rejected here as
-/// unnecessary for the collection's real size).
+/// Hierarchy conversion — a non-HOD admin can no longer read the whole
+/// `users` collection, so the check now runs on the server: the callable
+/// `checkNameAvailable` (region asia-south1) compares the name
+/// case-insensitively and whitespace-normalized over every `users` document
+/// and answers `{available: bool}`. The manual-entry rule below is the
+/// server's to apply now.
+///
+/// A failed call is rethrown (never treated as "free"): the caller's existing
+/// error path then reports "could not verify" instead of risking a duplicate.
 ///
 /// Part 2 item 4 / Part 1 item 4 — a manual entry (`isManualEntry ==
 /// true`, `Pages/BoysDetails.dart`) is excluded: the real student behind
@@ -61,18 +60,18 @@ String normalizeStudentName(String raw) => raw.trim().replaceAll(RegExp(r'\s+'),
 /// normalization — it was never about how names compare, only about which
 /// documents count as "taken" at all.
 Future<bool> isStudentNameTaken(String candidateRaw) async {
-  final candidate = normalizeStudentName(candidateRaw).toLowerCase();
+  final candidate = normalizeStudentName(candidateRaw);
   if (candidate.isEmpty) return false;
 
-  final snap = await FirebaseFirestore.instance.collection('users').get();
-  for (final doc in snap.docs) {
-    final data = doc.data();
-    if (data['isManualEntry'] == true) continue;
-    final existing =
-        normalizeStudentName((data['name'] ?? '').toString()).toLowerCase();
-    if (existing == candidate) return true;
+  final result = await FirebaseFunctions.instanceFor(region: 'asia-south1')
+      .httpsCallable('checkNameAvailable')
+      .call<dynamic>({'name': candidate});
+  final data = result.data;
+  final available = data is Map ? data['available'] : null;
+  if (available is! bool) {
+    throw StateError('Could not verify the name.');
   }
-  return false;
+  return !available;
 }
 
 /// Part 2 item 3 — a message a real person understands, not a technical

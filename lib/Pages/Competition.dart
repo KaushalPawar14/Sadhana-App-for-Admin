@@ -6,7 +6,7 @@ import 'package:folk_guide_app/Pages/WeeklyPlanning.dart';
 import 'package:provider/provider.dart';
 import '../Services/UpdateFCM.dart';
 import '../utils/ColorProvider.dart';
-import '../utils/GuideRoster.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/Snackbar.dart';
 import '../utils/UnseenAggregates.dart';
 import '../utils/UnseenDot.dart';
@@ -62,7 +62,7 @@ class _CompetitionPageState extends State<CompetitionPage> with TickerProviderSt
 
     UpdateTokenService().getSavedGuide().then((guide) {
       if (!mounted || guide == null || guide.isEmpty) return;
-      final isHod = guide == kHodGuideId;
+      final isHod = AdminProfileProvider.viewerIsHod;
       setState(() {
         _guide = guide;
         _abcdeUnseen = UnseenAggregates.anyOf([

@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 import '../utils/ColorProvider.dart';
-import '../utils/GuideRoster.dart';
+import '../utils/StudentScope.dart';
 import '../utils/UnseenFeatureBadge.dart';
 import 'AssociationManager.dart';
 import 'BookLinkManager.dart';
@@ -95,14 +93,10 @@ class AbcdeHubPage extends StatelessWidget {
                 wrapBadge: (tile) => UnseenFeatureBadge(
                   featureKey: 'associations',
                   timestampField: 'updatedAt',
-                  latestQuery: (guide) {
-                    final col =
-                        FirebaseFirestore.instance.collection('associations');
-                    return (guide == kHodGuideId
-                            ? col
-                            : col.where('guideId', isEqualTo: guide))
-                        .snapshots();
-                  },
+                  // Scoped history stream (HOD all; others their visible
+                  // students) — the old `guideId` stamp is not used.
+                  latestQuery: (guide) =>
+                      StudentScope.current().historyStream('associations'),
                   child: tile,
                 ),
               ),
@@ -137,15 +131,8 @@ class AbcdeHubPage extends StatelessWidget {
                 wrapBadge: (tile) => UnseenFeatureBadge(
                   featureKey: 'serviceAssignments',
                   timestampField: 'statusUpdatedAt',
-                  latestQuery: (guide) {
-                    final col = FirebaseFirestore.instance
-                        .collection('serviceAssignments');
-                    return (guide == kHodGuideId
-                            ? col
-                            : col.where('assignedByGuideId',
-                                isEqualTo: guide))
-                        .snapshots();
-                  },
+                  latestQuery: (guide) => StudentScope.current()
+                      .historyStream('serviceAssignments'),
                   child: tile,
                 ),
               ),
@@ -161,14 +148,8 @@ class AbcdeHubPage extends StatelessWidget {
                 wrapBadge: (tile) => UnseenFeatureBadge(
                   featureKey: 'expeditionReflections',
                   timestampField: 'reflectionSubmittedAt',
-                  latestQuery: (guide) {
-                    final col = FirebaseFirestore.instance
-                        .collection('expeditionRegistrations');
-                    return (guide == kHodGuideId
-                            ? col
-                            : col.where('guideId', isEqualTo: guide))
-                        .snapshots();
-                  },
+                  latestQuery: (guide) => StudentScope.current()
+                      .historyStream('expeditionRegistrations'),
                   child: tile,
                 ),
               ),

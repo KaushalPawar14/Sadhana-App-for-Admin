@@ -7,7 +7,10 @@ import 'package:folk_guide_app/utils/ColorProvider.dart';
 import 'package:folk_guide_app/utils/data_range_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
-import 'Services/MissingReportNotification.dart';
+import 'utils/AdminProfile.dart';
+import 'utils/InstallSource.dart';
+import 'Pages/NonPlayInstallScreen.dart';
+import 'Services/HierarchyApi.dart';
 import 'Services/Notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:lottie/lottie.dart';
@@ -59,6 +62,8 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ColorProvider()),
+        ChangeNotifierProvider<AdminProfileProvider>.value(
+            value: AdminProfileProvider.instance),
         ChangeNotifierProvider(create: (_) => DateRangeProvider()),
       ],
       child: MyApp(savedGuide: savedGuide),
@@ -84,8 +89,6 @@ void main() async {
     // GuideSignInPage), never from the cached `selected_guide`.
     listenForAdminFcmTokenRefresh();
 
-    await NotificationManager().prepareMissingReports();
-    await _prepareNotifications();
   });
 }
 
@@ -223,8 +226,36 @@ class _SplashScreenState extends State<SplashScreen>
         return;
       }
 
-      final resolvedGuide =
-          await GuideAuthGate.resolveAndPersistIdentity(currentUser.email);
+      // Blocking screen for a copy installed outside the Play Store (release
+      // builds only; a positive "not from the Play Store" answer is required).
+      if (await installedOutsidePlayStore()) {
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const NonPlayInstallScreen()),
+        );
+        return;
+      }
+
+      String? resolvedGuide;
+      try {
+        resolvedGuide = await GuideAuthGate.resolveAndPersistIdentity(
+            currentUser.email);
+      } on HierarchyException {
+        // A transient problem (no network, server busy): keep the session and
+        // ask them to try again, rather than signing a real admin out.
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const GuideSignInPage(
+              initialError:
+                  'Could not reach the server. Check your connection and try again.',
+            ),
+          ),
+        );
+        return;
+      }
       if (!mounted) return;
 
       if (resolvedGuide == null) {
@@ -250,7 +281,7 @@ class _SplashScreenState extends State<SplashScreen>
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => CurvedNavBar(resolvedGuide)),
+        MaterialPageRoute(builder: (_) => CurvedNavBar(resolvedGuide!)),
       );
       // Splash-race fix (Master Task, 2026-09-10 — Part 2) — called
       // immediately AFTER `pushReplacement`, the exact moment nothing
@@ -349,19 +380,4 @@ Future<void> _requestNotificationPermissions() async {
   } else {
     print('User denied notification permissions.');
   }
-}
-
-Future<void> _prepareNotifications() async {
-
-  final manager = NotificationManager();
-
-  await manager.prepareMissingReports();
-
-  print("===== MISSING REPORT USERS =====");
-
-  for (var user in manager.missingUsernames) {
-    print(user);
-  }
-
-  print("Total Missing: ${manager.missingCount}");
 }

@@ -4,14 +4,15 @@ import 'package:provider/provider.dart';
 
 import '../Pages/StudentComments.dart';
 import '../Pages/StudentProfilePage.dart';
-import '../Services/Notifications.dart';
+import '../Services/HierarchyApi.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/BoardQueries.dart';
 import '../utils/BookProgressData.dart';
 import '../utils/ColorProvider.dart';
-import '../utils/GuideRoster.dart';
 import '../utils/SeenMarkers.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentDeletion.dart';
+import '../utils/StudentScope.dart';
 import '../utils/UnseenFeatureBadge.dart';
 import 'Calendar.dart';
 
@@ -44,25 +45,23 @@ import 'Calendar.dart';
 /// shape the original hand-rolled `BoardView.dart` always used.
 ///
 /// ---------------------------------------------------------------------------
-/// Visibility — deliberately widened this task, column-scoped not query-scoped
+/// Visibility — role-based admin hierarchy (Master 2, Part A.2)
 /// ---------------------------------------------------------------------------
-/// ⚠️ **Changed from the previous rule, on the product owner's explicit,
-/// informed decision — not a bug fix.** Previously a non-HOD guide's card
-/// query was scoped to `guideId == <their own id>`, which structurally could
-/// never include an unassigned student — Unassigned was, correctly per that
-/// rule, empty for them. The new rule:
-///  * HOD: every guide column + Unassigned (unchanged).
-///  * Any other guide: ONLY their own guide column + Unassigned — no other
-///    guide's column at all, not even read-only.
-///  * Unassigned is visible to literally everyone.
-///
-/// [_usersQuery] is now unconditionally unfiltered for every viewer — see its
-/// own doc comment for why a single equality filter cannot express "mine OR
-/// absent", and why fetching unfiltered (not a compound `Filter.or`, not two
-/// merged queries) was chosen, given this app's real, documented history of
-/// `FAILED_PRECONDITION` errors on compound queries. Privacy is enforced by
-/// [_visibleColumns] — which COLUMNS render — not by which documents are
-/// fetched.
+/// The board's students come from `StudentScope.current().studentsStream()`
+/// (HOD: unfiltered; everyone else: only the students the security rules let
+/// them read), and the COLUMNS follow the viewer's role, in two gender lanes
+/// (males, then females) so a female student is never shown in a male column
+/// and vice versa:
+///  * HOD: every admin's column (Guides, Male Enablers, other HODs in the
+///    males lane; Female Enablers in the females lane) + Unassigned (males)
+///    + Unassigned (females).
+///  * Guide: his own column + one column per Male Enabler on his team +
+///    Unassigned (males).
+///  * Male Enabler: his own column + Unassigned (males).
+///  * Female Enabler: her own column + Unassigned (females).
+/// Every reassignment goes through `HierarchyApi.assignStudent` (the server
+/// re-checks authority); [_handleDrop] blocks cross-gender and out-of-scope
+/// drops in the UI first, with a snackbar saying why.
 ///
 /// ---------------------------------------------------------------------------
 /// The mandatory board — reuses `utils/BoardQueries.dart` verbatim (Rule 1)
@@ -220,6 +219,13 @@ class _Boy {
   final String role;
   final String guideId;
 
+  /// The owning Guide of this student's team (`users.teamGuide`) and the
+  /// student's gender ('male' | 'female' | '' when unknown) — both as stored
+  /// on the `users` document; only read here, never written (assignment goes
+  /// through `HierarchyApi.assignStudent`).
+  final String teamGuide;
+  final String gender;
+
   /// Manually-added ("offline roster") student — no auth account yet,
   /// recorded by a guide. See `utils/ManualStudents.dart`'s own header.
   /// Part 5, this task: badged on the card face (`_cardBody`) so a guide
@@ -231,8 +237,65 @@ class _Boy {
     required this.name,
     required this.role,
     required this.guideId,
+    this.teamGuide = '',
+    this.gender = '',
     this.isManualEntry = false,
   });
+
+  /// Which lane the board shows him in: a student whose gender is not
+  /// explicitly 'female' is shown in the males lane.
+  bool get isFemale => gender == 'female';
+  String get lane => isFemale ? 'female' : 'male';
+
+  StudentRef get ref => StudentRef(
+      uid: uid, guideId: guideId, teamGuide: teamGuide, gender: gender);
+
+  /// Assembles a card from a `users` document; null for a nameless document.
+  static _Boy? fromUser(String uid, Map<String, dynamic> data) {
+    final name = (data['name'] ?? '').toString().trim();
+    if (name.isEmpty) return null;
+    final ref = StudentRef.fromUser(uid, data);
+    return _Boy(
+      uid: uid,
+      name: name,
+      role: (data['role'] ?? '').toString(),
+      guideId: ref.guideId,
+      teamGuide: ref.teamGuide,
+      gender: ref.gender,
+      isManualEntry: data['isManualEntry'] == true,
+    );
+  }
+}
+
+/// One rendered column of the Guide Assignment board: a stored (or, when the
+/// stored document does not exist yet, synthesised) [BoardColumn] shown in a
+/// gender [lane]. The Unassigned column is shown once per visible lane.
+class _LaneColumn {
+  final BoardColumn column;
+
+  /// 'male' | 'female' — the only students this column ever shows or accepts.
+  final String lane;
+
+  /// Display title (an admin's display name, or "Unassigned").
+  final String title;
+
+  /// The column's admin (null for Unassigned).
+  final AdminSummary? admin;
+
+  const _LaneColumn({
+    required this.column,
+    required this.lane,
+    required this.title,
+    required this.admin,
+  });
+
+  bool get isUnassigned => column.kind == kColumnKindUnassigned;
+
+  /// The `guideId` a student dropped here ends up with ('' = Unassigned).
+  String get targetGuideId => isUnassigned ? '' : column.guideId;
+
+  bool holds(_Boy b) =>
+      b.lane == lane && (isUnassigned ? b.guideId.isEmpty : b.guideId == column.guideId);
 }
 
 class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
@@ -336,22 +399,9 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
 
   String get _guide => widget.selectedGuide;
 
-  /// ⚠️ **Normalised comparison.** A live Firestore + code trace this session
-  /// found that [_usersQuery] was never actually the reason Unassigned
-  /// looked empty for the HOD (that query is now unconditional — see its own
-  /// doc comment); the trim/lower-case normalisation here is kept regardless
-  /// because it is a genuine, if narrower, hardening: `_guide` ultimately
-  /// comes from `SharedPreferences['selected_guide']`
-  /// (`Services/UpdateFCM.dart`), and a stale value saved with different
-  /// casing or incidental whitespace by an older build would otherwise fail
-  /// a bare `==` against the literal constant [kHodGuideId] silently and
-  /// permanently. What normalisation CANNOT fix is a device genuinely, and
-  /// correctly, signed in as a different guide (e.g. testing as `AMHD`) —
-  /// that is not a bug, it is [_isHod] doing exactly what it should. The
-  /// temporary diagnostic banner in [_board] exists to tell the two apart on
-  /// a real device.
-  bool get _isHod =>
-      _guide.trim().toLowerCase() == kHodGuideId.trim().toLowerCase();
+  /// Whether the signed-in admin is a HOD — read from the loaded admin
+  /// profile (several HODs may exist; no admin id is special).
+  bool get _isHod => AdminProfileProvider.viewerIsHod;
 
   @override
   void dispose() {
@@ -359,47 +409,95 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     super.dispose();
   }
 
-  /// ⚠️ **Deliberately unfiltered for every viewer, HOD or not — a visibility
-  /// rule change, not a bug fix.** The product owner explicitly widened
-  /// column visibility this task: a regular guide now sees their own column
-  /// **plus Unassigned** (previously they saw only their own students and
-  /// Unassigned was structurally unreachable for them). A single
-  /// `.where('guideId', isEqualTo: _guide)` equality filter cannot express
-  /// "mine OR absent" — Firestore has no "field does not exist" filter, and
-  /// the real data confirms `guideId` is absent (not `null`, not `""`) on
-  /// every unassigned student, so an `isEqualTo: null`/`isEqualTo: ''`
-  /// filter would not match them either.
-  ///
-  /// The real options were: (a) fetch unfiltered and bucket in Dart, (b) two
-  /// separate queries merged client-side, (c) a Firestore `Filter.or`
-  /// compound query. (a) is what this file now does, because: the roster is
-  /// 17 students total (Step 0's own real-data probe) — there is no scale
-  /// concern; a single unfiltered `.get()`/`.snapshots()` needs **no
-  /// composite index at all**, which matters in this codebase specifically —
-  /// `FOLK_HANDOFF.md` records a real `FAILED_PRECONDITION` from a prior
-  /// compound query, and every other query in this app deliberately stays to
-  /// one equality filter or none for exactly that reason; a `Filter.or`
-  /// here would very likely hit the same wall. **Privacy is now enforced by
-  /// which COLUMNS are rendered** (see [_visibleColumns]), not by which
-  /// documents are fetched — consistent with this app's existing trust
-  /// model (`utils/GuideRoster.dart`'s own header: "Firestore security rules
-  /// are still the only thing that could actually enforce" any of this;
-  /// there were none in source before this change and there are none after).
-  Query<Map<String, dynamic>> _usersQuery() =>
-      FirebaseFirestore.instance.collection('users');
+  /// The students this viewer may see: `StudentScope`'s merged, rules-provable
+  /// queries (HOD: the unfiltered collection; Guide: his team + unassigned
+  /// males; Male Enabler: own + unassigned males; Female Enabler: own +
+  /// unassigned females). Never the whole `users` collection for a non-HOD.
+  /// Sorted/bucketed in memory by the callers (no `orderBy`, no index).
+  Stream<QuerySnapshot<Map<String, dynamic>>> _studentsStream() =>
+      StudentScope.current().studentsStream();
 
-  /// The new visibility rule (this task, deliberate product decision):
-  ///  * HOD: every guide column + Unassigned.
-  ///  * Any other guide: ONLY their own guide column + Unassigned. No other
-  ///    guide's column, even read-only — it is not rendered at all.
-  ///  * Unassigned is visible to literally everyone.
-  List<BoardColumn> _visibleColumns(List<BoardColumn> all) {
-    if (_isHod) return all;
-    return all
-        .where((c) =>
-            c.kind == kColumnKindUnassigned ||
-            (c.isGuideColumn && c.guideId == _guide))
-        .toList();
+  /// Human name of an admin id (falls back to the id itself).
+  String _adminName(String id) =>
+      id.isEmpty ? "" : (AdminProfileProvider.require().adminById(id)?.displayName ?? id);
+
+  /// The admins whose columns this viewer sees on the board:
+  ///  * HOD: every admin the profile lists (incl. other HODs).
+  ///  * Guide: himself + his Male Enablers.
+  ///  * Male / Female Enabler: herself/himself only.
+  List<AdminSummary> _boardAdmins(AdminProfile p) {
+    if (p.isHod) return p.admins;
+    final me = p.adminById(p.id) ??
+        AdminSummary(
+          id: p.id,
+          displayName: p.displayName,
+          role: p.role,
+          teamGuide: p.teamGuide,
+        );
+    return [me, if (p.isGuide) ...p.myMaleEnablers];
+  }
+
+  /// The board's columns for this viewer, in two gender lanes (males, then
+  /// females) — see this file's header. One column per visible admin (taken
+  /// from the stored `guide` columns; synthesised in memory when an admin's
+  /// column document has not been created yet, so a new admin shows up at
+  /// once) plus the Unassigned column of every lane the viewer may see (HOD:
+  /// both; anyone else: only his/her own gender's lane). The viewer's own
+  /// column comes first in its lane, the rest in stored order.
+  List<_LaneColumn> _visibleColumns(List<BoardColumn> all) {
+    final p = AdminProfileProvider.require();
+    final byGuide = <String, BoardColumn>{};
+    BoardColumn? unassigned;
+    for (final c in all) {
+      if (c.kind == kColumnKindUnassigned) {
+        unassigned ??= c;
+      } else if (c.isGuideColumn) {
+        byGuide.putIfAbsent(c.guideId, () => c);
+      }
+    }
+
+    final admins = _boardAdmins(p);
+    final out = <_LaneColumn>[];
+    for (final lane in const ['male', 'female']) {
+      final inLane = admins.where((a) => a.role.gender == lane).toList()
+        ..sort((a, b) {
+          if (a.id == p.id) return b.id == p.id ? 0 : -1;
+          if (b.id == p.id) return 1;
+          final o = (byGuide[a.id]?.order ?? 1 << 20)
+              .compareTo(byGuide[b.id]?.order ?? 1 << 20);
+          return o != 0
+              ? o
+              : a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
+        });
+      for (var i = 0; i < inLane.length; i++) {
+        final a = inLane[i];
+        out.add(_LaneColumn(
+          column: byGuide[a.id] ??
+              BoardColumn(
+                id: '',
+                title: a.id,
+                order: 1 << 20,
+                colorValue: kColumnPalette[i % kColumnPalette.length],
+                kind: kColumnKindGuide,
+                guideId: a.id,
+              ),
+          lane: lane,
+          title: a.displayName,
+          admin: a,
+        ));
+      }
+      if (unassigned != null && (p.isHod || p.gender == lane)) {
+        out.add(_LaneColumn(
+          column: unassigned,
+          lane: lane,
+          title: p.isHod
+              ? "$kUnassignedTitle (${lane == 'male' ? 'males' : 'females'})"
+              : kUnassignedTitle,
+          admin: null,
+        ));
+      }
+    }
+    return out;
   }
 
   Future<void> _ensureBoard(List<BoardDoc> all, String guide) async {
@@ -480,78 +578,144 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   // guide-assignment branch.
   // ---------------------------------------------------------------------------
 
-  /// ⚠️ **Permission model — changed this task, on the product owner's
-  /// explicit decision.** Previously HOD-only, full stop. Now:
-  ///  * HOD: may move any student between any two columns — unchanged.
-  ///  * Any other guide: may CLAIM (move a student from Unassigned into
-  ///    their own column) or RELEASE (move their own student back to
-  ///    Unassigned). Any other move — including into or out of a DIFFERENT
-  ///    guide's column — is rejected.
+  /// ⚠️ **Permission model — role-based (Master 2, Part A.2).**
+  ///  * Gender always applies: a female student can only be dropped on a
+  ///    Female Enabler's column or the females' Unassigned, a male student
+  ///    never on a Female Enabler's column.
+  ///  * HOD: may move anyone anywhere (subject to the gender rule).
+  ///  * Guide: may move students within his team (himself + his Male
+  ///    Enablers), claim an unassigned male for HIMSELF, and release his OWN
+  ///    students to Unassigned (not his Male Enablers' students).
+  ///  * Male Enabler: may claim an unassigned male for himself and release
+  ///    his own students.
+  ///  * Female Enabler: may claim an unassigned female for herself and
+  ///    release her own students.
   ///
-  /// ⚠️ **This check is enforced here regardless of what the UI already
-  /// prevents, and that enforcement is real, not decorative.**
-  /// [_visibleColumns] means a non-HOD guide never even sees a `DragTarget`
-  /// for another guide's column, so in the ACTUAL running UI this method can
-  /// only ever be reached with a claim, a release, or an HOD move — but that
-  /// is a client-side UI restriction, exactly like every other permission in
-  /// this app (`utils/GuideRoster.dart`'s own header: there is no real
-  /// authentication and no Firestore security rule backing any of this).
-  /// Nothing stops a modified client from calling this method directly with
-  /// an arbitrary target, so the rule is re-checked here as the actual
-  /// authority, not assumed from what the widget tree happens to offer.
+  /// ⚠️ **Re-checked here regardless of what the UI offers** (`_columnTile`
+  /// accepts every hover so a refusal can be EXPLAINED instead of the card
+  /// silently bouncing back). A blocked move never reaches the server — a
+  /// snackbar says why. The server (`assignStudent`) enforces the same rules
+  /// again; if it still refuses, its own message is shown.
   Future<void> _handleDrop({
     required String boardId,
     required _Boy boy,
-    required BoardColumn target,
+    required _LaneColumn target,
     required int orderInTarget,
   }) async {
+    final p = AdminProfileProvider.require();
     final oldGuide = boy.guideId.trim();
-    final newGuide =
-        target.kind == kColumnKindUnassigned ? null : target.guideId;
-    final normalisedOld = oldGuide.isEmpty ? null : oldGuide;
+    final newGuide = target.targetGuideId;
 
-    if (normalisedOld == newGuide) return;
+    // Gender first — also for an unassigned -> unassigned drop in the other
+    // lane, which would otherwise look like a harmless no-op.
+    if (boy.lane != target.lane) {
+      _blockedMove(boy.isFemale
+          ? "${boy.name} is a female student — she can only be placed with a "
+              "Female Enabler or in Unassigned (females)."
+          : "${boy.name} is a male student — he cannot be placed with a "
+              "Female Enabler.");
+      return;
+    }
+
+    if (oldGuide == newGuide) return;
+
+    final reason = _moveBlockedReason(p, boy, oldGuide, newGuide);
+    if (reason != null) {
+      _blockedMove(reason);
+      return;
+    }
 
     final _MoveKind moveKind;
-    if (_isHod) {
+    if (p.isHod) {
       moveKind = _MoveKind.hodReassign;
+    } else if (oldGuide.isEmpty && newGuide == p.id) {
+      moveKind = _MoveKind.claim;
+    } else if (oldGuide == p.id && newGuide.isEmpty) {
+      moveKind = _MoveKind.release;
     } else {
-      final isClaim = normalisedOld == null && newGuide == _guide;
-      final isRelease = normalisedOld == _guide && newGuide == null;
-      if (!isClaim && !isRelease) return;
-      moveKind = isClaim ? _MoveKind.claim : _MoveKind.release;
+      moveKind = _MoveKind.hodReassign; // a Guide moving within his team
     }
 
     final confirmed = await _confirmReassignment(
       boy: boy,
-      fromGuide: normalisedOld,
-      toGuide: newGuide,
+      fromGuide: oldGuide.isEmpty ? null : _adminName(oldGuide),
+      toGuide: newGuide.isEmpty ? null : _adminName(newGuide),
       moveKind: moveKind,
     );
     if (confirmed != true) return;
 
     try {
-      await reassignGuide(
-        boardId: boardId,
-        studentUid: boy.uid,
-        newGuideId: newGuide,
-        columnId: target.id,
-        order: orderInTarget,
-        movedBy: _guide,
+      await HierarchyApi.instance.assignStudent(
+        studentId: boy.uid,
+        toGuideId: newGuide,
+        // A column that does not exist as a document yet (just-added admin)
+        // is not sent — the assignment itself still goes through.
+        boardId: target.column.id.isEmpty ? null : boardId,
+        columnId: target.column.id.isEmpty ? null : target.column.id,
+        order: target.column.id.isEmpty ? null : orderInTarget,
       );
       if (!mounted) return;
       showSnackbar(
         context,
-        newGuide == null
+        newGuide.isEmpty
             ? "${boy.name} is now unassigned"
-            : "${boy.name} reassigned to $newGuide",
+            : "${boy.name} reassigned to ${_adminName(newGuide)}",
         Colors.green,
         Icons.check_circle,
       );
+    } on HierarchyException catch (e) {
+      if (!mounted) return;
+      showSnackbar(context, e.message, Colors.red, Icons.error);
     } catch (_) {
       if (!mounted) return;
       showSnackbar(context, "Could not reassign", Colors.red, Icons.error);
     }
+  }
+
+  void _blockedMove(String message) {
+    if (!mounted) return;
+    showSnackbar(context, message, Colors.orange.shade800, Icons.block);
+  }
+
+  /// Why [p] may not move [boy] from [oldGuide] to [newGuide] ('' =
+  /// Unassigned), or null when the move is allowed. The gender rule has
+  /// already been applied by the caller. Mirrors the server's rule.
+  String? _moveBlockedReason(
+      AdminProfile p, _Boy boy, String oldGuide, String newGuide) {
+    if (p.isHod) return null;
+    if (!StudentScope(p).canManage(boy.ref)) {
+      return "${boy.name} is not one of your students.";
+    }
+
+    final claimOnlyYourself = oldGuide.isEmpty && newGuide != p.id
+        ? "You can only claim an unassigned student for yourself."
+        : null;
+
+    if (p.isGuide) {
+      final team = <String>{p.id, ...p.myMaleEnablers.map((a) => a.id)};
+      if (oldGuide.isEmpty) return claimOnlyYourself;
+      if (!team.contains(oldGuide)) {
+        return "${boy.name} is not on your team.";
+      }
+      if (newGuide.isEmpty) {
+        return oldGuide == p.id
+            ? null
+            : "${boy.name} is ${_adminName(oldGuide)}'s student — only "
+                "${_adminName(oldGuide)} or the HOD can release him.";
+      }
+      return team.contains(newGuide)
+          ? null
+          : "You can only move students within your team.";
+    }
+
+    // Male / Female Enabler.
+    if (oldGuide.isEmpty) return claimOnlyYourself;
+    if (oldGuide == p.id) {
+      return newGuide.isEmpty
+          ? null
+          : "You can only release your own students to Unassigned.";
+    }
+    return "${boy.name} is not your student.";
   }
 
   /// The reassignment guard — body wording (name, from/to rows, the amber
@@ -749,7 +913,11 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   /// permission and every other rule in this app (no Firestore security
   /// rules exist in source) — stated plainly, not implied.
   Future<void> _handleDeleteDrop(_Boy boy) async {
-    if (!_isHod && boy.guideId != _guide) {
+    // HOD: anyone. Anyone else: only an assigned student they may manage
+    // (their own, or — for a Guide — one of his Male Enablers').
+    if (!_isHod &&
+        (boy.guideId.isEmpty ||
+            !StudentScope.current().canManage(boy.ref))) {
       if (!mounted) return;
       showSnackbar(
         context,
@@ -1469,8 +1637,8 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                         final subtitle = owned
                             ? (b.sharedWith.isEmpty
                                 ? "Yours"
-                                : "Yours · shared with ${b.sharedWith.join(', ')}")
-                            : "Shared by ${b.ownerGuideId}";
+                                : "Yours · shared with ${b.sharedWith.map(_adminName).join(', ')}")
+                            : "Shared by ${_adminName(b.ownerGuideId)}";
                         return Card(
                           margin: const EdgeInsets.only(bottom: 8),
                           color: selected ? Colors.teal.shade50 : null,
@@ -1513,20 +1681,21 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   // `Pages/StudentProfilePage.dart` copied `DobCard`/`infoCard`).
   // ---------------------------------------------------------------------------
 
-  /// Per-person sharing (Phase 4, Part 4). Lists real guides from
-  /// `guideRosterStream()` (reused unchanged) as checkboxes, preselected with
+  /// Per-person sharing (Phase 4, Part 4). Lists the admins in the signed-in
+  /// admin's profile (`AdminProfile.admins` — `adminUsers` is server-side
+  /// only now) as checkboxes, preselected with
   /// the board's current `sharedWith`. A single overwrite on Save via
   /// `setBoardSharedWith` — owner-only, matching [isBoardOwner]; this method
   /// is only ever reachable from the AppBar's share icon, which is itself
   /// only shown when `isBoardOwner` is true (see `build()`).
   Future<void> _shareCustomBoard(BoardDoc board, String guide) async {
-    final roster = await guideRosterStream().first.catchError((_) => <String>[]);
-    if (!mounted) return;
-
     final selected = Set<String>.from(board.sharedWith);
     // A board can never be shared with its own owner — that guide already
     // has full access by ownership, and including them would be meaningless.
-    final choices = roster.where((g) => g != guide).toList();
+    final choices = AdminProfileProvider.require()
+        .admins
+        .where((a) => a.id != guide)
+        .toList();
 
     final saved = await showDialog<bool>(
       context: context,
@@ -1553,15 +1722,16 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                           style: TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                       ),
-                      ...choices.map((g) => CheckboxListTile(
-                            value: selected.contains(g),
-                            title: Text(g),
+                      ...choices.map((a) => CheckboxListTile(
+                            value: selected.contains(a.id),
+                            title: Text(a.displayName),
+                            subtitle: Text(a.role.label),
                             controlAffinity: ListTileControlAffinity.leading,
                             onChanged: (v) => setDialogState(() {
                               if (v == true) {
-                                selected.add(g);
+                                selected.add(a.id);
                               } else {
-                                selected.remove(g);
+                                selected.remove(a.id);
                               }
                             }),
                           )),
@@ -1929,8 +2099,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             return StatefulBuilder(
               builder: (context, setSheetState) {
                 return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream:
-                      FirebaseFirestore.instance.collection('users').snapshots(),
+                  stream: _studentsStream(),
                   builder: (context, userSnap) {
                     if (!userSnap.hasData) {
                       return const Center(child: CircularProgressIndicator());
@@ -1945,24 +2114,9 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                         final candidates = <_Boy>[];
                         for (final doc in userSnap.data!.docs) {
                           if (placedUids.contains(doc.id)) continue;
-                          final data = doc.data();
-                          final name = (data['name'] ?? '').toString().trim();
-                          if (name.isEmpty) continue;
-                          final boy = _Boy(
-                            uid: doc.id,
-                            name: name,
-                            role: (data['role'] ?? '').toString(),
-                            guideId:
-                                (data['guideId'] ?? '').toString().trim(),
-                            isManualEntry: data['isManualEntry'] == true,
-                          );
-                          if (!_customBoardEligible(
-                            studentGuideId: boy.guideId,
-                            viewerGuide: guide,
-                            viewerIsHod: _isHod,
-                          )) {
-                            continue;
-                          }
+                          final boy = _Boy.fromUser(doc.id, doc.data());
+                          if (boy == null) continue;
+                          if (!_customBoardEligible(boy)) continue;
                           candidates.add(boy);
                         }
                         candidates.sort((a, b) => a.name.compareTo(b.name));
@@ -2151,15 +2305,12 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             final columns = colSnap.data!;
 
             return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              // ⚠️ THE Unassigned bucketing bug lived here — see
-              // `_usersQuery()`/`_isHod`'s own doc comments. When `_isHod`
-              // resolves correctly, this returns the FULL, unfiltered
-              // `users` collection for the HOD, which is required for
-              // `byUnassigned` below to ever contain anything at all — a
-              // guide-scoped query can never include a student who isn't
-              // assigned to anyone, by construction, regardless of how the
-              // Unassigned COLUMN's own visibility is handled.
-              stream: _usersQuery().snapshots(),
+              // The students THIS viewer may see — `StudentScope`'s scoped
+              // stream (HOD: the unfiltered collection, which is what lets
+              // the Unassigned lanes contain anything for him; everyone else:
+              // only what the security rules let them read). See
+              // [_studentsStream].
+              stream: _studentsStream(),
               builder: (context, userSnap) {
                 if (!userSnap.hasData) {
                   return const Center(child: CircularProgressIndicator());
@@ -2167,96 +2318,61 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
 
                 final boys = <_Boy>[];
                 for (final doc in userSnap.data!.docs) {
-                  final data = doc.data();
-                  final name = (data['name'] ?? '').toString().trim();
-                  if (name.isEmpty) continue;
-                  boys.add(_Boy(
-                    uid: doc.id,
-                    name: name,
-                    role: (data['role'] ?? '').toString(),
-                    guideId: (data['guideId'] ?? '').toString().trim(),
-                    isManualEntry: data['isManualEntry'] == true,
-                  ));
+                  final boy = _Boy.fromUser(doc.id, doc.data());
+                  if (boy != null) boys.add(boy);
+                }
+                boys.sort((a, b) =>
+                    a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+                // Keeps "a column exists because an admin exists" true by
+                // construction (the board renders a column for every
+                // visible admin even before its document exists — see
+                // [_visibleColumns]). Never deletes — same rule the old
+                // board shipped with. The roster is the admin list of the
+                // loaded profile; `adminUsers` is no longer read directly.
+                if (!_reconciling) {
+                  _reconciling = true;
+                  reconcileGuideColumns(
+                    boardId: boardId,
+                    roster: [
+                      for (final a in _boardAdmins(AdminProfileProvider.require()))
+                        a.id
+                    ],
+                    existing: columns,
+                  ).catchError((_) {}).whenComplete(() => _reconciling = false);
                 }
 
-                return StreamBuilder<List<String>>(
-                  // `guideRosterStream()` itself is now adminUsers-only —
-                  // `GuideRoster.dart`'s hardcoded seed fallback was removed
-                  // entirely, so this board never needed its own private
-                  // copy of that read (Rule 1 — one definition, not two
-                  // that could drift).
-                  stream: guideRosterStream(),
-                  builder: (context, rosterSnap) {
-                    if (!rosterSnap.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final roster = rosterSnap.data!;
+                // Role-based columns in gender lanes — see [_visibleColumns].
+                final visibleColumns = _visibleColumns(columns);
 
-                    // Keeps "a column exists because a guide exists" true by
-                    // construction. Never deletes — same rule the old board
-                    // shipped with.
-                    if (!_reconciling) {
-                      _reconciling = true;
-                      reconcileGuideColumns(
+                return Column(
+                  children: [
+                    // Replaces the removed diagnostic banner's position —
+                    // see [_residenceLegend]'s own doc comment.
+                    _residenceLegend(colorProvider),
+                    // Drag-to-delete target — see [_trashTarget]'s own
+                    // doc comment. Only rendered while a card is actually
+                    // being dragged.
+                    _trashTarget(allBoys: boys),
+                    Expanded(
+                      child: _canvas(
+                        colorProvider: colorProvider,
                         boardId: boardId,
-                        roster: roster,
-                        existing: columns,
-                      ).whenComplete(() => _reconciling = false);
-                    }
-
-                    // Every student with no guideId at all (missing field OR
-                    // empty/whitespace-only string, both normalised to ''
-                    // above) lands here — ALWAYS shown, to everyone,
-                    // unconditionally (Part 1 of the prior task, kept).
-                    final byUnassigned =
-                        boys.where((b) => b.guideId.isEmpty).toList();
-
-                    // New visibility rule this task — see [_visibleColumns].
-                    final visibleColumns = _visibleColumns(columns);
-
-                    return Column(
-                      children: [
-                        // Replaces the removed diagnostic banner's position —
-                        // see [_residenceLegend]'s own doc comment.
-                        _residenceLegend(colorProvider),
-                        // Drag-to-delete target — see [_trashTarget]'s own
-                        // doc comment. Only rendered while a card is actually
-                        // being dragged.
-                        _trashTarget(allBoys: boys),
-                        Expanded(
-                          child: _canvas(
-                            colorProvider: colorProvider,
-                            boardId: boardId,
-                            columns: visibleColumns,
-                            allBoys: boys,
-                            columnBoys: (column) {
-                              if (column.kind == kColumnKindUnassigned) {
-                                return byUnassigned;
-                              }
-                              if (column.isGuideColumn) {
-                                return boys
-                                    .where((b) => b.guideId == column.guideId)
-                                    .toList();
-                              }
-                              return const <_Boy>[];
-                            },
-                            headerExtra: (column) {
-                              if (!column.isGuideColumn &&
-                                  column.kind != kColumnKindUnassigned) {
-                                return null;
-                              }
-                              final list = column.kind == kColumnKindUnassigned
-                                  ? byUnassigned
-                                  : boys.where(
-                                      (b) => b.guideId == column.guideId);
-                              return residenceSplit(list.map((b) => b.role))
-                                  .label;
-                            },
-                          ),
-                        ),
-                      ],
-                    );
-                  },
+                        columns: visibleColumns,
+                        allBoys: boys,
+                        columnBoys: (lc) => boys.where(lc.holds).toList(),
+                        headerExtra: (lc) {
+                          final split = residenceSplit(
+                                  boys.where(lc.holds).map((b) => b.role))
+                              .labelFor(female: lc.lane == 'female');
+                          final admin = lc.admin;
+                          return admin == null
+                              ? split
+                              : "${admin.role.label} · $split";
+                        },
+                      ),
+                    ),
+                  ],
                 );
               },
             );
@@ -2296,14 +2412,14 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   /// bucket), but it must never retroactively hide a card the HOD
   /// deliberately put there before this guide was invited to help. Confirmed
   /// explicitly per the task's own instruction to state this choice.
-  bool _customBoardEligible({
-    required String studentGuideId,
-    required String viewerGuide,
-    required bool viewerIsHod,
-  }) {
-    if (viewerIsHod) return true;
-    return studentGuideId == viewerGuide;
-  }
+  ///
+  /// ⚠️ **Role-based now (Master 2, Part A.2):** eligible = the viewer can
+  /// MANAGE the student under the hierarchy (`StudentScope.canManage` — HOD
+  /// anyone; Guide his team + unassigned males; Male Enabler own + unassigned
+  /// males; Female Enabler own + unassigned females). A student the viewer
+  /// cannot manage is never eligible.
+  bool _customBoardEligible(_Boy boy) =>
+      StudentScope.current().canManage(boy.ref);
 
   /// ⚠️ **Writes ONLY to `placements`, via `movePlacement` — never
   /// `reassignGuide`.** Confirmed by construction: the only Firestore-facing
@@ -2404,8 +2520,10 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                 }
 
                 return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream:
-                      FirebaseFirestore.instance.collection('users').snapshots(),
+                  // Scoped stream — a placed student the viewer may not see
+                  // (e.g. one the HOD placed on a board shared with a guide)
+                  // is simply not rendered; see [_studentsStream].
+                  stream: _studentsStream(),
                   builder: (context, userSnap) {
                     if (!userSnap.hasData) {
                       return const Center(child: CircularProgressIndicator());
@@ -2416,16 +2534,11 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                       // Only students actually placed on THIS board — see
                       // this method's own note above.
                       if (!placementColumnByUid.containsKey(doc.id)) continue;
-                      final data = doc.data();
-                      final name = (data['name'] ?? '').toString().trim();
-                      if (name.isEmpty) continue;
-                      boys.add(_Boy(
-                        uid: doc.id,
-                        name: name,
-                        role: (data['role'] ?? '').toString(),
-                        guideId: (data['guideId'] ?? '').toString().trim(),
-                      ));
+                      final boy = _Boy.fromUser(doc.id, doc.data());
+                      if (boy != null) boys.add(boy);
                     }
+                    boys.sort((a, b) =>
+                        a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
                     return _customCanvas(
                       colorProvider: colorProvider,
@@ -2815,10 +2928,10 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   Widget _canvas({
     required ColorProvider colorProvider,
     required String boardId,
-    required List<BoardColumn> columns,
+    required List<_LaneColumn> columns,
     required List<_Boy> allBoys,
-    required List<_Boy> Function(BoardColumn) columnBoys,
-    required String? Function(BoardColumn) headerExtra,
+    required List<_Boy> Function(_LaneColumn) columnBoys,
+    required String? Function(_LaneColumn) headerExtra,
   }) {
     if (columns.isEmpty) {
       return Center(
@@ -2843,6 +2956,18 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       );
     }
 
+    // A small vertical label opens each gender lane when the viewer sees
+    // both (HOD only) — a Guide / Enabler sees a single lane, so no label.
+    final bothLanes = columns.any((c) => c.lane == 'male') &&
+        columns.any((c) => c.lane == 'female');
+    final items = <Object>[];
+    String? currentLane;
+    for (final c in columns) {
+      if (bothLanes && c.lane != currentLane) items.add(c.lane);
+      currentLane = c.lane;
+      items.add(c);
+    }
+
     return ListView.builder(
       controller: _hController,
       scrollDirection: Axis.horizontal,
@@ -2851,9 +2976,11 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       // `_scrollLocked`'s doc comment for the full history.
       physics: _scrollLocked ? const NeverScrollableScrollPhysics() : null,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
-      itemCount: columns.length,
+      itemCount: items.length,
       itemBuilder: (context, index) {
-        final column = columns[index];
+        final item = items[index];
+        if (item is String) return _laneLabel(item);
+        final column = item as _LaneColumn;
         return _columnTile(
           boardId: boardId,
           column: column,
@@ -2865,24 +2992,50 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     );
   }
 
+  /// The narrow vertical "MALES" / "FEMALES" strip that starts a gender lane.
+  Widget _laneLabel(String lane) {
+    final female = lane == 'female';
+    final colour = female ? Colors.pink.shade400 : Colors.blueGrey.shade600;
+    return Container(
+      width: 30,
+      margin: const EdgeInsets.only(right: 12),
+      decoration: BoxDecoration(
+        color: colour.withOpacity(.10),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colour.withOpacity(.35)),
+      ),
+      child: Center(
+        child: RotatedBox(
+          quarterTurns: 3,
+          child: Text(
+            female ? "FEMALES" : "MALES",
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 2,
+              color: colour,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _columnTile({
     required String boardId,
-    required BoardColumn column,
+    required _LaneColumn column,
     required List<_Boy> allBoys,
     required List<_Boy> boys,
     required String? headerExtra,
   }) {
-    final colour = Color(column.colorValue);
+    final colour = Color(column.column.colorValue);
 
     return DragTarget<String>(
-      // ⚠️ No `_isHod` gate here any more — a non-HOD guide is now allowed
-      // to drop, per this task's permission change. This is safe only
-      // because [_visibleColumns] already means a non-HOD never even sees a
-      // `DragTarget` for any column other than Unassigned and their own, so
-      // every drop that reaches here is structurally a claim or a release.
-      // The real, authoritative gate is still `_handleDrop`'s own
-      // permission check below — see its doc comment for why that
-      // enforcement is repeated there rather than trusted to the UI alone.
+      // Every hover is accepted (except a card already in this column) so a
+      // blocked move — cross-gender or outside the viewer's scope — gets a
+      // snackbar explaining why instead of the card silently bouncing back.
+      // The real, authoritative gate is `_handleDrop`'s own check, and the
+      // server (`assignStudent`) enforces the same rules again.
       onWillAcceptWithDetails: (details) {
         return !boys.any((b) => b.uid == details.data);
       },
@@ -2913,7 +3066,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _columnHeader(column: column, colour: colour, count: boys.length, headerExtra: headerExtra),
+              _columnHeader(title: column.title, colour: colour, count: boys.length, headerExtra: headerExtra),
               const Divider(height: 1),
               Expanded(
                 child: boys.isEmpty
@@ -2949,7 +3102,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   }
 
   Widget _columnHeader({
-    required BoardColumn column,
+    required String title,
     required Color colour,
     required int count,
     required String? headerExtra,
@@ -2968,7 +3121,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                   children: [
                     Expanded(
                       child: Text(
-                        column.title.isEmpty ? "(untitled)" : column.title,
+                        title.isEmpty ? "(untitled)" : title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -3319,12 +3472,20 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             final config = configSnap.data!;
 
             return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              // Same single equality filter `BooksProgress.dart` uses — no
-              // composite index needed, and legacy name-keyed `booksRead`
-              // documents (no `uid` field) are excluded by construction.
-              stream: FirebaseFirestore.instance
-                  .collection('booksRead')
-                  .where('uid', isEqualTo: boy.uid)
+              // The same `uid ==` filter `BooksProgress.dart` uses (legacy
+              // name-keyed `booksRead` documents have no `uid` and are
+              // excluded by construction), plus the one extra equality filter
+              // the security rules need to PROVE this viewer may read this
+              // student's documents (`constrainForStudent`: HOD none; else
+              // `scopeTeam` / `scopeGuide` [+ `scopeGender`] from the
+              // student's current assignment). Equality only — no index.
+              stream: StudentScope.current()
+                  .constrainForStudent(
+                    FirebaseFirestore.instance
+                        .collection('booksRead')
+                        .where('uid', isEqualTo: boy.uid),
+                    boy.ref,
+                  )
                   .snapshots(),
               builder: (context, progressSnap) {
                 if (!progressSnap.hasData) {
@@ -3935,7 +4096,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       }
 
       await _notifyStudentOfBookAssignment(
-        studentName: boy.name,
+        studentUid: boy.uid,
         bookTitle: book.title,
         commitmentDate: commitmentDate,
       );
@@ -3948,30 +4109,22 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     }
   }
 
-  /// Part 3 item 2 — reuses the SAME FCM pattern every other guide-to-
-  /// student notification in this app already uses
-  /// (`notification/{studentName}.FCMToken` -> `FirebaseCM().sendTokenNotification`,
-  /// e.g. `AssociationManager`'s own student notify) — no new send path.
+  /// Part 3 item 2 — the "book assigned" push now goes through the server
+  /// (`HierarchyApi.sendStudentNotification`, kind `book_assigned`): the
+  /// student's FCM token is never read by the app, and the server builds the
+  /// same title/body this method used to send itself.
   Future<void> _notifyStudentOfBookAssignment({
-    required String studentName,
+    required String studentUid,
     required String bookTitle,
     required String commitmentDate,
   }) async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('notification')
-          .doc(studentName)
-          .get();
-      final token = doc.data()?['FCMToken'];
-
-      if (token is String && token.isNotEmpty) {
-        await FirebaseCM().sendTokenNotification(
-          token,
-          "New book assigned 📖",
-          "Your guide assigned \"$bookTitle\" — commit to finish by "
-              "$commitmentDate.",
-        );
-      }
+      await HierarchyApi.instance.sendStudentNotification({
+        'kind': 'book_assigned',
+        'studentUid': studentUid,
+        'bookTitle': bookTitle,
+        'commitmentDate': commitmentDate,
+      });
     } catch (_) {
       // A failed notification must never undo the assignment write, which
       // has already landed by the time this runs.

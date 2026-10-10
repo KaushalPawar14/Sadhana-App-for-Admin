@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../Services/GeminiService.dart';
 import '../Services/UpdateFCM.dart';
 import '../utils/Snackbar.dart';
+import '../utils/StudentScope.dart';
 
 /// Holistic "suggested next action" (Phase 5, item 1 — final piece).
 ///
@@ -50,6 +51,16 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
   DocumentReference<Map<String, dynamic>> get _docRef =>
       _firestore.collection('holisticSuggestions').doc(widget.studentUid);
 
+  /// `collection where <uidField> == this student`, plus the scope filter the
+  /// security rules need (built from the `users` map this page already holds).
+  Query<Map<String, dynamic>> _scoped(String collection, String uidField) =>
+      StudentScope.current().constrainForStudent(
+        _firestore
+            .collection(collection)
+            .where(uidField, isEqualTo: widget.studentUid),
+        StudentRef.fromUser(widget.studentUid, widget.profileData),
+      );
+
   // ---------------------------------------------------------------------------
   // Gathering
   // ---------------------------------------------------------------------------
@@ -87,10 +98,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
 
     // --- Book progress (as shown in the Book Progress section) --------------
     try {
-      final books = await _firestore
-          .collection('booksRead')
-          .where('uid', isEqualTo: widget.studentUid)
-          .get();
+      final books = await _scoped('booksRead', 'uid').get();
 
       if (books.docs.isNotEmpty) {
         final current = books.docs
@@ -111,10 +119,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
 
     // --- Association: meetings with the guide -------------------------------
     try {
-      final meetings = await _firestore
-          .collection('associations')
-          .where('studentUid', isEqualTo: widget.studentUid)
-          .get();
+      final meetings = await _scoped('associations', 'studentUid').get();
 
       if (meetings.docs.isEmpty) {
         lines.add("Association: no meetings requested or held yet.");
@@ -165,10 +170,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
     // because a reflection can contain personal disclosure the student wrote
     // for their guide, not for an API.
     try {
-      final registrations = await _firestore
-          .collection('expeditionRegistrations')
-          .where('studentUid', isEqualTo: widget.studentUid)
-          .get();
+      final registrations = await _scoped('expeditionRegistrations', 'studentUid').get();
 
       if (registrations.docs.isEmpty) {
         lines.add("Expeditions: none registered for yet.");
@@ -220,10 +222,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
 
     // --- Approved interaction logs ------------------------------------------
     try {
-      final logs = await _firestore
-          .collection('interactionLogs')
-          .where('studentUid', isEqualTo: widget.studentUid)
-          .get();
+      final logs = await _scoped('interactionLogs', 'studentUid').get();
 
       final approved = logs.docs
           .map((d) => d.data())
@@ -285,10 +284,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
     //
     // Three separate lines on purpose. Never a sum, average or single figure.
     try {
-      final lit = await _firestore
-          .collection('litAssessments')
-          .where('studentUid', isEqualTo: widget.studentUid)
-          .get();
+      final lit = await _scoped('litAssessments', 'studentUid').get();
 
       final sorted = lit.docs.map((d) => d.data()).toList()
         ..sort((a, b) {

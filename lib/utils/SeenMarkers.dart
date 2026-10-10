@@ -19,9 +19,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// per viewer, written to ONLY by that viewer, about only their own
 /// "what have I looked at" state.
 ///
-/// `viewerId` reuses whatever identity this app already keys a guide by —
-/// the `_selectedGuide` code (e.g. `'SBSD'`) every screen in this app
-/// already carries. There is no per-guide Firebase Auth identity in this
+/// `viewerId` reuses whatever identity this app already keys an admin by —
+/// the admin id (`AdminProfile.id`, also the `adminUsers` doc id) every
+/// screen in this app already carries. Nothing here depends on a role: a
+/// marker is always the signed-in admin's own document. There is no per-guide Firebase Auth identity in this
 /// app (see `utils/GuideRoster.dart`'s own header comment) — inventing one
 /// just for this feature would be a second, parallel identity concept,
 /// not a reuse of the first (Rule 1).

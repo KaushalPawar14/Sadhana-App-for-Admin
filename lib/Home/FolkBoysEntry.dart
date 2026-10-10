@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 import 'package:provider/provider.dart';
 
-import '../Pages/FolkGuideSelect.dart';
+import '../Pages/GuideSignIn.dart';
 import '../Pages/GuideCalendarPage.dart';
 import '../Services/UpdateFCM.dart';
 import '../Services/UpdateToken.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/CalendarQueries.dart' show kScopeMandatory;
 import '../utils/ColorProvider.dart';
-import '../utils/GuideRoster.dart';
 import '../utils/UnseenAggregates.dart';
 import '../utils/UnseenDot.dart';
 import '../utils/UnseenFeatureBadge.dart';
@@ -43,8 +43,8 @@ import 'FolkBoysWorkspace.dart';
 /// This is the plumbing Phase 1 originally (and correctly) rescued from the
 /// old `DashboardScreen` (`Home/MainPage.dart`) — resolving the guide,
 /// redirecting to `FolkGuideSelectionPage` if none is set, and re-
-/// registering the FCM token into `adminUsers/{guide}.fcmToken` (which
-/// `Pages/InteractionLogger.dart`'s HOD-notify path reads). It now runs here,
+/// registering the FCM token via `updateAdminFcmToken` (a server callable
+/// now — the app never reads or writes `adminUsers` itself). It now runs here,
 /// in THIS screen's `initState`, because this is what actually loads the
 /// moment the tab is opened — `FolkBoysWorkspace` no longer runs any of this
 /// itself, it just receives the already-resolved guide as a constructor
@@ -93,8 +93,8 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
   /// roster has an unseen student comment or book commitment, aggregated
   /// via the shared `UnseenAggregates` roster helpers (same rule the
   /// board's own `_visibleColumns` uses — HOD sees everyone, any other
-  /// guide sees their own students plus Unassigned — read independently,
-  /// never touching `_usersQuery`/`_visibleColumns` themselves). Built
+  /// admin sees the students their role allows — read independently,
+  /// never touching the board's own stream/columns). Built
   /// once, from `_fetchSavedGuide()`, never in `build()`.
   Stream<bool>? _boardUnseen;
 
@@ -121,7 +121,7 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     setState(() {
       _guide = guide;
       if (guide != null && guide.isNotEmpty) {
-        final isHod = guide == kHodGuideId;
+        final isHod = AdminProfileProvider.viewerIsHod;
         _boardUnseen = UnseenAggregates.anyOf([
           UnseenAggregates.studentCommentsRosterUnseen(guide, isHod),
           UnseenAggregates.bookCommitmentsRosterUnseen(guide, isHod),
@@ -139,13 +139,11 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
       // this screen) is ever built (`main.dart`'s `SplashScreen` /
       // `Pages/GuideSignIn.dart`), so `widget.selectedGuide` is never null
       // and the `getSavedGuide()` fallback above never returns null either.
-      // Left in place defensively rather than removed — `FolkGuideSelect
-      // .dart` still exists (confirmed dead, kept per this project's
-      // convention) to route to if this somehow still fires.
+      // Left in place defensively: if it somehow fires, go to the sign-in page.
       if (mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => FolkGuideSelectionPage()),
+          MaterialPageRoute(builder: (_) => const GuideSignInPage()),
         );
       }
       return;

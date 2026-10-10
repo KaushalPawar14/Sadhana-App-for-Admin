@@ -1,17 +1,15 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../Home/Calendar.dart';
+import '../Services/HierarchyApi.dart';
 import '../Services/MissingReportNotification.dart';
-import '../Services/Notifications.dart';
-import '../Services/UpdateFCM.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
-import '../utils/GuideRoster.dart';
-import '../utils/NotificationPrefs.dart';
 import '../utils/SadhanaReportSource.dart';
 import '../utils/Snackbar.dart';
+import '../utils/StudentScope.dart';
 
 /// One scoped student's own submission status for today — just enough to
 /// show them in either list and, if tapped, open their own
@@ -26,15 +24,10 @@ typedef _StudentSubmission = ({String name, String role, String uid});
 /// beneath (so the guide can cross-check). Tapping any student — in either
 /// group — opens their own [CalendarPage] (item 4).
 ///
-/// Scoping: SBSD is the HOD and sees every student; any other guide sees
-/// only students whose `users.guideId` matches them — the SAME query this
-/// screen already used before this task (item 5's "reuse the existing
-/// pattern, do not write a second rule"). `FolkBoysWorkspace.dart`'s own
-/// `_usersQuery()` was deliberately NOT copied here: it now fetches
-/// `users` unfiltered and scopes by which board COLUMNS render instead — a
-/// model specific to that screen's multi-guide board UI, not to a plain
-/// student list, and this screen already had its own correct, equivalent
-/// "HOD sees all / guide sees own" query before this task touched it.
+/// Scoping: the student list is [StudentScope.studentsGet] — a HOD sees every
+/// student, a Guide his team plus unassigned males, an enabler his own plus the
+/// unassigned of his gender. Reminders go through the server
+/// (`sendStudentNotification`, kind `submission_nudge`).
 ///
 /// Item 7 — the data: NEITHER list is derived from
 /// `NotificationManager().missingUsernames` anymore. That cache is keyed
@@ -58,8 +51,6 @@ class SubmissionStatusPage extends StatefulWidget {
 }
 
 class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
   bool _loading = true;
   String? _guide;
   bool _isHod = false;
@@ -95,23 +86,15 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
   Future<void> _load() async {
     if (mounted) setState(() => _loading = true);
 
-    final guide = await UpdateTokenService().getSavedGuide();
-    final isHod = guide == kHodGuideId;
+    final profile = AdminProfileProvider.require();
+    final guide = profile.displayName;
+    final isHod = profile.isHod;
 
     List<_StudentSubmission> notSubmitted = [];
     List<_StudentSubmission> submitted = [];
 
     try {
-      // Same scoping pattern as AssociationManager.dart:233-236 — kept
-      // exactly as this screen already had it (see this class's own doc
-      // comment on why `_usersQuery()` from `FolkBoysWorkspace.dart` was
-      // NOT substituted in here).
-      final snap = isHod
-          ? await _firestore.collection('users').get()
-          : await _firestore
-              .collection('users')
-              .where('guideId', isEqualTo: guide)
-              .get();
+      final snap = await StudentScope(profile).studentsGet();
 
       final today = MissingReportService().getTodayDateId();
 
@@ -162,47 +145,33 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
   }
 
   /// The one and only send path in this screen — used by the per-student
-  /// button and by Remind All alike, so both send an identical message via the
-  /// shared service. Returns true only when a notification actually went out.
+  /// button and by Remind All alike (kind `submission_nudge`; the server builds
+  /// the message and applies each student's own preference). Returns how many
+  /// notifications actually went out.
   ///
-  /// Never throws: a missing token or a failed send returns false so a bulk
-  /// run continues through the rest of the list.
-  Future<bool> _sendReminderTo(String name) async {
+  /// Never throws: a failed send returns 0 so a bulk run continues through the
+  /// rest of the list. The server accepts at most 200 students per call, so
+  /// callers pass chunks.
+  Future<int> _sendReminders(List<String> uids) async {
+    if (uids.isEmpty) return 0;
     try {
-      // Preference gate (added 2026-08-19). Like AssociationManager, this path
-      // is name-keyed while preferences are uid-keyed, so the lookup bridges by
-      // name. Returns false so the caller counts it as "not sent" — the
-      // "Sent to 12 of 14" summary then tells the truth rather than claiming a
-      // send that a student had opted out of.
-      final wanted = await studentWantsByName(
-        name,
-        StudentNotificationPref.guideManualReminder,
+      final r = await HierarchyApi.instance.sendStudentNotification(
+        uids.length == 1
+            ? {'kind': 'submission_nudge', 'studentUid': uids.first}
+            : {'kind': 'submission_nudge', 'studentUids': uids},
       );
-      if (!wanted) return false;
-
-      final doc = await _firestore.collection('notification').doc(name).get();
-      final token = doc.data()?['FCMToken'];
-
-      if (token is! String || token.isEmpty) return false;
-
-      // Same title and body as the bulk action in BoysDetails.dart, so a
-      // student sees one consistent message whichever route sends it.
-      await FirebaseCM().sendTokenNotification(
-        token,
-        "Hare Krishna Prabhu !! 🙏🙏",
-        "Kindly fill up your Sadhana report 📝 for today.",
-      );
-      return true;
+      return (r['sent'] as num?)?.toInt() ?? 0;
     } catch (_) {
-      return false;
+      return 0;
     }
   }
 
   /// Nudges one student.
-  Future<void> _remind(String name) async {
+  Future<void> _remind(_StudentSubmission student) async {
+    final name = student.name;
     setState(() => _sending.add(name));
 
-    final sent = await _sendReminderTo(name);
+    final sent = await _sendReminders([student.uid]) > 0;
 
     if (mounted) {
       showSnackbar(
@@ -215,14 +184,14 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
     }
   }
 
-  /// Nudges everyone currently listed as not-submitted, one after another.
+  /// Nudges everyone currently listed as not-submitted, in chunks of 200.
   ///
   /// Iterates the already-scoped `_notSubmitted` list — scoping is not
-  /// re-evaluated here, so a guide can never reach beyond their own
-  /// students. Sends run sequentially and independently: one failure does
+  /// re-evaluated here, so an admin can never reach beyond their own
+  /// students. Chunks run sequentially and independently: one failure does
   /// not stop the rest, and the tally reports what actually went out.
   Future<void> _remindAll() async {
-    final targets = _notSubmitted.map((s) => s.name).toList();
+    final targets = _notSubmitted.map((s) => s.uid).toList();
     if (targets.isEmpty) return;
 
     final confirmed = await showDialog<bool>(
@@ -255,12 +224,15 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
       _bulkSent = 0;
     });
 
-    for (final name in targets) {
-      final sent = await _sendReminderTo(name);
+    const chunkSize = 200;
+    for (var i = 0; i < targets.length; i += chunkSize) {
+      final chunk = targets.sublist(
+          i, i + chunkSize > targets.length ? targets.length : i + chunkSize);
+      final sent = await _sendReminders(chunk);
       if (!mounted) return;
       setState(() {
-        _bulkDone++;
-        if (sent) _bulkSent++;
+        _bulkDone += chunk.length;
+        _bulkSent += sent;
       });
     }
 
@@ -536,7 +508,7 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : TextButton.icon(
-                        onPressed: () => _remind(student.name),
+                        onPressed: () => _remind(student),
                         icon: const Icon(Icons.notifications_active, size: 16),
                         label: const Text("Remind"),
                       )

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/GoalCompoundQueries.dart';
 import '../utils/Snackbar.dart';
@@ -56,6 +57,11 @@ class CompoundGoalRoadmapPage extends StatefulWidget {
 }
 
 class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
+  /// The caller's `isHod` flag, additionally confirmed against the signed-in
+  /// admin's ROLE (hierarchy: an Enabler or Guide only ever manages their own
+  /// targets; no id is special).
+  bool get _isHod => widget.isHod && AdminProfileProvider.viewerIsHod;
+
   final _noteController = TextEditingController();
   bool _submitting = false;
 
@@ -69,7 +75,7 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
     setState(() => _submitting = true);
     final note = _noteController.text.trim();
     try {
-      if (widget.isHod) {
+      if (_isHod) {
         await callSuggestCompoundPlan(
           guideId: widget.guideId,
           targetId: widget.targetId,
@@ -298,7 +304,7 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
               style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
           Text(
-            widget.isHod
+            _isHod
                 ? "Optional. Your note guides a fresh AI-generated plan, sent "
                     "to the guide as a suggestion — it will not change their "
                     "live plan until they approve it."
@@ -333,7 +339,7 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
                   : const Icon(Icons.auto_awesome, size: 16),
               label: Text(_submitting
                   ? "Regenerating with AI…"
-                  : widget.isHod
+                  : _isHod
                       ? "Send suggestion"
                       : "Regenerate roadmap"),
               style: ElevatedButton.styleFrom(

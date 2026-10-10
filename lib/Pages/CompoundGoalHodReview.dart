@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../utils/ColorProvider.dart';
 import '../utils/GoalCompoundQueries.dart';
-import '../utils/GuideRoster.dart';
+import '../utils/AdminProfile.dart';
 import 'CompoundGoalRoadmapPage.dart';
 import 'CompoundTaskEditorPage.dart';
 
@@ -14,12 +14,12 @@ import 'CompoundTaskEditorPage.dart';
 /// ---------------------------------------------------------------------------
 /// Read access — reuses the EXISTING HOD gate, does not invent a new one
 /// ---------------------------------------------------------------------------
-/// `Dashboard.dart` already established the pattern: `_isHod = _guide ==
-/// kHodGuideId`, unfiltered for the HOD, one `guideId` equality filter for
-/// everyone else. This screen is itself only ever reachable when the signed-
-/// in guide is the HOD (the caller gates navigation to it) — once here, every
-/// guide in [guideRosterStream] is visible, matching the same "HOD sees
-/// everyone" rule `Dashboard.dart`/`WeeklyPlanning.dart` already apply.
+/// Hierarchy: the HOD check is the signed-in admin's ROLE
+/// (`AdminProfileProvider.viewerIsHod`), never a special id — several HODs may
+/// exist. This screen is itself only ever reachable by a HOD (the caller gates
+/// navigation to it) — once here, every admin in the profile's admin list is
+/// selectable, matching the same "HOD sees everyone" rule. Enablers and Guides
+/// manage only their own targets (`GoalHomePage`).
 ///
 /// ---------------------------------------------------------------------------
 /// This screen makes NO writes of its own
@@ -73,10 +73,11 @@ class _CompoundGoalHodReviewState extends State<CompoundGoalHodReview> {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                child: StreamBuilder<List<String>>(
-                  stream: guideRosterStream(),
-                  builder: (context, snap) {
-                    final guides = snap.data ?? const <String>[];
+                child: Builder(
+                  builder: (context) {
+                    // Server-filtered admin list (a HOD sees every admin).
+                    final List<AdminSummary> admins =
+                        AdminProfileProvider.require().admins;
                     return DropdownButtonFormField<String>(
                       initialValue: _selectedGuide,
                       decoration: const InputDecoration(
@@ -84,8 +85,9 @@ class _CompoundGoalHodReviewState extends State<CompoundGoalHodReview> {
                         isDense: true,
                         border: OutlineInputBorder(),
                       ),
-                      items: guides
-                          .map((g) => DropdownMenuItem(value: g, child: Text(g)))
+                      items: admins
+                          .map((a) => DropdownMenuItem(
+                              value: a.id, child: Text(a.displayName)))
                           .toList(),
                       onChanged: (v) => setState(() => _selectedGuide = v),
                     );

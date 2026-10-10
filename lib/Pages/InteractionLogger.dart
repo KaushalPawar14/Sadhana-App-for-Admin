@@ -4,12 +4,12 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../Services/GeminiService.dart';
-import '../Services/Notifications.dart';
-import '../Services/UpdateFCM.dart';
+import '../Services/HierarchyApi.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
-import '../utils/GuideRoster.dart';
 import '../utils/SelectableDelete.dart';
 import '../utils/Snackbar.dart';
+import '../utils/StudentScope.dart';
 import 'LitAssessment.dart';
 
 /// Phase 5, item 1 — interaction logging.
@@ -59,48 +59,37 @@ class InteractionLoggerPage extends StatefulWidget {
 class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  String? _selectedGuide;
+  /// The signed-in admin's id (stamped on a new log as `guideId`).
+  String get _selectedGuide => AdminProfileProvider.require().id;
 
-  bool get _isHod => _selectedGuide == kHodGuideId;
+  bool get _isHod => AdminProfileProvider.viewerIsHod;
 
   bool _selectionMode = false;
   final Set<String> _selectedIds = {};
 
-  /// This student's CURRENT `guideId`, resolved once (Part 1 item 4 finding
-  /// used deliberately here, not the pattern the other two delete screens
-  /// use): unlike associations/flaggedChatMessages, this screen's own
-  /// visibility is NOT scoped by `interactionLogs.guideId` — that query
-  /// filters only by `studentUid` (see the list query below), and `guideId`
-  /// on a log document is never read for access control anywhere in this
-  /// file. Whoever can reach this screen for this student (via the roster
-  /// scoping one level up, in Dashboard/StudentActionSheet) already sees
-  /// every log for them regardless of who wrote it — so delete permission
-  /// must match THAT visibility model exactly: the student's own current
-  /// `guideId`, not any individual log's.
-  String? _studentGuideId;
+  /// This student's CURRENT assignment, resolved once. This screen's
+  /// visibility is NOT scoped by `interactionLogs.guideId`: whoever can reach
+  /// the screen for this student already sees every log for them regardless
+  /// of who wrote it, so delete permission follows the student (any admin who
+  /// may manage the student), not an individual log. It also supplies the
+  /// scope filter the list query needs to be provable by the rules.
+  StudentRef? _studentRef;
+  bool _studentRefFailed = false;
 
   @override
   void initState() {
     super.initState();
-    _loadGuide();
-    _loadStudentGuideId();
+    _loadStudentRef();
   }
 
-  Future<void> _loadGuide() async {
-    final guide = await UpdateTokenService().getSavedGuide();
-    if (mounted) setState(() => _selectedGuide = guide);
-  }
-
-  Future<void> _loadStudentGuideId() async {
+  Future<void> _loadStudentRef() async {
     try {
       final doc =
           await _firestore.collection('users').doc(widget.studentUid).get();
-      if (mounted) {
-        setState(
-            () => _studentGuideId = (doc.data()?['guideId'] ?? '').toString());
-      }
+      if (mounted) setState(() => _studentRef = StudentRef.fromDoc(doc));
     } catch (_) {
       // Left null — _canDeleteInteraction below fails closed on null.
+      if (mounted) setState(() => _studentRefFailed = true);
     }
   }
 
@@ -137,13 +126,13 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
   }
 
   /// Deliberately ignores the individual log's own `data` — see the
-  /// [_studentGuideId] doc comment for why this screen's delete permission
+  /// [_studentRef] doc comment for why this screen's delete permission
   /// is student-scoped, not per-log-`guideId`-scoped.
   Future<bool> _canDeleteInteraction(Map<String, dynamic> data) async {
     if (_isHod) return true;
-    final studentGuide = _studentGuideId;
-    if (studentGuide == null) return false; // fails closed while unresolved
-    return studentGuide == (_selectedGuide ?? '');
+    final ref = _studentRef;
+    if (ref == null) return false; // fails closed while unresolved
+    return StudentScope.current().canManage(ref);
   }
 
   Future<void> _deleteSelected() async {
@@ -168,15 +157,6 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
 
   Future<void> _openEntrySheet() async {
     final guide = _selectedGuide;
-    if (guide == null || guide.isEmpty) {
-      showSnackbar(
-        context,
-        "No guide selected on this device",
-        Colors.red,
-        Icons.error,
-      );
-      return;
-    }
 
     final controller = TextEditingController();
     DateTime interactionDate = DateTime.now();
@@ -270,7 +250,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
               // everything below fails. Notified now, not after extraction,
               // so this is at least as reliable as the old approve-gated
               // notification, never less.
-              await _notifyHod(guideId: guide, studentName: widget.studentName);
+              await _notifyInteractionLogged(widget.studentUid);
 
               String? extractionError;
               String litPrefill = '';
@@ -584,15 +564,24 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
               style: TextStyle(color: Colors.white),
             ),
           ),
-          body: StreamBuilder<QuerySnapshot>(
-            // Filtered on studentUid only; sorted in Dart so no composite
-            // index is needed — same approach as AssociationManager.
-            stream: _firestore
-                .collection('interactionLogs')
-                .where('studentUid', isEqualTo: widget.studentUid)
-                .snapshots(),
+          body: _studentRef == null && !_studentRefFailed
+              ? const Center(child: CircularProgressIndicator())
+              : StreamBuilder<QuerySnapshot>(
+            // studentUid plus the scope filter that proves the viewer may read
+            // this student's logs; sorted in Dart so no composite index is
+            // needed — same approach as AssociationManager.
+            stream: _studentRef == null
+                ? const Stream<QuerySnapshot>.empty()
+                : StudentScope.current()
+                    .constrainForStudent(
+                        _firestore.collection('interactionLogs').where(
+                            'studentUid',
+                            isEqualTo: widget.studentUid),
+                        _studentRef!)
+                    .snapshots(),
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  _studentRef != null) {
                 return const Center(child: CircularProgressIndicator());
               }
 
@@ -793,37 +782,23 @@ DateTime? _dateFrom(Object? value) {
   return DateTime.tryParse(text);
 }
 
-/// Tells the HOD that an interaction was logged — **the fact only**.
+/// Tells the other admins who should know that an interaction was logged —
+/// **the fact only**.
 ///
 /// No interaction content, no themes, no LIT evidence, no student concerns
 /// go into the payload. FCM notifications land outside the app on a lock
 /// screen, so they get the same privacy boundary the raw notes already have.
+/// The server decides who is told (and builds the message).
 ///
 /// Called right after the interaction's initial save succeeds — before
 /// Gemini extraction even runs — so this fires at least as reliably as the
 /// old approve-gated notification, never less.
-Future<void> _notifyHod({
-  required String guideId,
-  required String studentName,
-}) async {
-  // No point notifying the HOD about their own log.
-  if (guideId == kHodGuideId) return;
-
+Future<void> _notifyInteractionLogged(String studentUid) async {
   try {
-    final doc = await FirebaseFirestore.instance
-        .collection('adminUsers')
-        .doc(kHodGuideId)
-        .get();
-    final token = doc.data()?['fcmToken'];
-
-    if (token is String && token.isNotEmpty) {
-      await FirebaseCM().sendTokenNotification(
-        token,
-        "Interaction logged",
-        "${guideId.isEmpty ? 'A guide' : guideId} logged an interaction "
-            "with $studentName",
-      );
-    }
+    await HierarchyApi.instance.sendStudentNotification({
+      'kind': 'interaction_logged',
+      'studentUid': studentUid,
+    });
   } catch (_) {
     // A failed notification must never undo a save that already landed.
   }

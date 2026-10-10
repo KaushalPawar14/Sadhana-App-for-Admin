@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../utils/ColorProvider.dart';
 import '../utils/GoalCompoundQueries.dart';
-import '../utils/GuideRoster.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/Snackbar.dart';
 import 'CompoundGoalHodReview.dart';
 import 'CompoundGoalProgressPage.dart';
@@ -27,7 +27,8 @@ class GoalHomePage extends StatelessWidget {
 
   const GoalHomePage({super.key, required this.guideId});
 
-  bool get _isHod => guideId == kHodGuideId;
+  // Role check (several HODs may exist; no id is special).
+  bool get _isHod => AdminProfileProvider.viewerIsHod;
 
   @override
   Widget build(BuildContext context) {

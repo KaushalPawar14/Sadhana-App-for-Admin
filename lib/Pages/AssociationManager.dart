@@ -3,21 +3,20 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../Services/Notifications.dart';
-import '../Services/UpdateFCM.dart';
+import '../Services/HierarchyApi.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
-import '../utils/GuideRoster.dart';
-import '../utils/NotificationPrefs.dart';
 import '../utils/SeenMarkers.dart';
 import '../utils/SelectableDelete.dart';
 import '../utils/Snackbar.dart';
+import '../utils/StudentScope.dart';
 import 'OverdueAssociations.dart';
 
 /// Association — meeting requests raised by students.
 ///
-/// Firestore: `associations`, filtered to the signed-in guide.
-/// The student's FCM token lives at `notification/{studentName}.FCMToken`,
-/// matching where the Student App saves it.
+/// Firestore: `associations`, scoped to the students the signed-in admin may
+/// see (`StudentScope.historyStream`). Student pushes go through the
+/// `sendStudentNotification` callable (the server owns the FCM tokens).
 class AssociationManagerPage extends StatefulWidget {
   /// Optional deep link. When a caller passes an `associations` doc id, the
   /// screen opens on the tab that record lives in instead of the default one.
@@ -36,9 +35,15 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
 
   String? _selectedGuide;
 
-  /// True only for the HOD, whose tabs show every guide's records. Cards add a
+  /// True only for the HOD, who may delete any record.
+  bool get _isHod => AdminProfileProvider.viewerIsHod;
+
+  /// HOD and Guide tabs mix several admins' records together. Cards add a
   /// guide label in this mode so mixed records stay attributable.
-  bool get _isHod => _selectedGuide == kHodGuideId;
+  bool get _showsGuideLabel {
+    final p = AdminProfileProvider.current;
+    return p != null && (p.isHod || p.isGuide);
+  }
 
   /// An explicit controller (rather than DefaultTabController) so the FAB can
   /// react to tab changes — reading the inherited controller does not rebuild.
@@ -91,7 +96,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
   }
 
   Future<void> _loadGuide() async {
-    final guide = await UpdateTokenService().getSavedGuide();
+    final guide = AdminProfileProvider.current?.id;
     if (mounted) setState(() => _selectedGuide = guide);
     // Master Task 2026-09-10, Part 6 — opening this screen is "seen" for
     // the associations feature (a short list of records, not individually
@@ -104,43 +109,39 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
   }
 
   Future<void> _notifyStudent(
-    String studentName,
+    String studentUid,
     String title,
     String body,
   ) async {
-    if (studentName.isEmpty) return;
+    if (studentUid.isEmpty) return;
 
-    // Preference gate (added 2026-08-19). This path is name-keyed while
-    // preferences live on the uid-keyed user document, so the lookup bridges
-    // the two by name. Absent preference, unresolvable name, or a failed read
-    // all mean *send* — see `utils/NotificationPrefs.dart`.
-    final wanted = await studentWantsByName(
-      studentName,
-      StudentNotificationPref.associationUpdates,
-    );
-    if (!wanted) return;
-
+    // The server applies the student's `associationUpdates` preference and
+    // owns the FCM token, so there is nothing to look up here.
     try {
-      final doc =
-          await _firestore.collection('notification').doc(studentName).get();
-      final token = doc.data()?['FCMToken'];
-
-      if (token is String && token.isNotEmpty) {
-        await FirebaseCM().sendTokenNotification(token, title, body);
-      }
+      await HierarchyApi.instance.sendStudentNotification({
+        'kind': 'association_update',
+        'studentUid': studentUid,
+        'title': title,
+        'body': body,
+      });
     } catch (_) {
       // A failed notification must not roll back the status change.
     }
   }
 
-  /// Which guide a record belongs to — shown **only** in HOD mode, where the
-  /// tabs mix several guides together. For every other guide this returns an
+  /// Which admin a record belongs to — shown **only** where the tabs mix
+  /// several admins together (HOD, Guide). For everyone else this returns an
   /// empty box, so their card layout is exactly what it was before.
   Widget _guideLabel(Map<String, dynamic> data) {
-    if (!_isHod) return const SizedBox.shrink();
+    if (!_showsGuideLabel) return const SizedBox.shrink();
 
-    final guideId = (data['guideId'] ?? '').toString();
+    // The current owner is the server-stamped `scopeGuide`; records written
+    // before the stamp existed fall back to the historic `guideId`.
+    final guideId = (data['scopeGuide'] ?? data['guideId'] ?? '').toString();
     if (guideId.isEmpty) return const SizedBox.shrink();
+    final label =
+        AdminProfileProvider.current?.adminById(guideId)?.displayName ??
+            guideId;
 
     return Padding(
       padding: const EdgeInsets.only(top: 4),
@@ -149,7 +150,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
           Icon(Icons.person_pin, size: 13, color: Colors.grey.shade600),
           const SizedBox(width: 4),
           Text(
-            "Guide: $guideId",
+            "Guide: $label",
             style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
           ),
         ],
@@ -204,7 +205,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
       });
 
       await _notifyStudent(
-        (data['studentName'] ?? '').toString(),
+        (data['studentUid'] ?? '').toString(),
         "Meeting Confirmed",
         "Your meeting is confirmed for "
             "${DateFormat('dd MMM yyyy, hh:mm a').format(confirmed)}",
@@ -226,7 +227,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
       });
 
       await _notifyStudent(
-        (data['studentName'] ?? '').toString(),
+        (data['studentUid'] ?? '').toString(),
         "Meeting Cancelled",
         "Your meeting request was cancelled",
       );
@@ -313,14 +314,15 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
   // ---------------------------------------------------------------------------
 
   Future<void> _openCreateMeetingSheet(String guide) async {
-    List<QueryDocumentSnapshot> students;
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> students;
 
     try {
-      final snap = await _firestore
-          .collection('users')
-          .where('guideId', isEqualTo: guide)
-          .get();
-      students = snap.docs;
+      final snap = await StudentScope.current().studentsGet();
+      students = snap.docs.toList()
+        ..sort((a, b) => (a.data()['name'] ?? '')
+            .toString()
+            .toLowerCase()
+            .compareTo((b.data()['name'] ?? '').toString().toLowerCase()));
     } catch (_) {
       if (mounted) {
         showSnackbar(context, "Could not load students", Colors.red, Icons.error);
@@ -333,7 +335,8 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
     if (students.isEmpty) {
       showSnackbar(
         context,
-        "No students assigned to $guide yet",
+        "No students assigned to "
+        "${AdminProfileProvider.current?.adminById(guide)?.displayName ?? guide} yet",
         Colors.orange,
         Icons.info,
       );
@@ -370,7 +373,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
 
               final student = students.firstWhere((d) => d.id == studentUid);
               final studentName =
-                  ((student.data() as Map<String, dynamic>)['name'] ?? '')
+                  (student.data()['name'] ?? '')
                       .toString();
 
               final preferred = DateTime(
@@ -397,7 +400,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                 });
 
                 await _notifyStudent(
-                  studentName,
+                  studentUid!,
                   "Meeting Scheduled",
                   "Your guide has requested a meeting on "
                       "${DateFormat('dd MMM yyyy, hh:mm a').format(preferred)}",
@@ -468,7 +471,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                       ),
                       items: students.map((doc) {
                         final name =
-                            ((doc.data() as Map<String, dynamic>)['name'] ??
+                            (doc.data()['name'] ??
                                     'Unknown')
                                 .toString();
                         return DropdownMenuItem(
@@ -648,13 +651,22 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
     });
   }
 
-  /// Matches this screen's own read-access model exactly (Part 1 item 4):
-  /// the same `guideId` field `_guideStream` already filters on decides
-  /// delete permission too — HOD may delete anything, a regular guide only
-  /// an association whose OWN `guideId` field equals their id.
+  /// Matches this screen's own read-access model: the server-stamped scope
+  /// fields that `_guideStream` reads decide delete permission too — HOD may
+  /// delete anything, everyone else only a record about a student they may
+  /// manage (`StudentScope.canManage`). A record not yet stamped falls back to
+  /// its own `guideId` being the signed-in admin.
   Future<bool> _canDeleteAssociation(Map<String, dynamic> data) async {
     if (_isHod) return true;
-    return (data['guideId'] ?? '').toString() == (_selectedGuide ?? '');
+    if (!data.containsKey('scopeGuide')) {
+      return (data['guideId'] ?? '').toString() == (_selectedGuide ?? '');
+    }
+    return StudentScope.current().canManage(StudentRef(
+      uid: (data['studentUid'] ?? '').toString(),
+      guideId: (data['scopeGuide'] ?? '').toString(),
+      teamGuide: (data['scopeTeam'] ?? '').toString(),
+      gender: (data['scopeGender'] ?? '').toString(),
+    ));
   }
 
   Future<void> _deleteSelected() async {
@@ -913,7 +925,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
       });
 
       await _notifyStudent(
-        (data['studentName'] ?? '').toString(),
+        (data['studentUid'] ?? '').toString(),
         "Meeting Confirmed",
         "Your meeting is confirmed for "
             "${DateFormat('dd MMM yyyy, hh:mm a').format(proposed.toDate())}",
@@ -1067,17 +1079,10 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
   /// One query per tab. Status is matched in Dart because a second equality
   /// filter would require a composite index.
   ///
-  /// SBSD is the FOLK HOD and sees every guide's records (Section 2), so the
-  /// `guideId` filter is omitted for them — the same `isHod` pattern
-  /// `SubmissionStatusPage` and `OverdueAssociationsPage` already use. For
-  /// every other guide the query is unchanged.
-  Stream<QuerySnapshot> _guideStream(String guide) {
-    final collection = _firestore.collection('associations');
-
-    return guide == kHodGuideId
-        ? collection.snapshots()
-        : collection.where('guideId', isEqualTo: guide).snapshots();
-  }
+  /// The HOD sees every record; everyone else the records about students
+  /// they may see (server-stamped `scope*` fields, merged client-side).
+  Stream<QuerySnapshot> _guideStream(String guide) =>
+      StudentScope.current().historyStream('associations');
 
   Widget _buildPending(String guide) {
     return StreamBuilder<QuerySnapshot>(

@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 import '../utils/ColorProvider.dart';
-import '../utils/GuideRoster.dart';
+import '../utils/StudentScope.dart';
 import '../utils/UnseenFeatureBadge.dart';
 import 'FlaggedMessages.dart';
 import 'PriorityStudents.dart';
@@ -84,19 +82,12 @@ class PriorityHubPage extends StatelessWidget {
                 destination: const FlaggedMessagesPage(),
                 // Master Task 2026-09-10, Part 6 — unseen = a flagged
                 // message since this guide last opened the list. Mirrors
-                // `FlaggedMessagesPage._stream`'s own HOD-sees-all filter
-                // exactly.
+                // `FlaggedMessagesPage._stream`'s own scoped query exactly.
                 wrapBadge: (tile) => UnseenFeatureBadge(
                   featureKey: 'flaggedMessages',
                   timestampField: 'createdAt',
-                  latestQuery: (guide) {
-                    final col = FirebaseFirestore.instance
-                        .collection('flaggedChatMessages');
-                    return (guide == kHodGuideId
-                            ? col
-                            : col.where('guideId', isEqualTo: guide))
-                        .snapshots();
-                  },
+                  latestQuery: (guide) => StudentScope.current()
+                      .historyStream('flaggedChatMessages'),
                   child: tile,
                 ),
               ),

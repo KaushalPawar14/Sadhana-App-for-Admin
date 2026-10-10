@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../utils/ColorProvider.dart';
+import '../utils/StudentScope.dart';
 
 /// A full standalone page wrapping [GraphicalAnalysisSection] in its own
 /// `Scaffold`/`AppBar`. Kept for continuity, but its only caller
@@ -149,13 +150,20 @@ class _GraphicalAnalysisSectionState extends State<GraphicalAnalysisSection> {
         : 'sadhana-reports';
   }
 
-  Future<void> fetchPieChartData() async {
+  /// This student's date reports. Read through the viewer's scope queries
+  /// (the date docs carry server-stamped scope fields), so a non-HOD only ever
+  /// gets documents the security rules let them see.
+  Future<QuerySnapshot<Map<String, dynamic>>> _fetchDates() {
     final datesCollection = FirebaseFirestore.instance
         .collection(getCollectionName())
         .doc(widget.username)
         .collection('dates');
+    return StudentScope.mergedGet(
+        StudentScope.current().historyQueriesOn(datesCollection));
+  }
 
-    final querySnapshot = await datesCollection.get();
+  Future<void> fetchPieChartData() async {
+    final querySnapshot = await _fetchDates();
 
     // Reset counts
     classHearingCount = {'Fully': 0, 'Partial': 0, 'Missed': 0};
@@ -190,12 +198,7 @@ class _GraphicalAnalysisSectionState extends State<GraphicalAnalysisSection> {
     final dateFormat = DateFormat('dd-MM-yyyy');
 
     try {
-      final datesCollection = FirebaseFirestore.instance
-          .collection(getCollectionName())
-          .doc(widget.username)
-          .collection('dates');
-
-      final querySnapshot = await datesCollection.get();
+      final querySnapshot = await _fetchDates();
 
       Map<String, String> templeMap = {};
       Map<String, String> finishMap = {};
@@ -271,12 +274,7 @@ class _GraphicalAnalysisSectionState extends State<GraphicalAnalysisSection> {
     final dateFormat = DateFormat('dd-MM-yyyy');
 
     try {
-      final datesCollection = FirebaseFirestore.instance
-          .collection(getCollectionName())
-          .doc(widget.username)
-          .collection('dates');
-
-      final querySnapshot = await datesCollection.get();
+      final querySnapshot = await _fetchDates();
 
       Map<String, int> roundsMap = {};
       Map<String, int> readingMap = {};

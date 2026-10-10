@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../Services/UpdateFCM.dart';
 import '../utils/Snackbar.dart';
+import '../utils/StudentScope.dart';
 
 /// LIT assessment — private, guide-only (FOLK_HANDOFF.md Section 8).
 ///
@@ -439,7 +440,7 @@ class _LitEntrySheetState extends State<_LitEntrySheet> {
 /// Every assessment is listed on its own. Nothing is merged, averaged or
 /// deduplicated, so two guides disagreeing — or one guide changing their mind —
 /// stays visible as two entries for a human to interpret.
-class LitHistorySection extends StatelessWidget {
+class LitHistorySection extends StatefulWidget {
   final String studentUid;
   final String studentName;
 
@@ -448,6 +449,47 @@ class LitHistorySection extends StatelessWidget {
     required this.studentUid,
     required this.studentName,
   });
+
+  @override
+  State<LitHistorySection> createState() => _LitHistorySectionState();
+}
+
+class _LitHistorySectionState extends State<LitHistorySection> {
+  late Stream<QuerySnapshot<Map<String, dynamic>>> _stream;
+
+  String get studentUid => widget.studentUid;
+  String get studentName => widget.studentName;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = _assessmentsStream();
+  }
+
+  @override
+  void didUpdateWidget(covariant LitHistorySection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.studentUid != widget.studentUid) {
+      _stream = _assessmentsStream();
+    }
+  }
+
+  /// This student's assessments. The student's `users` doc is read first so the
+  /// query carries the scope filter the security rules can prove (hierarchy).
+  Stream<QuerySnapshot<Map<String, dynamic>>> _assessmentsStream() async* {
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.studentUid)
+        .get();
+    yield* StudentScope.current()
+        .constrainForStudent(
+          FirebaseFirestore.instance
+              .collection('litAssessments')
+              .where('studentUid', isEqualTo: widget.studentUid),
+          StudentRef.fromDoc(userDoc),
+        )
+        .snapshots();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -495,13 +537,10 @@ class LitHistorySection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        StreamBuilder<QuerySnapshot>(
-          // Filtered on studentUid only, sorted in Dart — no composite index,
-          // same approach as the interaction log list.
-          stream: FirebaseFirestore.instance
-              .collection('litAssessments')
-              .where('studentUid', isEqualTo: studentUid)
-              .snapshots(),
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          // Filtered on studentUid (+ the scope filter), sorted in Dart — no
+          // composite index, same approach as the interaction log list.
+          stream: _stream,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Padding(
@@ -529,8 +568,8 @@ class LitHistorySection extends StatelessWidget {
             }
 
             docs.sort((a, b) {
-              final da = (a.data() as Map<String, dynamic>)['assessedAt'];
-              final db = (b.data() as Map<String, dynamic>)['assessedAt'];
+              final da = a.data()['assessedAt'];
+              final db = b.data()['assessedAt'];
               if (da is! Timestamp) return -1;
               if (db is! Timestamp) return 1;
               return db.compareTo(da);
@@ -538,7 +577,7 @@ class LitHistorySection extends StatelessWidget {
 
             return Column(
               children: docs
-                  .map((d) => _assessmentCard(d.data() as Map<String, dynamic>))
+                  .map((d) => _assessmentCard(d.data()))
                   .toList(),
             );
           },

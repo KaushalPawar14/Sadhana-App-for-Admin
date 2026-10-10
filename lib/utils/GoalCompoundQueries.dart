@@ -102,6 +102,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import 'GoalMetrics.dart';
+import 'StudentScope.dart';
 
 /// Same region every callable in this project's functions uses.
 const String kFunctionsRegion = 'asia-south1';
@@ -826,15 +827,36 @@ Future<void> rejectProposal({
 // Live actuals (Part 7 — progress page)
 // -----------------------------------------------------------------------------
 
-/// Live, guideId-scoped roster count — the SAME mechanism `Dashboard.dart`
-/// already uses for HOD-vs-guide scoping (one equality filter, no composite
-/// index), not the assignment-flow gap the product owner said not to touch.
+/// The students OWNED by [guideId] (`users.guideId == guideId`) — the same
+/// roster the server-side goal evaluation uses. Hierarchy: read through the
+/// admin's scoped student query ([StudentScope.studentsGet] — never a bare
+/// `users` query the security rules cannot prove), then narrowed to the
+/// owner's own students in memory. A HOD sees every student, so he can still
+/// review any admin's target; everyone else's scope always contains their own
+/// students.
+Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _ownedStudents(
+    String guideId) async {
+  final snap = await StudentScope.current().studentsGet();
+  return snap.docs
+      .where((d) => (d.data()['guideId'] ?? '').toString().trim() == guideId)
+      .toList();
+}
+
+/// Live, guideId-scoped roster count — the students this target's owner
+/// owns, read through the scoped student helper (see [_ownedStudents]).
 Future<int> liveRosterCount(String guideId) async {
-  final snap = await FirebaseFirestore.instance
-      .collection('users')
-      .where('guideId', isEqualTo: guideId)
-      .get();
-  return snap.docs.length;
+  return (await _ownedStudents(guideId)).length;
+}
+
+/// `booksRead` documents of ONE student, constrained so the security rules can
+/// prove the read (`constrainForStudent` adds the scope filter from the
+/// student's current assignment).
+Future<QuerySnapshot<Map<String, dynamic>>> _booksReadFor(
+    String uid, StudentRef ref) {
+  final q = FirebaseFirestore.instance
+      .collection('booksRead')
+      .where('uid', isEqualTo: uid);
+  return StudentScope.current().constrainForStudent(q, ref).get();
 }
 
 /// How many of this guide's students have a LIFETIME `booksRead` count
@@ -848,12 +870,11 @@ Future<int> liveBooksThresholdCount({
   required String guideId,
   required int perStudentValueGoal,
 }) async {
-  final db = FirebaseFirestore.instance;
-  final users = await db.collection('users').where('guideId', isEqualTo: guideId).get();
+  final users = await _ownedStudents(guideId);
 
   var qualifying = 0;
-  for (final u in users.docs) {
-    final br = await db.collection('booksRead').where('uid', isEqualTo: u.id).get();
+  for (final u in users) {
+    final br = await _booksReadFor(u.id, StudentRef.fromDoc(u));
     final finished = br.docs.where((d) {
       final end = d.data()['endDate'];
       return end != null && end.toString().trim().isNotEmpty;
@@ -878,11 +899,10 @@ Future<int> liveChantingThresholdCount({
   required String guideId,
   required int perStudentValueGoal,
 }) async {
-  final db = FirebaseFirestore.instance;
-  final users = await db.collection('users').where('guideId', isEqualTo: guideId).get();
+  final users = await _ownedStudents(guideId);
 
   var qualifying = 0;
-  for (final u in users.docs) {
+  for (final u in users) {
     final commitment = u.data()['commitmentRounds'];
     if (commitment is num && commitment > 0 && commitment >= perStudentValueGoal) {
       qualifying++;
@@ -907,17 +927,22 @@ double? compoundFraction({required int? actual, required int target}) {
 /// `realValuesForUids`, one uid at a time (a task's own snapshotted group is
 /// realistically small, same cost profile as [liveBooksThresholdCount]'s own
 /// per-student loop above).
+///
+/// Hierarchy: [studentDoc] (the student's `users` document, when the caller
+/// already holds it) saves a read; either way the `booksRead` query is
+/// constrained to the student's scope so the security rules can prove it.
 Future<int> liveValueForStudent({
   required String uid,
   required String metric,
+  DocumentSnapshot<Map<String, dynamic>>? studentDoc,
 }) async {
   final db = FirebaseFirestore.instance;
+  final snap = studentDoc ?? await db.collection('users').doc(uid).get();
   if (metric == kMetricChanting) {
-    final snap = await db.collection('users').doc(uid).get();
     final v = snap.data()?['commitmentRounds'];
     return v is num ? v.toInt() : 0;
   }
-  final br = await db.collection('booksRead').where('uid', isEqualTo: uid).get();
+  final br = await _booksReadFor(uid, StudentRef.fromDoc(snap));
   return br.docs.where((d) {
     final end = d.data()['endDate'];
     return end != null && end.toString().trim().isNotEmpty;
@@ -942,17 +967,17 @@ class StudentValue {
 /// function scopes by VIEWER identity (the HOD sees every student system-
 /// wide). This always wants ONE SPECIFIC guide's roster regardless of who is
 /// viewing — the HOD editing guide X's target needs guide X's students, not
-/// everyone's — so it uses the same one-equality-filter query
-/// [liveRosterCount] already uses, with no special-casing for the HOD.
+/// everyone's — so it uses the same owner-narrowed scoped query
+/// [liveRosterCount] uses ([_ownedStudents]), with no special-casing for the
+/// HOD (his scope is simply every student).
 Future<List<StudentValue>> liveRosterWithValues({
   required String guideId,
   required String metric,
 }) async {
-  final db = FirebaseFirestore.instance;
-  final users = await db.collection('users').where('guideId', isEqualTo: guideId).get();
+  final users = await _ownedStudents(guideId);
 
   if (metric == kMetricChanting) {
-    return users.docs.map((u) {
+    return users.map((u) {
       final v = u.data()['commitmentRounds'];
       return StudentValue(
         uid: u.id,
@@ -963,8 +988,9 @@ Future<List<StudentValue>> liveRosterWithValues({
   }
 
   final out = <StudentValue>[];
-  for (final u in users.docs) {
-    final value = await liveValueForStudent(uid: u.id, metric: metric);
+  for (final u in users) {
+    final value =
+        await liveValueForStudent(uid: u.id, metric: metric, studentDoc: u);
     out.add(StudentValue(
       uid: u.id,
       name: (u.data()['name'] ?? 'Unknown').toString(),

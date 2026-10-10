@@ -4,9 +4,8 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../Services/MissingReportNotification.dart';
-import '../Services/UpdateFCM.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
-import '../utils/GuideRoster.dart';
 import '../utils/PlanningQueries.dart';
 import 'StudentProfilePage.dart';
 
@@ -63,15 +62,16 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
   Future<void> _load() async {
     if (mounted) setState(() => _loading = true);
 
-    final guide = await UpdateTokenService().getSavedGuide();
-    final students = await scopedStudents(guide ?? '');
+    final profile = AdminProfileProvider.require();
+    final guide = profile.displayName;
+    final students = await scopedStudents();
 
     if (students == null) {
       // Fail closed — show nothing rather than another guide's students.
       if (!mounted) return;
       setState(() {
         _guide = guide;
-        _isHod = guide == kHodGuideId;
+        _isHod = profile.isHod;
         _rosterFailed = true;
         _priority = [];
         _inScope = 0;
@@ -90,18 +90,15 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
     List<QueryDocumentSnapshot> lit = [];
 
     try {
-      logs = (await scopedInteractionLogsStream(guide ?? '').first).docs;
+      logs = (await scopedInteractionLogsStream().first).docs;
     } catch (_) {/* a missing signal must not blank the screen */}
     try {
-      associations = (await scopedAssociationsStream(guide ?? '').first).docs;
+      associations = (await scopedAssociationsStream().first).docs;
     } catch (_) {}
     try {
-      // Scoped by the roster already loaded above, not by who wrote the
+      // Scoped by the viewer's visible students, not by who wrote the
       // assessment — a reassigned student keeps their history.
-      lit = await litAssessmentsForRoster(
-        guide ?? '',
-        students.map((s) => s.uid).toList(),
-      );
+      lit = await litAssessmentsForRoster();
     } catch (_) {}
 
     // Bucket by studentUid once, so the per-student pass is a map lookup
@@ -157,7 +154,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
     if (!mounted) return;
     setState(() {
       _guide = guide;
-      _isHod = guide == kHodGuideId;
+      _isHod = profile.isHod;
       _rosterFailed = false;
       _priority = result;
       _inScope = students.length;

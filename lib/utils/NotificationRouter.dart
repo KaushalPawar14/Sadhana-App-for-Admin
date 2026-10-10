@@ -8,6 +8,7 @@ import '../Pages/FlaggedMessages.dart';
 import '../Pages/CompoundGoalRoadmapPage.dart';
 import '../Pages/SubmissionStatus.dart';
 import '../Pages/GuideCalendarPage.dart';
+import 'AdminProfile.dart';
 
 /// Notification deep-linking — Master Task, 2026-09-10, Part 3.
 ///
@@ -159,15 +160,19 @@ void _dispatch(Map<String, dynamic> data) {
         final guideId = str('guideId');
         final targetId = str('targetId');
         if (guideId.isEmpty || targetId.isEmpty) return;
+        // This notification is sent TO the owning admin about their OWN
+        // target (`onCompoundProposalWritten` in `functions/goals.js`
+        // notifies `event.params.guideId`) — the review (HOD) view is only
+        // for a HOD opening someone else's target, decided by role, never
+        // by a special id.
+        final me = AdminProfileProvider.current;
+        final reviewing = me != null && me.isHod && me.id != guideId;
         navState.push(MaterialPageRoute(
           builder: (_) => CompoundGoalRoadmapPage(
             guideId: guideId,
             targetId: targetId,
-            // This notification is sent TO the guide about their OWN
-            // target (`onCompoundProposalWritten` in `functions/goals.js`
-            // notifies `event.params.guideId`, never the HOD about
-            // someone else's) — always false from this entry point.
-            isHod: false,
+            isHod: reviewing,
+            hodUid: reviewing ? me.id : null,
           ),
         ));
         break;

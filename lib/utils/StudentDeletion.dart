@@ -134,6 +134,20 @@
 /// registration).
 ///
 /// ---------------------------------------------------------------------------
+/// Role-based hierarchy (Guide app conversion)
+/// ---------------------------------------------------------------------------
+/// Only a student the signed-in admin can manage may be deleted
+/// ([StudentScope.canManage] on the student's own `users` doc; a HOD may delete
+/// anyone). The Firestore steps below only run what that admin's rules allow:
+/// every query that lists documents to delete carries the scope filter
+/// ([StudentScope.constrainForStudent]) so the security rules can prove it, and
+/// `users/{uid}` is deleted LAST because the uid-path collections' rules read
+/// it (`canManageStudent`). Collections with no scope stamp (friends,
+/// friendGroups, friendRequests, studentKeyAliases, voiceRooms, boards) are
+/// attempted as before; where the rules refuse them (HOD-only) the step is
+/// reported as failed in [StudentDeletionResult.steps], not swallowed.
+///
+/// ---------------------------------------------------------------------------
 /// "Batched/transactional" — what this actually does, and why not a real
 /// Firestore transaction
 /// ---------------------------------------------------------------------------
@@ -154,6 +168,8 @@ library;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+
+import 'StudentScope.dart';
 
 /// Own local copy — matches `GoalCompoundQueries.dart`'s own
 /// `kFunctionsRegion` constant, not shared, per this project's established
@@ -290,6 +306,9 @@ const List<String> kDeletionCrossReferenceCaveats = [
 /// Checks whether any OTHER student (different uid) currently has the exact
 /// same `name`. Five collections below can only be addressed by name, so a
 /// collision means this deletion cannot safely proceed at all.
+///
+/// A non-HOD can only list the students they may see (scoped queries), so the
+/// check covers those; names are unique by registration (`checkNameAvailable`).
 Future<String?> checkStudentNameCollision({
   required String uid,
   required String name,
@@ -297,10 +316,11 @@ Future<String?> checkStudentNameCollision({
   final trimmed = name.trim();
   if (trimmed.isEmpty) return null;
 
-  final snap = await FirebaseFirestore.instance
+  final base = FirebaseFirestore.instance
       .collection('users')
-      .where('name', isEqualTo: trimmed)
-      .get();
+      .where('name', isEqualTo: trimmed);
+  final snap =
+      await StudentScope.mergedGet(StudentScope.current().studentQueries(base));
 
   final others = snap.docs.where((d) => d.id != uid).toList();
   if (others.isEmpty) return null;
@@ -322,9 +342,16 @@ Future<void> _batchDelete(List<DocumentReference> refs) async {
   }
 }
 
+/// [scope] narrows the listing so the rules can prove it (name-keyed history
+/// sub-collections such as `dates`); null = a uid-path sub-collection.
 Future<int> _deleteSubcollection(
-    DocumentReference<Map<String, dynamic>> parent, String name) async {
-  final snap = await parent.collection(name).get();
+  DocumentReference<Map<String, dynamic>> parent,
+  String name, {
+  Query<Map<String, dynamic>> Function(Query<Map<String, dynamic>>)? scope,
+}) async {
+  Query<Map<String, dynamic>> q = parent.collection(name);
+  if (scope != null) q = scope(q);
+  final snap = await q.get();
   if (snap.docs.isEmpty) return 0;
   await _batchDelete(snap.docs.map((d) => d.reference).toList());
   return snap.docs.length;
@@ -336,24 +363,37 @@ Future<int> _deleteSubcollection(
 Future<int> _deleteDocDeep(
   DocumentReference<Map<String, dynamic>> ref, {
   List<String> subcollections = const [],
+  Query<Map<String, dynamic>> Function(Query<Map<String, dynamic>>)? scope,
 }) async {
   var count = 0;
   for (final sub in subcollections) {
-    count += await _deleteSubcollection(ref, sub);
+    count += await _deleteSubcollection(ref, sub, scope: scope);
   }
-  final existed = (await ref.get()).exists;
+  // A scoped rule may refuse to read a document that does not exist; the
+  // delete below is what matters, so an unreadable doc is counted as present.
+  var existed = true;
+  try {
+    existed = (await ref.get()).exists;
+  } catch (_) {}
   await ref.delete();
   if (existed) count += 1;
   return count;
 }
 
 Future<int> _deleteWhereEquals(
-    String collection, String field, String value) async {
+  String collection,
+  String field,
+  String value, {
+  StudentRef? scopeTo,
+}) async {
   if (value.isEmpty) return 0;
-  final snap = await FirebaseFirestore.instance
+  Query<Map<String, dynamic>> q = FirebaseFirestore.instance
       .collection(collection)
-      .where(field, isEqualTo: value)
-      .get();
+      .where(field, isEqualTo: value);
+  if (scopeTo != null) {
+    q = StudentScope.current().constrainForStudent(q, scopeTo);
+  }
+  final snap = await q.get();
   if (snap.docs.isEmpty) return 0;
   await _batchDelete(snap.docs.map((d) => d.reference).toList());
   return snap.docs.length;
@@ -390,6 +430,26 @@ Future<StudentDeletionResult> deleteStudentEverywhere({
   required String name,
 }) async {
   final trimmedName = name.trim();
+  final firestore = FirebaseFirestore.instance;
+  final scope = StudentScope.current();
+
+  // The student must be one this admin can manage (a HOD: any). Read the
+  // student's own doc by id — that is also what scopes every query below.
+  final userDoc = await firestore.collection('users').doc(uid).get();
+  if (!userDoc.exists) {
+    return const StudentDeletionResult(
+      refused: true,
+      refusalReason: 'This student record no longer exists, so it cannot be '
+          'deleted from here. Ask the HOD to clear any leftovers.',
+    );
+  }
+  final ref = StudentRef.fromDoc(userDoc);
+  if (!scope.canManage(ref)) {
+    return const StudentDeletionResult(
+      refused: true,
+      refusalReason: 'Not authorised to delete this student.',
+    );
+  }
 
   final collision = await checkStudentNameCollision(uid: uid, name: name);
   if (collision != null) {
@@ -409,7 +469,8 @@ Future<StudentDeletionResult> deleteStudentEverywhere({
   }
 
   final steps = <DeletionStepResult>[];
-  final firestore = FirebaseFirestore.instance;
+  Query<Map<String, dynamic>> scoped(Query<Map<String, dynamic>> q) =>
+      scope.constrainForStudent(q, ref);
 
   // Name-keyed documents — safe now that the collision check above passed.
   if (trimmedName.isNotEmpty) {
@@ -419,23 +480,25 @@ Future<StudentDeletionResult> deleteStudentEverywhere({
         'sadhana-reports (+ dates)',
         () => _deleteDocDeep(
             firestore.collection('sadhana-reports').doc(trimmedName),
-            subcollections: ['dates'])));
+            subcollections: ['dates'],
+            scope: scoped)));
     steps.add(await _step(
         'hostel-sadhana (+ dates)',
         () => _deleteDocDeep(
             firestore.collection('hostel-sadhana').doc(trimmedName),
-            subcollections: ['dates'])));
-    steps.add(await _step('notification',
-        () => _deleteDocDeep(firestore.collection('notification').doc(trimmedName))));
+            subcollections: ['dates'],
+            scope: scoped)));
+    // The student's own token doc, deleted by name only — never read.
+    steps.add(await _step('notification', () async {
+      await firestore.collection('notification').doc(trimmedName).delete();
+      return 0;
+    }));
     steps.add(await _step('competition',
         () => _deleteDocDeep(firestore.collection('competition').doc(trimmedName))));
   }
 
-  // uid-keyed direct documents.
-  steps.add(await _step(
-      'users (+ dailyReading, questions)',
-      () => _deleteDocDeep(firestore.collection('users').doc(uid),
-          subcollections: ['dailyReading', 'questions'])));
+  // uid-keyed direct documents (the uid is in the path; `users/{uid}` itself
+  // goes last — these collections' rules read it).
   steps.add(await _step('holisticSuggestions',
       () => _deleteDocDeep(firestore.collection('holisticSuggestions').doc(uid))));
   steps.add(await _step('studentServices',
@@ -457,24 +520,31 @@ Future<StudentDeletionResult> deleteStudentEverywhere({
       () => _deleteDocDeep(firestore.collection('friendGroups').doc(uid),
           subcollections: ['groups'])));
 
-  // Queried by a uid / studentUid field.
-  steps.add(await _step('booksRead', () => _deleteWhereEquals('booksRead', 'uid', uid)));
-  steps.add(await _step('bookmarks', () => _deleteWhereEquals('bookmarks', 'uid', uid)));
-  steps.add(await _step('rduaProgress', () => _deleteWhereEquals('rduaProgress', 'uid', uid)));
+  // Queried by a uid / studentUid field — scope-stamped collections carry the
+  // single-student filter so the rules can prove the listing.
+  steps.add(await _step('booksRead',
+      () => _deleteWhereEquals('booksRead', 'uid', uid, scopeTo: ref)));
+  steps.add(await _step('bookmarks',
+      () => _deleteWhereEquals('bookmarks', 'uid', uid, scopeTo: ref)));
+  steps.add(await _step('rduaProgress',
+      () => _deleteWhereEquals('rduaProgress', 'uid', uid, scopeTo: ref)));
   steps.add(await _step('interactionLogs',
-      () => _deleteWhereEquals('interactionLogs', 'studentUid', uid)));
+      () => _deleteWhereEquals('interactionLogs', 'studentUid', uid, scopeTo: ref)));
   steps.add(await _step('litAssessments',
-      () => _deleteWhereEquals('litAssessments', 'studentUid', uid)));
+      () => _deleteWhereEquals('litAssessments', 'studentUid', uid, scopeTo: ref)));
   steps.add(await _step('flaggedChatMessages',
-      () => _deleteWhereEquals('flaggedChatMessages', 'studentUid', uid)));
-  steps.add(await _step(
-      'associations', () => _deleteWhereEquals('associations', 'studentUid', uid)));
+      () => _deleteWhereEquals('flaggedChatMessages', 'studentUid', uid, scopeTo: ref)));
+  steps.add(await _step('associations',
+      () => _deleteWhereEquals('associations', 'studentUid', uid, scopeTo: ref)));
   steps.add(await _step(
       'expeditionRegistrations',
-      () => _deleteWhereEquals('expeditionRegistrations', 'studentUid', uid)));
+      () => _deleteWhereEquals('expeditionRegistrations', 'studentUid', uid,
+          scopeTo: ref)));
   steps.add(await _step(
       'chantingChallengeContributions',
-      () => _deleteWhereEquals('chantingChallengeContributions', 'studentUid', uid)));
+      () => _deleteWhereEquals(
+          'chantingChallengeContributions', 'studentUid', uid,
+          scopeTo: ref)));
   steps.add(await _step('studentKeyAliases',
       () => _deleteWhereEquals('studentKeyAliases', 'studentUid', uid)));
   steps.add(await _step('friendRequests', () async {
@@ -501,6 +571,12 @@ Future<StudentDeletionResult> deleteStudentEverywhere({
     }
     return total;
   }));
+
+  // The student's own document, last.
+  steps.add(await _step(
+      'users (+ dailyReading, questions)',
+      () => _deleteDocDeep(firestore.collection('users').doc(uid),
+          subcollections: ['dailyReading', 'questions'])));
 
   return StudentDeletionResult(
     steps: steps,

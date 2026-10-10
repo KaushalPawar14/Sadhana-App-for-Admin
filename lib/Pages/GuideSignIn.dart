@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../Services/HierarchyApi.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sizer/sizer.dart';
 
@@ -76,7 +77,20 @@ class _GuideSignInPageState extends State<GuideSignInPage> {
       // screen in this app already reads, so nothing downstream needed to
       // change (see `GuideAuthGate.resolveAndPersistIdentity`'s own doc
       // comment).
-      final resolvedGuide = await GuideAuthGate.resolveAndPersistIdentity(email);
+      String? resolvedGuide;
+      try {
+        resolvedGuide = await GuideAuthGate.resolveAndPersistIdentity(email);
+      } on HierarchyException {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        showSnackbar(
+          context,
+          'Could not reach the server. Check your connection and try again.',
+          Colors.red,
+          Icons.error,
+        );
+        return;
+      }
 
       if (resolvedGuide == null) {
         await GuideAuthGate.signOut();
@@ -100,7 +114,7 @@ class _GuideSignInPageState extends State<GuideSignInPage> {
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => CurvedNavBar(resolvedGuide)),
+        MaterialPageRoute(builder: (_) => CurvedNavBar(resolvedGuide!)),
       );
       // Same one-time call SplashScreen itself makes right after its own
       // navigation (main.dart) — this screen is the OTHER place that

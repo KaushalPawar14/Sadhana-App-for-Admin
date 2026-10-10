@@ -59,6 +59,7 @@
 library;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'StudentScope.dart';
 
 const String kStatusAssigned = 'assigned';
 const String kStatusInProgress = 'inProgress';
@@ -174,38 +175,38 @@ class ServiceAssignment {
 CollectionReference<Map<String, dynamic>> _col() =>
     FirebaseFirestore.instance.collection('serviceAssignments');
 
+/// Hierarchy: `serviceAssignments` carry the server-stamped scope fields, so
+/// every read below goes through [StudentScope]'s history helpers (HOD: all;
+/// others: only their visible students' assignments). Only equality filters, so
+/// no composite index; callers sort in memory.
+List<ServiceAssignment> _toAssignments(QuerySnapshot<Map<String, dynamic>> snap) =>
+    snap.docs.map((d) => ServiceAssignment.fromDoc(d.id, d.data())).toList();
+
 /// Every assignment for one student — "by student" (Part 4 item 4), a
 /// single `studentUid ==` equality filter. Includes withdrawn ones; callers
 /// filter those out for an "active" view where that distinction matters.
 Stream<List<ServiceAssignment>> assignmentsForStudentStream(String studentUid) {
-  return _col()
-      .where('studentUid', isEqualTo: studentUid)
-      .snapshots()
-      .map((snap) => snap.docs
-          .map((d) => ServiceAssignment.fromDoc(d.id, d.data()))
-          .toList());
+  return StudentScope.current()
+      .historyStream('serviceAssignments',
+          extraEquals: {'studentUid': studentUid})
+      .map(_toAssignments);
 }
 
 /// Every assignment of one service — "by service" (Part 4 item 4), a single
 /// `serviceNumber ==` equality filter.
 Stream<List<ServiceAssignment>> assignmentsForServiceStream(int serviceNumber) {
-  return _col()
-      .where('serviceNumber', isEqualTo: serviceNumber)
-      .snapshots()
-      .map((snap) => snap.docs
-          .map((d) => ServiceAssignment.fromDoc(d.id, d.data()))
-          .toList());
+  return StudentScope.current()
+      .historyStream('serviceAssignments',
+          extraEquals: {'serviceNumber': serviceNumber})
+      .map(_toAssignments);
 }
 
-/// Every assignment, unfiltered — the Guide app's "Assigned" tab streams
-/// this once and groups/filters client-side (by student, by service, by
-/// this viewer's own roster via [guideCanManageStudent] in
-/// `GuideRoster.dart`), matching `FolkBoysWorkspace._usersQuery()`'s own
-/// established "unfiltered query, client-side scoping" convention.
+/// Every assignment this viewer may see — the Guide app's "Assigned" tab
+/// streams this once and groups/filters client-side (by student, by service).
 Stream<List<ServiceAssignment>> allAssignmentsStream() {
-  return _col().snapshots().map((snap) => snap.docs
-      .map((d) => ServiceAssignment.fromDoc(d.id, d.data()))
-      .toList());
+  return StudentScope.current()
+      .historyStream('serviceAssignments')
+      .map(_toAssignments);
 }
 
 /// Assigns [serviceNumber] to [studentUid]. Guards against a duplicate
@@ -221,10 +222,10 @@ Future<String> assignService({
   required String studentUid,
   required String assignedByGuideId,
 }) async {
-  final existing = await _col()
-      .where('studentUid', isEqualTo: studentUid)
-      .where('serviceNumber', isEqualTo: serviceNumber)
-      .get();
+  final existing = await StudentScope.current().historyGet(
+    'serviceAssignments',
+    extraEquals: {'studentUid': studentUid, 'serviceNumber': serviceNumber},
+  );
 
   for (final doc in existing.docs) {
     if (doc.data()['status'] != kStatusWithdrawn) return doc.id;

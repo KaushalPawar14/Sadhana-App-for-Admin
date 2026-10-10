@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../utils/ColorProvider.dart';
+import '../utils/StudentScope.dart';
 
 class BookReadingScreen extends StatefulWidget {
   const BookReadingScreen({super.key});
@@ -43,9 +44,8 @@ class _CheckSadhanaScreenState extends State<BookReadingScreen> {
           ),
 
           body: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('booksRead')
-                .snapshots(),
+            // Scoped to the students this admin may see (HOD: everything).
+            stream: StudentScope.current().historyStream('booksRead'),
 
             builder: (context, snapshot) {
 

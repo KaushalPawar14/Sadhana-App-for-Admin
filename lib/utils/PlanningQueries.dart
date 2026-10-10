@@ -12,7 +12,7 @@ library;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import 'GuideRoster.dart';
+import 'StudentScope.dart';
 
 /// Monday 00:00 of the current week, and the Monday after it.
 ///
@@ -70,73 +70,37 @@ int daysOverdue(DateTime since, [DateTime? now]) {
   return startOfToday.difference(startOfThen).inDays;
 }
 
-/// `associations` scoped to the viewer: everything for the HOD, one guide's
-/// records for anyone else.
+/// `associations` scoped to the viewer: everything for a HOD, otherwise the
+/// records about the students the signed-in admin may see (the server-stamped
+/// scope fields — see `StudentScope`).
 ///
-/// A single equality filter only — status and dates are matched in Dart so no
+/// Equality filters only — status and dates are matched in Dart so no
 /// composite index is required, matching every other screen in this app.
-Stream<QuerySnapshot> scopedAssociationsStream(String guide) {
-  final collection = FirebaseFirestore.instance.collection('associations');
-
-  return guide == kHodGuideId
-      ? collection.snapshots()
-      : collection.where('guideId', isEqualTo: guide).snapshots();
-}
+///
+/// [guide] is ignored (kept so older call sites still compile): the scope is
+/// always the signed-in admin's own.
+Stream<QuerySnapshot> scopedAssociationsStream([String guide = '']) =>
+    StudentScope.current().historyStream('associations');
 
 /// `interactionLogs` scoped the same way.
-Stream<QuerySnapshot> scopedInteractionLogsStream(String guide) {
-  final collection = FirebaseFirestore.instance.collection('interactionLogs');
+Stream<QuerySnapshot> scopedInteractionLogsStream([String guide = '']) =>
+    StudentScope.current().historyStream('interactionLogs');
 
-  return guide == kHodGuideId
-      ? collection.snapshots()
-      : collection.where('guideId', isEqualTo: guide).snapshots();
-}
-
-/// Firestore rejects a `whereIn` with more than this many values.
-const int _whereInLimit = 30;
-
-/// `litAssessments` for the students on [studentUids], which the caller has
-/// already scoped to the viewer's own roster.
+/// `litAssessments` about the students the signed-in admin may see.
 ///
-/// Scoped **by student, not by assessing guide**. A student reassigned from
-/// one guide to another keeps their history, so their new guide sees the
-/// earlier assessments; scoping on the assessment's own `guideId` would hide
-/// them and silently under-report.
+/// Scoped **by student, not by assessing guide**: a student reassigned from one
+/// admin to another keeps their history, so the new owner sees the earlier
+/// assessments; scoping on the assessment's own `guideId` would hide them and
+/// silently under-report.
 ///
-/// This still never widens LIT across guides: the server only returns rows
-/// for uids the caller already has on their roster. LIT is the most sensitive
-/// data in the system, so the alternative — reading the whole collection and
-/// filtering client-side — was rejected: it would put every student's
-/// assessment on every guide's phone.
-///
-/// A roster larger than [_whereInLimit] is fetched in concurrent chunks,
-/// because Firestore caps the number of values in a single `whereIn`.
-Future<List<QueryDocumentSnapshot>> litAssessmentsForRoster(
-  String guide,
-  List<String> studentUids,
-) async {
-  final collection = FirebaseFirestore.instance.collection('litAssessments');
+/// This never widens LIT: the scope fields restrict the read to the viewer's
+/// own visible students (the rules enforce the same filters). LIT is the most
+/// sensitive data in the system, so reading the whole collection and filtering
+/// client-side is not an option.
+Future<List<QueryDocumentSnapshot>> litAssessmentsForRoster() async =>
+    (await StudentScope.current().historyGet('litAssessments')).docs;
 
-  if (guide == kHodGuideId) {
-    return (await collection.get()).docs;
-  }
-
-  if (studentUids.isEmpty) return const [];
-
-  final chunks = <List<String>>[];
-  for (var i = 0; i < studentUids.length; i += _whereInLimit) {
-    final end = (i + _whereInLimit).clamp(0, studentUids.length);
-    chunks.add(studentUids.sublist(i, end));
-  }
-
-  final snapshots = await Future.wait(
-    chunks.map((chunk) => collection.where('studentUid', whereIn: chunk).get()),
-  );
-
-  return snapshots.expand((snap) => snap.docs).toList();
-}
-
-/// Students visible to [guide] — all of them for the HOD.
+/// Students visible to the signed-in admin — all of them for a HOD.
 ///
 /// Returns uid and name together, because `users` is uid-keyed while
 /// `sadhana-reports`, `notification` and `scorecard` are all name-keyed, so
@@ -144,15 +108,11 @@ Future<List<QueryDocumentSnapshot>> litAssessmentsForRoster(
 ///
 /// Returns null when the roster could not be read, so a caller can tell "no
 /// students" apart from "lookup failed" and fail closed rather than showing
-/// another guide's students.
-Future<List<({String uid, String name})>?> scopedStudents(String guide) async {
+/// another admin's students. [guide] is ignored (kept for older call sites).
+Future<List<({String uid, String name})>?> scopedStudents(
+    [String guide = '']) async {
   try {
-    final snap = guide == kHodGuideId
-        ? await FirebaseFirestore.instance.collection('users').get()
-        : await FirebaseFirestore.instance
-            .collection('users')
-            .where('guideId', isEqualTo: guide)
-            .get();
+    final snap = await StudentScope.current().studentsGet();
 
     final students = <({String uid, String name})>[];
     for (final doc in snap.docs) {
@@ -165,9 +125,9 @@ Future<List<({String uid, String name})>?> scopedStudents(String guide) async {
   }
 }
 
-/// Student display names visible to [guide]. Thin wrapper over
+/// Student display names visible to the signed-in admin. Thin wrapper over
 /// [scopedStudents] so both share one query and one scoping rule.
-Future<Set<String>?> scopedStudentNames(String guide) async {
-  final students = await scopedStudents(guide);
+Future<Set<String>?> scopedStudentNames([String guide = '']) async {
+  final students = await scopedStudents();
   return students?.map((s) => s.name).toSet();
 }

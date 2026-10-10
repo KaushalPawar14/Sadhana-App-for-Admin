@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../Services/UpdateFCM.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/BoardQueries.dart';
 import '../utils/ColorProvider.dart';
-import '../utils/GuideRoster.dart';
 import '../utils/Snackbar.dart';
+import '../utils/StudentScope.dart';
 import 'AbcdeActivityCard.dart';
 import 'HolisticSuggestion.dart';
 import 'InteractionLogger.dart';
@@ -130,47 +130,18 @@ class StudentProfilePage extends StatefulWidget {
 }
 
 class _StudentProfilePageState extends State<StudentProfilePage> {
-  /// Who is looking at this page, resolved once. `null` while loading —
-  /// treated as NOT the HOD and NOT any guide (fails closed), matching
-  /// `Pages/StudentComments.dart`'s own `_canAccess` idiom for exactly this
-  /// same "no guide resolved yet" case.
-  String? _viewerGuide;
-  bool _loadingViewer = true;
+  /// Who is looking at this page — the signed-in admin's profile (role-based
+  /// hierarchy), loaded before any screen is shown.
+  final AdminProfile _viewer = AdminProfileProvider.require();
 
-  bool get _isHod => _viewerGuide == kHodGuideId;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadViewer();
-  }
-
-  Future<void> _loadViewer() async {
-    final guide = await UpdateTokenService().getSavedGuide();
-    if (mounted) {
-      setState(() {
-        _viewerGuide = guide;
-        _loadingViewer = false;
-      });
-    }
-  }
-
-  /// ⚠️ **This is the "sensible default," explicitly not a final decision —
-  /// see this file's header for the real open question about whether
-  /// read-only guides should also lose visibility into existing LIT /
-  /// interaction history, not just the ability to add to it.** HOD always
-  /// true. A guide, true only when [studentGuideId] — the student's CURRENT
-  /// `users/{uid}.guideId`, read fresh from the same stream the rest of this
-  /// page uses — equals the viewer's own identity. Fails closed (false)
-  /// while the viewer identity is still loading, and for an unassigned
-  /// student's blank `studentGuideId` unless the viewer is the HOD.
-  bool _canAct(String studentGuideId) {
-    if (_loadingViewer) return false;
-    if (_isHod) return true;
-    final g = _viewerGuide;
-    if (g == null || g.isEmpty) return false;
-    return studentGuideId.isNotEmpty && studentGuideId == g;
-  }
+  /// Whether the viewer may act on this student: the same rule the server
+  /// enforces ([StudentScope.canManage] — a HOD any student; a Guide his own,
+  /// his Male Enablers' and unassigned males; an Enabler his own and unassigned
+  /// students of his gender). Evaluated on the student's CURRENT assignment,
+  /// read fresh from the same stream the rest of this page uses. For anyone
+  /// else the page stays readable but its controls are inert (see
+  /// [_gatedAction]).
+  bool _canAct(StudentRef student) => StudentScope(_viewer).canManage(student);
 
   /// Wraps an already-built, verbatim-reused section so its controls become
   /// inert when [allowed] is false, without modifying that section's own
@@ -201,10 +172,10 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              "This student is not assigned to you. You can view this page, "
+              "This student is not in your care. You can view this page, "
               "but date of birth, LIT assessment, interaction logging and AI "
-              "suggestions are only available to this student's own guide, "
-              "or the HOD.",
+              "suggestions are only available to the admins who manage this "
+              "student.",
               style: TextStyle(
                 fontSize: 12,
                 height: 1.4,
@@ -352,7 +323,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
   /// allows to edit this student (Part 2 item 3) — same permission gate
   /// `DobCard`/`InteractionLogSection`/etc. already use on this page, not a
   /// new rule invented for this one field.
-  Widget _residenceBadge(String role, bool canAct, String studentGuideId) {
+  Widget _residenceBadge(String role, bool canAct, StudentRef student) {
     final badge = _roleBadge(role);
     if (!canAct) return badge;
 
@@ -360,7 +331,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
       borderRadius: BorderRadius.circular(20),
       onTap: () => _changeResidence(
         currentRole: role,
-        studentGuideId: studentGuideId,
+        student: student,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -388,7 +359,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
   /// stricter standard than that existing precedent.
   Future<void> _changeResidence({
     required String currentRole,
-    required String studentGuideId,
+    required StudentRef student,
   }) async {
     final selected = await showModalBottomSheet<String>(
       context: context,
@@ -420,7 +391,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
 
     if (selected == null || selected == currentRole) return;
 
-    if (!_canAct(studentGuideId)) {
+    if (!_canAct(student)) {
       if (context.mounted) {
         showSnackbar(
           context,
@@ -523,8 +494,8 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
               final role = (data['role'] ?? '').toString();
               final email = (data['email'] ?? '').toString();
               final mobile = (data['mobileNumber'] ?? '').toString();
-              final studentGuideId = (data['guideId'] ?? '').toString().trim();
-              final canAct = _canAct(studentGuideId);
+              final student = StudentRef.fromUser(widget.studentUid, data);
+              final canAct = _canAct(student);
 
               // Manually-added ("offline roster") student — Part 5, this
               // task: no auth account, no email, so a blank Email card would
@@ -585,7 +556,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          _residenceBadge(role, canAct, studentGuideId),
+                          _residenceBadge(role, canAct, student),
                         ],
                       ),
                     ),
@@ -594,7 +565,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: Column(
                         children: [
-                          if (!_loadingViewer && !canAct)
+                          if (!canAct)
                             _readOnlyBanner(colorProvider),
 
                           if (isManual) _manualEntryBanner(),

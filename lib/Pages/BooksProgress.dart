@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../utils/BookProgressData.dart';
 import '../utils/ColorProvider.dart';
+import '../utils/StudentScope.dart';
 
 /// Per-student book reading progress — Phase 4 of the Book Reading redesign
 /// (built 2026-08-23). Reached from the student action sheet's "Books" entry.
@@ -99,9 +100,28 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
   /// streams above, so it renders without waiting on either.
   late final Future<int?> _commitmentFuture;
 
+  /// This student's `booksRead` documents. The student's `users` doc is read
+  /// first so the query carries the scope filter the security rules can prove
+  /// (hierarchy); legacy name-keyed docs have no `uid` and stay excluded.
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _progressStream;
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> _progress() async* {
+    final userDoc =
+        await _firestore.collection('users').doc(widget.studentUid).get();
+    yield* StudentScope.current()
+        .constrainForStudent(
+          _firestore
+              .collection('booksRead')
+              .where('uid', isEqualTo: widget.studentUid),
+          StudentRef.fromDoc(userDoc),
+        )
+        .snapshots();
+  }
+
   @override
   void initState() {
     super.initState();
+    _progressStream = _progress();
     // Both extracted to `utils/BookProgressData.dart` this task — see that
     // file's header for why (Dart's file-level privacy meant these could not
     // be shared as private declarations once the FOLK Boys board needed the
@@ -152,12 +172,9 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
               final config = configSnap.data!;
 
               return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                // Single equality filter. Legacy name-keyed documents carry no
-                // `uid` field and are excluded by construction.
-                stream: _firestore
-                    .collection('booksRead')
-                    .where('uid', isEqualTo: widget.studentUid)
-                    .snapshots(),
+                // `uid` equality (+ scope filter). Legacy name-keyed documents
+                // carry no `uid` field and are excluded by construction.
+                stream: _progressStream,
                 builder: (context, progressSnap) {
                   if (!progressSnap.hasData) {
                     return const Center(child: CircularProgressIndicator());

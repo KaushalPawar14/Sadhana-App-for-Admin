@@ -3,16 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../Services/UpdateFCM.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/SeenMarkers.dart';
 import '../utils/Snackbar.dart';
+import '../utils/StudentScope.dart';
 
 /// Expedition (pilgrimage / retreat) management.
 ///
 /// Tab 1 — trips this guide created (`expeditions`), with registration counts.
-/// Tab 2 — every registration belonging to this guide's students, with the
-/// state of their post-trip reflection.
+/// Tab 2 — every registration belonging to the students this admin may see
+/// (`StudentScope`), with the state of their post-trip reflection.
 class ExpeditionManagerPage extends StatefulWidget {
   const ExpeditionManagerPage({super.key});
 
@@ -47,7 +48,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
   }
 
   Future<void> _loadGuide() async {
-    final guide = await UpdateTokenService().getSavedGuide();
+    final guide = AdminProfileProvider.current?.id;
     if (mounted) setState(() => _selectedGuide = guide);
     // Master Task 2026-09-10, Part 6 — opening this screen is "seen" for
     // newly-submitted reflections (the Tab 2 feed this guide reviews).
@@ -55,6 +56,11 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
       SeenMarkers.markSeen(guide, 'expeditionReflections');
     }
   }
+
+  /// Registrations of the students this admin may see (server-stamped scope
+  /// fields; HOD unfiltered). One query shape for both tabs.
+  Stream<QuerySnapshot<Map<String, dynamic>>> _registrationsStream() =>
+      StudentScope.current().historyStream('expeditionRegistrations');
 
   String _formatTs(dynamic value) {
     if (value is! Timestamp) return "Not set";
@@ -476,10 +482,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
 
         // One registration stream serves every card's count.
         return StreamBuilder<QuerySnapshot>(
-          stream: _firestore
-              .collection('expeditionRegistrations')
-              .where('guideId', isEqualTo: guide)
-              .snapshots(),
+          stream: _registrationsStream(),
           builder: (context, regSnap) {
             final allRegs = regSnap.data?.docs ?? [];
 
@@ -608,10 +611,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
 
   Widget _buildRegistrations(String guide) {
     return StreamBuilder<QuerySnapshot>(
-      stream: _firestore
-          .collection('expeditionRegistrations')
-          .where('guideId', isEqualTo: guide)
-          .snapshots(),
+      stream: _registrationsStream(),
       builder: (context, regSnap) {
         if (regSnap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -623,11 +623,10 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
           return const Center(child: Text("No registrations yet"));
         }
 
+        // Trips are global content: a student of this admin may have joined a
+        // trip another admin created, so every trip title is read here.
         return StreamBuilder<QuerySnapshot>(
-          stream: _firestore
-              .collection('expeditions')
-              .where('createdBy', isEqualTo: guide)
-              .snapshots(),
+          stream: _firestore.collection('expeditions').snapshots(),
           builder: (context, tripSnap) {
             final titles = <String, String>{};
             for (final doc in tripSnap.data?.docs ?? []) {
