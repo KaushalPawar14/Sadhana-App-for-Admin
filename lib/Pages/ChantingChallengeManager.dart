@@ -247,12 +247,12 @@ class _ChantingChallengeManagerPageState
                                   _selectedGuideIds.remove(g);
                                 }
                               }),
-                              selectedColor: const Color(0xFF00695C)
+                              selectedColor: context.g.brass
                                   .withValues(alpha: .15),
-                              checkmarkColor: const Color(0xFF00695C),
+                              checkmarkColor: context.g.brass,
                               labelStyle: TextStyle(
                                 color: selected
-                                    ? const Color(0xFF00695C)
+                                    ? context.g.brass
                                     : context.g.text,
                                 fontWeight: selected
                                     ? FontWeight.w700
@@ -291,7 +291,7 @@ class _ChantingChallengeManagerPageState
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00695C)),
+                    backgroundColor: context.g.brass),
                 onPressed: () {
                   final parsed = int.tryParse(rounds.trim());
                   if (name.trim().isEmpty) {
@@ -565,13 +565,7 @@ class _ChantingChallengeManagerPageState
         color: context.g.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: colour.withValues(alpha: .35)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: .05),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          )
-        ],
+        boxShadow: context.g.cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -738,7 +732,7 @@ class _ChantingChallengeManagerPageState
                     TextButton(
                       onPressed: () => _setStatus(docId, 'active'),
                       style: TextButton.styleFrom(
-                          foregroundColor: const Color(0xFF00695C)),
+                          foregroundColor: context.g.brass),
                       child: const Text("Reopen"),
                     ),
                   if (_isHod || (data['createdBy'] ?? '').toString() ==
@@ -789,7 +783,7 @@ class _ChantingChallengeManagerPageState
             ),
           ),
           floatingActionButton: FloatingActionButton.extended(
-                  backgroundColor: const Color(0xFF00695C),
+                  backgroundColor: context.g.brass,
                   onPressed: _sending ? null : _openCreateSheet,
                   icon: _sending
                       ? SizedBox(
@@ -1002,15 +996,15 @@ class ChallengeContributionsPage extends StatelessWidget {
                             height: 38,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: const Color(0xFF00695C).withValues(alpha: .10),
+                              color: context.g.brass.withValues(alpha: .10),
                             ),
                             child: Center(
                               child: Text(
                                 "$rounds",
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF00695C),
+                                  color: context.g.brass,
                                 ),
                               ),
                             ),

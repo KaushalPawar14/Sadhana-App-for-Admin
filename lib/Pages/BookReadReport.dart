@@ -1,13 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
-import '../utils/AdminProfile.dart';
-import '../utils/ColorProvider.dart';
-import '../utils/StudentScope.dart';
-import '../theme/GuideTheme.dart';
-import '../widgets/GuideSurface.dart';
 import '../theme/GuideColors.dart';
+import '../theme/GuideTheme.dart';
+import '../theme/GuideTokens.dart';
+import '../utils/AdminProfile.dart';
+import '../utils/StudentScope.dart';
+import '../widgets/GuideSurface.dart';
+import '../widgets/GuideTiles.dart';
 
 class BookReadingScreen extends StatefulWidget {
   const BookReadingScreen({super.key});
@@ -18,173 +18,109 @@ class BookReadingScreen extends StatefulWidget {
 
 class _CheckSadhanaScreenState extends State<BookReadingScreen> {
 
+  Widget _message(String text) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(text, textAlign: TextAlign.center, style: context.gText.body),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     // Legacy name-keyed `booksRead/{student}/{level}` data: HOD only (app and rules).
     if (!AdminProfileProvider.viewerIsHod) return const _HodOnlyScreen();
-    return Consumer<ColorProvider>(
-      builder: (context, colorProvider, child) {
+    final g = context.g;
+    final t = context.gText;
 
-        return GuideScaffold(
+    return GuideScaffold(
+      body: Column(
+        children: [
+          const GuideTopBar(title: 'Books read'),
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              // Scoped to the students this admin may see (HOD: everything).
+              stream: StudentScope.current().historyStream('booksRead'),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-          appBar: AppBar(
-            backgroundColor: colorProvider.color,
-            elevation: 0,
-            leading: IconButton(
-              icon: Icon(
-                Icons.arrow_back,
-                color: colorProvider.secondColor,
-              ),
-              onPressed: () {
-                Navigator.pop(context);
+                if (snapshot.hasError) {
+                  return _message("Error: ${snapshot.error}");
+                }
+
+                if (!snapshot.hasData) return _message("No books found.");
+
+                // Real student documents are keyed by student name. The newer
+                // per-book progress documents use "{uid}_{level}_{bookKey}", so
+                // any id containing an underscore is not a student.
+                final books = snapshot.data!.docs
+                    .where((doc) => !doc.id.contains('_'))
+                    .toList();
+
+                if (books.isEmpty) return _message("No books found.");
+
+                return ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(
+                      GuideSpace.pagePadding, 12, GuideSpace.pagePadding, 28),
+                  itemCount: books.length,
+                  physics: const BouncingScrollPhysics(),
+                  itemBuilder: (context, index) {
+                    final name = books[index].id;
+                    final initial = name.isNotEmpty ? name[0].toUpperCase() : "?";
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: GuideCard(
+                        padding: EdgeInsets.zero,
+                        clip: true,
+                        child: InkWell(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => StudentDetailScreen(student: name),
+                              ),
+                            );
+                          },
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: 64),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 40,
+                                    height: 40,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                        color: g.chipBackground, shape: BoxShape.circle),
+                                    child: Text(initial,
+                                        style: t.bodyStrong
+                                            .copyWith(fontSize: 16, fontWeight: FontWeight.w700)),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(name,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: t.cardTitle),
+                                  ),
+                                  Icon(Icons.chevron_right_rounded, color: g.mutedText),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                );
               },
             ),
-            title: Text(
-              'Books Read',
-              style: TextStyle(
-                color: colorProvider.secondColor,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
           ),
-
-          body: StreamBuilder<QuerySnapshot>(
-            // Scoped to the students this admin may see (HOD: everything).
-            stream: StudentScope.current().historyStream('booksRead'),
-
-            builder: (context, snapshot) {
-
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(
-                  child: CircularProgressIndicator(),
-                );
-              }
-
-              if (snapshot.hasError) {
-                return Center(
-                  child: Text("Error: ${snapshot.error}"),
-                );
-              }
-
-              if (!snapshot.hasData) {
-                return const Center(
-                  child: Text("No books found."),
-                );
-              }
-
-              // Real student documents are keyed by student name. The newer
-              // per-book progress documents use "{uid}_{level}_{bookKey}", so
-              // any id containing an underscore is not a student.
-              final books = snapshot.data!.docs
-                  .where((doc) => !doc.id.contains('_'))
-                  .toList();
-
-              if (books.isEmpty) {
-                return const Center(
-                  child: Text("No books found."),
-                );
-              }
-
-              return GridView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: books.length,
-                physics: const BouncingScrollPhysics(),
-
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 200, // max width of each card
-                  crossAxisSpacing: 14,
-                  mainAxisSpacing: 14,
-                  mainAxisExtent: 180, // flexible height
-                ),
-
-                itemBuilder: (context, index) {
-
-                  final name = books[index].id;
-                  final initial = name.isNotEmpty ? name[0].toUpperCase() : "?";
-
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(20),
-
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => StudentDetailScreen(student: name),
-                        ),
-                      );
-                    },
-
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        gradient: LinearGradient(
-                          colors: [
-                            context.g.brass,
-                            context.g.brass.withValues(alpha: .14),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: .2),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          )
-                        ],
-                      ),
-
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-
-                          /// Avatar
-                          CircleAvatar(
-                            radius: 30,
-                            backgroundColor: Colors.white.withValues(alpha: .4),
-                            child: Text(
-                              initial,
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 12),
-
-                          /// Name
-                          Flexible(
-                            child: Text(
-                              name,
-                              textAlign: TextAlign.center,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 8),
-
-                          const Icon(
-                            Icons.arrow_forward_ios,
-                            size: 14,
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              );
-            },
-          ),
-        );
-      },
+        ],
+      ),
     );
   }
 }
@@ -243,32 +179,17 @@ class StudentDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     // Legacy name-keyed `booksRead/{student}/{level}` data: HOD only (app and rules).
     if (!AdminProfileProvider.viewerIsHod) return const _HodOnlyScreen();
+    final g = context.g;
+    final t = context.gText;
 
-    return Consumer<ColorProvider>(
-      builder: (context, colorProvider, child) {
-
-        return GuideScaffold(
-
-          appBar: AppBar(
-            backgroundColor: colorProvider.color,
-            elevation: 0,
-            leading: IconButton(
-              icon: Icon(Icons.arrow_back,
-                  color: colorProvider.secondColor),
-              onPressed: () => Navigator.pop(context),
-            ),
-            title: Text(
-              student,
-              style: TextStyle(
-                color: colorProvider.secondColor,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-
-          body: Padding(
-            padding: const EdgeInsets.all(16),
+    return GuideScaffold(
+      body: Column(
+        children: [
+          GuideTopBar(title: student, titleMaxLines: 2),
+          Expanded(
             child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(
+                  GuideSpace.pagePadding, 12, GuideSpace.pagePadding, 28),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -280,51 +201,36 @@ class StudentDetailScreen extends StatelessWidget {
 
                       if (!snapshot.hasData) return const SizedBox();
 
-                      return Container(
+                      return GuideHeroPanel(
                         padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(18),
-                          gradient: LinearGradient(
-                            colors: [context.g.brass, context.g.brass],
-                          ),
-                        ),
                         child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-
-                            Icon(Icons.menu_book, color: context.g.onPrimary, size: 30),
-
+                            const Icon(Icons.menu_book_outlined,
+                                color: GuideColors.heroLabel, size: 30),
                             const SizedBox(width: 14),
-
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-
-                                  const Text(
-                                    "Currently Reading",
-                                    style: TextStyle(color: GuideColors.heroMuted, fontSize: 14),
-                                  ),
-
+                                  Text("Currently reading",
+                                      style: t.small.copyWith(color: GuideColors.heroMuted)),
                                   const SizedBox(height: 4),
-
                                   Text(
                                     snapshot.data ?? "",
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      color: context.g.surface,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  )
+                                    style: t.cardTitle
+                                        .copyWith(color: GuideColors.heroText, fontSize: 20),
+                                  ),
                                 ],
                               ),
-                            )
+                            ),
                           ],
                         ),
                       );
                     },
                   ),
 
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 22),
 
                   /// BOOK LEVELS
                   StreamBuilder<Map<String, List<Map<String, dynamic>>>>(
@@ -342,133 +248,90 @@ class StudentDetailScreen extends StatelessWidget {
 
                           final levelBooks = entry.value;
 
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 18),
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(
-                                width: 2,
-                                color: colorProvider.secondColor,
-                              ),
-                              color: context.g.surface,
-                            ),
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 14),
+                            child: GuideCard(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
 
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
+                                  GuideLabel(entry.key.toUpperCase()),
 
-                                Text(
-                                  entry.key.toUpperCase(),
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: context.g.success,
-                                    letterSpacing: 1,
-                                  ),
-                                ),
+                                  const SizedBox(height: 12),
 
-                                const SizedBox(height: 12),
-
-                                ...levelBooks.map((book) {
-
-                                  return Container(
-                                    margin: const EdgeInsets.only(bottom: 10),
-                                    padding: const EdgeInsets.all(14),
-
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(14),
-                                      color: context.g.chipBackground,
-                                    ),
-
-                                    child: Row(
-                                      children: [
-
-                                        Container(
-                                          padding: const EdgeInsets.all(8),
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            color: context.g.brass.withValues(alpha: .14),
+                                  ...levelBooks.map((book) {
+                                    final notes = book["notes"] == true;
+                                    return Container(
+                                      width: double.infinity,
+                                      margin: const EdgeInsets.only(bottom: 10),
+                                      padding: const EdgeInsets.all(14),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(14),
+                                        color: g.chipBackground,
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: g.brass.withValues(alpha: .14),
+                                            ),
+                                            child: Icon(Icons.menu_book_outlined,
+                                                size: 18, color: g.brass),
                                           ),
-                                          child: Icon(
-                                            Icons.menu_book,
-                                            size: 18,
-                                            color: context.g.brass,
-                                          ),
-                                        ),
-
-                                        const SizedBox(width: 12),
-
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-
-                                              Text(
-                                                book["name"],
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.w600,
-                                                  fontSize: 15,
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(book["name"], style: t.cardTitle),
+                                                const SizedBox(height: 4),
+                                                Wrap(
+                                                  spacing: 16,
+                                                  runSpacing: 4,
+                                                  children: [
+                                                    Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        Icon(Icons.calendar_today_outlined,
+                                                            size: 12, color: g.mutedText),
+                                                        const SizedBox(width: 4),
+                                                        Text(book["startDate"], style: t.caption),
+                                                      ],
+                                                    ),
+                                                    Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        Icon(
+                                                          notes
+                                                              ? Icons.check_circle_outline
+                                                              : Icons.cancel_outlined,
+                                                          size: 14,
+                                                          color: notes ? g.success : g.danger,
+                                                        ),
+                                                        const SizedBox(width: 4),
+                                                        Text(
+                                                          notes ? "Notes made" : "No notes",
+                                                          style: t.caption.copyWith(
+                                                              color: notes ? g.success : g.danger),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
                                                 ),
-                                              ),
-
-                                              const SizedBox(height: 4),
-
-                                              Row(
-                                                children: [
-
-                                                  Icon(
-                                                    Icons.calendar_today,
-                                                    size: 12,
-                                                    color: context.g.text,
-                                                  ),
-
-                                                  const SizedBox(width: 4),
-
-                                                  Text(
-                                                    book["startDate"],
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: context.g.brass,
-                                                    ),
-                                                  ),
-
-                                                  const SizedBox(width: 16),
-
-                                                  Icon(
-                                                    book["notes"]
-                                                        ? Icons.check_circle
-                                                        : Icons.cancel,
-                                                    size: 14,
-                                                    color: book["notes"]
-                                                        ? context.g.success
-                                                        : context.g.danger,
-                                                  ),
-
-                                                  const SizedBox(width: 4),
-
-                                                  Text(
-                                                    book["notes"]
-                                                        ? "Notes made"
-                                                        : "No notes",
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: book["notes"]
-                                                          ? context.g.success
-                                                          : context.g.danger,
-                                                    ),
-                                                  )
-                                                ],
-                                              )
-                                            ],
+                                              ],
+                                            ),
                                           ),
-                                        )
-                                      ],
-                                    ),
-                                  );
+                                        ],
+                                      ),
+                                    );
 
-                                }).toList()
-                              ],
+                                  }).toList()
+                                ],
+                              ),
                             ),
                           );
 
@@ -480,8 +343,8 @@ class StudentDetailScreen extends StatelessWidget {
               ),
             ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 }
@@ -496,15 +359,22 @@ class _HodOnlyScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GuideScaffold(
-      appBar: AppBar(title: const Text('Books Read')),
-      body: const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'This report is only available to the HOD.',
-            textAlign: TextAlign.center,
+      body: Column(
+        children: [
+          const GuideTopBar(title: 'Books read'),
+          Expanded(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'This report is only available to the HOD.',
+                  textAlign: TextAlign.center,
+                  style: context.gText.body,
+                ),
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

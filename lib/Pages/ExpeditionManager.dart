@@ -87,13 +87,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
       decoration: BoxDecoration(
         color: context.g.surface,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: .05),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          )
-        ],
+        boxShadow: context.g.cardShadow,
       ),
       child: child,
     );

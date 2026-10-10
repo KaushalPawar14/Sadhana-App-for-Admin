@@ -245,13 +245,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
       decoration: BoxDecoration(
         color: context.g.surface,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: .05),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          )
-        ],
+        boxShadow: context.g.cardShadow,
       ),
       child: Row(
         children: [
@@ -461,19 +455,8 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
     }
   }
 
-  Widget _sectionTitle(ColorProvider colorProvider, String text) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: colorProvider.secondColor,
-        ),
-      ),
-    );
-  }
+  Widget _sectionTitle(ColorProvider colorProvider, String text) =>
+      GuideSectionTitle(text);
 
   @override
   Widget build(BuildContext context) {
@@ -514,11 +497,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                       width: double.infinity,
                       padding: const EdgeInsets.only(top: 60, bottom: 40),
                       decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Color(0xff2979ff), Color(0xff5393ff)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
+                        gradient: GuideColors.heroGradient,
                         borderRadius:
                             BorderRadius.vertical(bottom: Radius.circular(35)),
                       ),
@@ -529,8 +508,9 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                             child: Padding(
                               padding: const EdgeInsets.only(left: 16),
                               child: IconButton(
-                                icon: Icon(Icons.arrow_back_ios,
-                                    color: context.g.surface),
+                                icon: const Icon(Icons.arrow_back_ios,
+                                    color: GuideColors.heroText),
+                                tooltip: 'Back',
                                 onPressed: () => Navigator.pop(context),
                               ),
                             ),
@@ -538,23 +518,23 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                           const SizedBox(height: 10),
                           CircleAvatar(
                             radius: 48,
-                            backgroundColor: context.g.onPrimary,
+                            backgroundColor: context.g.brass,
                             child: Text(
                               name.isNotEmpty ? name[0].toUpperCase() : '?',
-                              style: const TextStyle(
+                              style: context.gText.screenTitle.copyWith(
                                 fontSize: 36,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xff2979ff),
+                                color: context.g.onPrimary,
                               ),
                             ),
                           ),
                           const SizedBox(height: 16),
-                          Text(
-                            name,
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: context.g.surface,
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            child: Text(
+                              name,
+                              textAlign: TextAlign.center,
+                              style: context.gText.screenTitle
+                                  .copyWith(color: GuideColors.heroText),
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -737,13 +717,7 @@ class DobCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: context.g.surface,
           borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: .05),
-              blurRadius: 10,
-              offset: const Offset(0, 5),
-            )
-          ],
+          boxShadow: context.g.cardShadow,
         ),
         child: Row(
           children: [
@@ -816,13 +790,7 @@ class InteractionLogSection extends StatelessWidget {
       decoration: BoxDecoration(
         color: context.g.surface,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: .05),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          )
-        ],
+        boxShadow: context.g.cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

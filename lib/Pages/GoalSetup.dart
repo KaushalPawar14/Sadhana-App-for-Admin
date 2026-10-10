@@ -219,7 +219,7 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
                   color: Colors.transparent,
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.event, color: Color(0xFF00695C)),
+                    leading: Icon(Icons.event, color: context.g.brass),
                     title: const Text("Goal ends", style: TextStyle(fontSize: 14.5)),
                     subtitle: Text(
                       _endDate == null
@@ -252,7 +252,7 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
                       ? "Generating with AI…"
                       : "Generate phase plan"),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00695C),
+                    backgroundColor: context.g.brass,
                     foregroundColor: context.g.onPrimary,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),

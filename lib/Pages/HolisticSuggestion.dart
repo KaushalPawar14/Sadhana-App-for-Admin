@@ -393,13 +393,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
           decoration: BoxDecoration(
             color: context.g.surface,
             borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: .05),
-                blurRadius: 10,
-                offset: const Offset(0, 5),
-              )
-            ],
+            boxShadow: context.g.cardShadow,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

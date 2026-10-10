@@ -220,9 +220,7 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
       decoration: BoxDecoration(
         color: context.g.surface,
         borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: .05), blurRadius: 6, offset: const Offset(0, 3)),
-        ],
+        boxShadow: context.g.cardShadow,
       ),
       clipBehavior: Clip.antiAlias,
       // Same ExpansionTile pattern this app already uses elsewhere
@@ -507,9 +505,7 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
       decoration: BoxDecoration(
         color: context.g.surface,
         borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: .05), blurRadius: 6, offset: const Offset(0, 3)),
-        ],
+        boxShadow: context.g.cardShadow,
       ),
       clipBehavior: Clip.antiAlias,
       child: Theme(

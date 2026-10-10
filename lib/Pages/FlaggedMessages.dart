@@ -389,13 +389,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
             isPastoral ?
                 Border.all(color: context.g.chipBackground) :
                 Border.all(color: context.g.border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: .05),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: context.g.cardShadow,
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),

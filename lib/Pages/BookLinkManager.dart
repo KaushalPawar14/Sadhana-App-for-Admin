@@ -7,6 +7,7 @@ import '../utils/DropboxLink.dart';
 import '../utils/Snackbar.dart';
 import 'PodcastLinkManager.dart';
 import '../theme/GuideTheme.dart';
+import '../theme/GuideTokens.dart';
 import '../widgets/GuideSurface.dart';
 
 /// Book Link Manager
@@ -222,13 +223,7 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
       decoration: BoxDecoration(
         color: context.g.surface,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: .05),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
+        boxShadow: context.g.cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -278,13 +273,7 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
       decoration: BoxDecoration(
         color: context.g.surface,
         borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: .05),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          )
-        ],
+        boxShadow: context.g.cardShadow,
       ),
       child: Row(
         children: [
@@ -356,19 +345,10 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
       margin: const EdgeInsets.only(bottom: 22),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [context.g.brass.withValues(alpha: .14), context.g.brass.withValues(alpha: .14)],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: .06),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          )
-        ],
+        color: context.g.surface,
+        borderRadius: BorderRadius.circular(GuideShape.cardRadius),
+        border: Border.all(color: context.g.border),
+        boxShadow: context.g.cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

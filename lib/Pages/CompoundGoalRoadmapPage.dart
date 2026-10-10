@@ -344,7 +344,7 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
                       ? "Send suggestion"
                       : "Regenerate roadmap"),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00695C),
+                backgroundColor: context.g.brass,
                 foregroundColor: context.g.onPrimary,
               ),
             ),

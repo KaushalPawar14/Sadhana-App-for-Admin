@@ -385,7 +385,6 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
   // UI
   // ---------------------------------------------------------------------------
 
-  static const Color _ink = Color(0xFF37474F);
 
   Color _directionColour(String direction) {
     switch (direction) {
@@ -481,10 +480,10 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: _ink,
+                    color: context.g.text,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -545,15 +544,15 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
           decoration: BoxDecoration(
-            color: const Color(0xFF00695C).withValues(alpha: .10),
+            color: context.g.brass.withValues(alpha: .10),
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text(
             _bracket,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11.5,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF00695C),
+              color: context.g.brass,
             ),
           ),
         ),
@@ -583,7 +582,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
       lines.add(const SizedBox(height: 8));
       lines.add(_Sparkline(
         series: _chantSeries,
-        colour: const Color(0xFF00695C),
+        colour: context.g.brass,
         unitLabel: "rounds",
       ));
     }
@@ -624,7 +623,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
       lines.add(const SizedBox(height: 8));
       lines.add(_Sparkline(
         series: _readingSeries,
-        colour: const Color(0xFF6A1B9A),
+        colour: context.g.eventProgram,
         unitLabel: "min",
       ));
     }
@@ -706,13 +705,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
       decoration: BoxDecoration(
         color: context.g.surface,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: .05),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          )
-        ],
+        boxShadow: context.g.cardShadow,
       ),
       child: _loading
           ? const Padding(
@@ -735,35 +728,35 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
                 _row(
                   letter: "A",
                   label: "ASSOCIATION",
-                  colour: const Color(0xFFEF6C00),
+                  colour: context.g.warning,
                   lines: _associationLines(),
                 ),
                 const Divider(height: 1),
                 _row(
                   letter: "B",
                   label: "BOOKS",
-                  colour: const Color(0xFF6A1B9A),
+                  colour: context.g.eventProgram,
                   lines: _bookLines(),
                 ),
                 const Divider(height: 1),
                 _row(
                   letter: "C",
                   label: "CHANTING",
-                  colour: const Color(0xFF00695C),
+                  colour: context.g.brass,
                   lines: _chantingLines(),
                 ),
                 const Divider(height: 1),
                 _row(
                   letter: "D",
                   label: "DEVOTIONAL SERVICE",
-                  colour: const Color(0xFFC62828),
+                  colour: context.g.danger,
                   lines: _serviceLines(),
                 ),
                 const Divider(height: 1),
                 _row(
                   letter: "E",
                   label: "EXPEDITIONS",
-                  colour: const Color(0xFF1565C0),
+                  colour: context.g.eventExam,
                   lines: _expeditionLines(),
                 ),
                 if (_hasAnyReports) ...[
@@ -781,7 +774,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
                           ? "Hide 30-day trend"
                           : "Show 30-day trend"),
                       style: TextButton.styleFrom(
-                          foregroundColor: const Color(0xFF00695C)),
+                          foregroundColor: context.g.brass),
                     ),
                   ),
                 ],
