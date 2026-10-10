@@ -2,15 +2,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../Services/HierarchyApi.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:sizer/sizer.dart';
 
 import '../Services/UpdateToken.dart';
 import '../utils/BottomNavBar.dart';
 import '../utils/GuideAuthGate.dart';
 import '../utils/NotificationRouter.dart';
 import '../utils/Snackbar.dart';
-import '../theme/GuideTheme.dart';
-import '../widgets/GuideSurface.dart';
+import '../widgets/GuideGate.dart';
 
 /// The Guide app's entire "login" (Master Task, 2026-09-14 — "Replace the
 /// Guide app's name picker with Google Sign-In, and add admin management").
@@ -140,88 +138,13 @@ class _GuideSignInPageState extends State<GuideSignInPage> {
 
   @override
   Widget build(BuildContext context) {
-    return GuideScaffold(
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8.w),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'FOLK Guides',
-                  style: TextStyle(fontSize: 22.sp, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 1.5.h),
-                Text(
-                  'Sign in with your registered Google account to continue.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11.sp, color: context.g.mutedText),
-                ),
-                SizedBox(height: 4.h),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: _isLoading ? null : _signInWithGoogle,
-                    style: OutlinedButton.styleFrom(
-                      backgroundColor: context.g.onPrimary,
-                      side: const BorderSide(color: Color(0xFFD2D2D4)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const _GoogleLogo(),
-                              SizedBox(width: 3.w),
-                              Text(
-                                'Sign in with Google',
-                                style: TextStyle(
-                                  color: context.g.text,
-                                  fontSize: 13.sp,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Same lightweight text-based stand-in the Student app's `Welcome.dart`
-/// uses in place of the official Google branding asset.
-class _GoogleLogo extends StatelessWidget {
-  const _GoogleLogo();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      width: 20,
-      height: 20,
-      child: Center(
-        child: Text(
-          'G',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF4285F4),
-          ),
-        ),
+    return GuideGate(
+      icon: Icons.self_improvement_outlined,
+      title: 'FOLK Guides',
+      message: 'Sign in with your registered Google account to continue.',
+      action: GuideGoogleButton(
+        onPressed: _signInWithGoogle,
+        loading: _isLoading,
       ),
     );
   }

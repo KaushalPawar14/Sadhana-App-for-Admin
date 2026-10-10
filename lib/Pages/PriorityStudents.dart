@@ -10,7 +10,7 @@ import '../utils/PlanningQueries.dart';
 import 'StudentProfilePage.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
-import '../theme/GuideColors.dart';
+import '../widgets/GuideTiles.dart';
 
 /// Priority students (Phase 6, half 1, item 4).
 ///
@@ -350,56 +350,16 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
 
   Widget _summaryCard() {
     final count = _priority.length;
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        gradient: LinearGradient(
-          colors: count == 0
-              ? [context.g.success, context.g.success]
-              : [context.g.warning, context.g.warning],
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            count == 0 ? Icons.check_circle : Icons.flag,
-            color: context.g.surface,
-            size: 34,
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  count == 0
-                      ? "Nobody flagged"
-                      : "$count need attention",
-                  style: TextStyle(
-                    fontSize: 22,
-                    color: context.g.surface,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  _inScope > 0 ? "out of $_inScope students" : "",
-                  style: const TextStyle(color: GuideColors.heroMuted, fontSize: 13),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  _isHod
-                      ? "All students (HOD view)"
-                      : "Your students · ${_guide ?? ''}",
-                  style: const TextStyle(color: GuideColors.heroMuted, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return GuideSummaryBanner(
+      tone: count == 0 ? GuideTone.good : GuideTone.warn,
+      icon: count == 0 ? Icons.check_circle_outline : Icons.flag_outlined,
+      title: count == 0 ? "Nobody flagged" : "$count need attention",
+      lines: [
+        if (_inScope > 0) "out of $_inScope students",
+        _isHod
+            ? "All students (HOD view)"
+            : "Your students · ${_guide ?? ''}",
+      ],
     );
   }
 

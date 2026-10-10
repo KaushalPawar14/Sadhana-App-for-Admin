@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../utils/ColorProvider.dart';
-import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../theme/GuideColors.dart';
 

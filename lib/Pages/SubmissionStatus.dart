@@ -12,7 +12,7 @@ import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
-import '../theme/GuideColors.dart';
+import '../widgets/GuideTiles.dart';
 
 /// One scoped student's own submission status for today — just enough to
 /// show them in either list and, if tapped, open their own
@@ -333,56 +333,16 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
   Widget _summaryCard() {
     final today = DateFormat('dd MMM yyyy').format(DateTime.now());
     final allSubmitted = _inScope > 0 && _notSubmitted.isEmpty;
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        gradient: LinearGradient(
-          colors: allSubmitted
-              ? [context.g.success, context.g.success]
-              : [context.g.warning, context.g.warning],
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            allSubmitted ? Icons.check_circle : Icons.pending_actions,
-            color: context.g.surface,
-            size: 34,
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "${_notSubmitted.length} not submitted",
-                  style: TextStyle(
-                    fontSize: 22,
-                    color: context.g.surface,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  _inScope > 0
-                      ? "out of $_inScope students · $today"
-                      : today,
-                  style: const TextStyle(color: GuideColors.heroMuted, fontSize: 13),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  _isHod
-                      ? "All students (HOD view)"
-                      : "Students assigned to ${_guide ?? 'you'}",
-                  style: const TextStyle(color: GuideColors.heroMuted, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return GuideSummaryBanner(
+      tone: allSubmitted ? GuideTone.good : GuideTone.warn,
+      icon: allSubmitted ? Icons.check_circle_outline : Icons.pending_actions_outlined,
+      title: "${_notSubmitted.length} not submitted",
+      lines: [
+        _inScope > 0 ? "out of $_inScope students · $today" : today,
+        _isHod
+            ? "All students (HOD view)"
+            : "Students assigned to ${_guide ?? 'you'}",
+      ],
     );
   }
 

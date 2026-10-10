@@ -52,7 +52,6 @@
 library;
 
 import 'package:flutter/material.dart';
-import '../theme/GuideTheme.dart';
 import '../theme/GuideColors.dart';
 
 /// How trustworthy a metric's figure is at the moment it is displayed.

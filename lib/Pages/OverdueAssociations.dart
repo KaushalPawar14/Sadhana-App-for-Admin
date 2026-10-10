@@ -10,7 +10,7 @@ import '../utils/StudentScope.dart';
 import 'AssociationManager.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
-import '../theme/GuideColors.dart';
+import '../widgets/GuideTiles.dart';
 
 /// Overdue associations dashboard (Phase 6, half 1, item 2).
 ///
@@ -104,48 +104,15 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
   }
 
   Widget _summaryCard(int count) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        gradient: LinearGradient(
-          colors: count == 0
-              ? [context.g.success, context.g.success]
-              : [context.g.danger, context.g.danger],
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            count == 0 ? Icons.check_circle : Icons.event_busy,
-            color: context.g.surface,
-            size: 34,
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "$count overdue",
-                  style: TextStyle(
-                    fontSize: 22,
-                    color: context.g.surface,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  _isHod
-                      ? "All guides (HOD view)"
-                      : "Your students · ${_profile.displayName}",
-                  style: const TextStyle(color: GuideColors.heroMuted, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return GuideSummaryBanner(
+      tone: count == 0 ? GuideTone.good : GuideTone.bad,
+      icon: count == 0 ? Icons.check_circle_outline : Icons.event_busy_outlined,
+      title: "$count overdue",
+      lines: [
+        _isHod
+            ? "All guides (HOD view)"
+            : "Your students · ${_profile.displayName}",
+      ],
     );
   }
 

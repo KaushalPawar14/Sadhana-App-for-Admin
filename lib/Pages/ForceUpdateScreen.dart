@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../theme/GuideTheme.dart';
-import '../widgets/GuideSurface.dart';
+import '../theme/GuideColors.dart';
+import '../widgets/GuideGate.dart';
 
 /// Blocking "please update" screen — follow-up task, 2026-09-10.
 ///
@@ -44,49 +44,17 @@ class ForceUpdateScreen extends StatelessWidget {
       onPopInvokedWithResult: (didPop, result) {
         // Absorbed, deliberately — see this class's own doc comment.
       },
-      child: GuideScaffold(
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(28),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.system_update_alt,
-                      size: 72, color: context.g.warning),
-                  const SizedBox(height: 24),
-                  const Text(
-                    "Update required",
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    "A newer version of the FOLK Guides app is required to "
-                    "continue. Please update from the Play Store to keep "
-                    "using the app.",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        fontSize: 14.5, height: 1.5, color: context.g.text),
-                  ),
-                  const SizedBox(height: 28),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () => _openPlayStore(context),
-                      icon: const Icon(Icons.shop),
-                      label: const Text("Update now"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: context.g.warning,
-                        foregroundColor: context.g.onPrimary,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+      child: GuideGate(
+        icon: Icons.system_update_alt,
+        pastel: GuidePastel.clay,
+        title: "Update required",
+        message: "A newer version of the FOLK Guides app is required to "
+            "continue. Please update from the Play Store to keep "
+            "using the app.",
+        action: GuideGateButton(
+          label: "Update now",
+          icon: Icons.shop_outlined,
+          onPressed: () => _openPlayStore(context),
         ),
       ),
     );

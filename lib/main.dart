@@ -4,6 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'theme/GuideTheme.dart';
+import 'widgets/GuideSurface.dart';
 import 'theme/GuideTokens.dart';
 import 'theme/ThemeModeController.dart';
 import 'package:folk_guide_app/utils/BottomNavBar.dart';
@@ -309,54 +310,37 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.blue.shade100, Colors.blue.shade400],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
+    final t = context.gText;
+    return GuideScaffold(
+      body: SafeArea(
         child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FadeTransition(
-                opacity: _fadeAnimation,
-                child: SizedBox(
-                  width: 200,
-                  height: 200,
-                  child: Lottie.asset(
-                    'assets/emoji/splash_screen.json',
-                    repeat: true,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: SizedBox(
+                    width: 200,
+                    height: 200,
+                    child: Lottie.asset(
+                      'assets/emoji/splash_screen.json',
+                      repeat: true,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              FadeTransition(
-                opacity: _fadeAnimation,
-                child: const Text(
-                  "Now it's easy to check Sadhana daily",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: 'PlayfairDisplay', // elegant serif font
-                    color: Colors.white,
-                    fontSize: 20, // slightly larger
-                    fontWeight: FontWeight.w700, // bold for emphasis
-                    letterSpacing: 1.2, // spacing between letters
-                    height: 1.3, // line height
-                    shadows: [
-                      Shadow(
-                        offset: Offset(2, 2),
-                        blurRadius: 4,
-                        color: Colors.black26, // subtle shadow
-                      ),
-                    ],
+                const SizedBox(height: 20),
+                FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: Text(
+                    "Now it's easy to check Sadhana daily",
+                    textAlign: TextAlign.center,
+                    style: t.sectionTitle.copyWith(height: 1.3),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

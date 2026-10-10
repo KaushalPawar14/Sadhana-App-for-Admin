@@ -489,3 +489,71 @@ class GuideTileGrid extends StatelessWidget {
     return Column(children: rows);
   }
 }
+
+
+/// The summary at the top of a report screen: a status icon, a serif headline and
+/// up to a few muted lines, on the navy hero panel. [tone] colours the icon only.
+enum GuideTone { good, warn, bad }
+
+class GuideSummaryBanner extends StatelessWidget {
+  const GuideSummaryBanner({
+    super.key,
+    required this.tone,
+    required this.icon,
+    required this.title,
+    this.lines = const [],
+    this.emphasis,
+  });
+
+  final GuideTone tone;
+  final IconData icon;
+  final String title;
+  final List<String> lines;
+
+  /// An extra line shown in the full hero text colour (e.g. "2 needing urgent attention").
+  final String? emphasis;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.g;
+    final t = context.gText;
+    final iconColor = switch (tone) {
+      GuideTone.good => g.success,
+      GuideTone.warn => g.warning,
+      GuideTone.bad => g.danger,
+    };
+    return GuideHeroPanel(
+      padding: const EdgeInsets.all(18),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: iconColor, size: 32),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(title,
+                    style: t.cardTitle.copyWith(color: GuideColors.heroText, fontSize: 22)),
+                for (final l in lines)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(l,
+                        style: t.small.copyWith(color: GuideColors.heroMuted, height: 1.4)),
+                  ),
+                if (emphasis != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(emphasis!,
+                        style: t.small.copyWith(
+                            color: GuideColors.heroText, fontWeight: FontWeight.w600)),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

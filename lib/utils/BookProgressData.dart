@@ -23,7 +23,6 @@ library;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import '../theme/GuideTheme.dart';
 import '../theme/GuideColors.dart';
 
 /// The three levels, in the order the ladder is read. Was `_kLevels` in

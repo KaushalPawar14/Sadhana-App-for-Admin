@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../widgets/GuideSurface.dart';
+import '../theme/GuideColors.dart';
+import '../widgets/GuideGate.dart';
 
 /// Blocking screen for a copy installed outside the Play Store (a sideloaded
 /// APK): it cannot be trusted to receive updates or to stay signed correctly,
@@ -27,34 +28,15 @@ class NonPlayInstallScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      child: GuideScaffold(
-        body: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.shop_two_outlined, size: 64),
-                  const SizedBox(height: 20),
-                  const Text(
-                    message,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 18, height: 1.4),
-                  ),
-                  const SizedBox(height: 28),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.play_arrow_rounded),
-                      label: const Text('Open the Play Store'),
-                      onPressed: _openPlayStore,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+      child: GuideGate(
+        icon: Icons.shop_two_outlined,
+        pastel: GuidePastel.clay,
+        title: 'Install from the Play Store',
+        message: message,
+        action: GuideGateButton(
+          label: 'Open the Play Store',
+          icon: Icons.play_arrow_rounded,
+          onPressed: _openPlayStore,
         ),
       ),
     );

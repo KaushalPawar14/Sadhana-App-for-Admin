@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import '../Services/HierarchyApi.dart';
 import '../utils/AdminProfile.dart';
-import '../utils/ColorProvider.dart';
 import '../utils/GuideRoster.dart';
 import '../theme/GuideTheme.dart';
+import '../theme/GuideTokens.dart';
 import '../widgets/GuideSurface.dart';
 
 /// "Add Admin" / admin list — hierarchy version.
@@ -55,47 +54,51 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colorProvider = Provider.of<ColorProvider>(context);
     final profile = AdminProfileProvider.require();
 
     return GuideScaffold(
-      appBar: AppBar(
-        title: const Text('Admins'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.person_add_alt_1),
-        label: const Text('Add Admin'),
+      floatingActionButton: GuideFab(
+        icon: Icons.person_add_alt_1_outlined,
+        label: 'Add admin',
         onPressed: () => _openAddAdminDialog(profile),
       ),
-      body: FutureBuilder<List<AdminSummary>>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return const Center(child: Text('Could not load admins.'));
-          }
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final admins = snapshot.data!;
-          if (admins.isEmpty) {
-            return const Center(child: Text('No admins yet.'));
-          }
-          return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-            itemCount: admins.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
-            itemBuilder: (context, index) =>
-                _adminTile(profile, admins[index], admins),
-          );
-        },
+      body: Column(
+        children: [
+          const GuideTopBar(title: 'Admins'),
+          Expanded(
+            child: FutureBuilder<List<AdminSummary>>(
+              future: _future,
+              builder: (context, snapshot) {
+                final t = context.gText;
+                if (snapshot.hasError) {
+                  return Center(child: Text('Could not load admins.', style: t.body));
+                }
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final admins = snapshot.data!;
+                if (admins.isEmpty) {
+                  return Center(child: Text('No admins yet.', style: t.body));
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(
+                      GuideSpace.pagePadding, 12, GuideSpace.pagePadding, 110),
+                  itemCount: admins.length,
+                  itemBuilder: (context, index) =>
+                      _adminTile(profile, admins[index], admins),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _adminTile(
       AdminProfile me, AdminSummary a, List<AdminSummary> everyone) {
+    final t = context.gText;
+    final g = context.g;
     final team = a.role == AdminRole.maleEnabler
         ? (a.teamGuide.isEmpty
             ? 'No team Guide'
@@ -105,34 +108,59 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
     // Editing stays HOD-only; removing follows what this role may add.
     final canEdit = me.isHod;
     final canRemove = a.id != me.id && canRemoveAdminRole(me.role, a.role);
-    return ListTile(
-      title: Text(a.displayName,
-          style: const TextStyle(fontWeight: FontWeight.w700)),
-      subtitle: Text([
-        a.role.label,
-        if (team != null) team,
-        if (email != null && email.isNotEmpty) email,
-        if (a.id != a.displayName) 'ID ${a.id}',
-      ].join(' · ')),
-      trailing: (canEdit || canRemove)
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (canEdit)
-                  IconButton(
-                    icon: const Icon(Icons.edit_outlined),
-                    tooltip: 'Edit',
-                    onPressed: () => _openEditDialog(me, a, everyone),
-                  ),
-                if (canRemove)
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    tooltip: 'Remove',
-                    onPressed: () => _confirmRemove(a),
-                  ),
-              ],
-            )
-          : null,
+    final initial = a.displayName.isEmpty ? '?' : a.displayName.trim()[0].toUpperCase();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: GuideCard(
+        padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: g.chipBackground, shape: BoxShape.circle),
+                child: Text(initial,
+                    style: t.bodyStrong.copyWith(fontSize: 15, fontWeight: FontWeight.w700)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(a.displayName, style: t.cardTitleSmall),
+                    const SizedBox(height: 2),
+                    Text(
+                      [
+                        a.role.label,
+                        if (team != null) team,
+                      ].join(' · '),
+                      style: t.small,
+                    ),
+                    if (email != null && email.isNotEmpty) Text(email, style: t.caption),
+                    if (a.id != a.displayName) Text('ID ${a.id}', style: t.caption),
+                  ],
+                ),
+              ),
+              if (canEdit)
+                IconButton(
+                  icon: Icon(Icons.edit_outlined, color: g.mutedText),
+                  tooltip: 'Edit',
+                  onPressed: () => _openEditDialog(me, a, everyone),
+                ),
+              if (canRemove)
+                IconButton(
+                  icon: Icon(Icons.delete_outline, color: g.mutedText),
+                  tooltip: 'Remove',
+                  onPressed: () => _confirmRemove(a),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

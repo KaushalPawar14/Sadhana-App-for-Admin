@@ -11,6 +11,7 @@ import 'package:folk_guide_app/utils/AdminProfile.dart';
 import 'package:folk_guide_app/utils/ColorProvider.dart';
 import 'package:folk_guide_app/utils/InstallSource.dart';
 import 'package:folk_guide_app/utils/StudentScope.dart';
+import 'package:folk_guide_app/widgets/GuideSurface.dart';
 import 'package:provider/provider.dart';
 
 const _types = [
@@ -319,9 +320,10 @@ void main() {
         // list here is the worst case (the control must still follow the delete rule)
         await pump(tester, profile(entry.key, roleOf[entry.key]!), (n, d) => n == 'listAdmins' ? {'admins': everyone} : null);
         final shown = <String>[];
-        for (final tile in tester.widgetList<ListTile>(find.byType(ListTile))) {
-          final title = ((tile.title as Text).data ?? '').replaceAll(' Das', '');
-          final hasRemove = find.descendant(of: find.byWidget(tile), matching: find.byTooltip('Remove')).evaluate().isNotEmpty;
+        for (final card in tester.widgetList<GuideCard>(find.byType(GuideCard))) {
+          final name = find.descendant(of: find.byWidget(card), matching: find.textContaining(' Das')).evaluate().first.widget as Text;
+          final title = (name.data ?? '').replaceAll(' Das', '');
+          final hasRemove = find.descendant(of: find.byWidget(card), matching: find.byTooltip('Remove')).evaluate().isNotEmpty;
           if (hasRemove) shown.add(title);
         }
         expect(shown, entry.value);
@@ -382,7 +384,7 @@ void main() {
         }
         return null;
       });
-      await tester.tap(find.text('Add Admin'));
+      await tester.tap(find.text('Add admin'));
       await tester.pumpAndSettle();
       expect(find.widgetWithText(TextField, 'Name'), findsOneWidget);
       expect(find.widgetWithText(TextField, 'Email'), findsOneWidget);
@@ -404,7 +406,7 @@ void main() {
 
     testWidgets('a HOD adding a Male Enabler picks a team Guide', (tester) async {
       await pump(tester, profile('H', 'HOD'), (n, d) => n == 'listAdmins' ? {'admins': [a('H', 'HOD'), a('G', 'GUIDE')]} : null);
-      await tester.tap(find.text('Add Admin'));
+      await tester.tap(find.text('Add admin'));
       await tester.pumpAndSettle();
       expect(find.text('Team Guide'), findsNothing);
       await tester.tap(find.byType(DropdownButtonFormField<AdminRole>));

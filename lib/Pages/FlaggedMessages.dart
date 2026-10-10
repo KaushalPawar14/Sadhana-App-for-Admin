@@ -10,7 +10,7 @@ import '../utils/SelectableDelete.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
-import '../theme/GuideColors.dart';
+import '../widgets/GuideTiles.dart';
 
 /// Phase 7 — flagged student chat messages.
 ///
@@ -302,73 +302,23 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
 
   Widget _summaryCard(int total, int acute, int pastoral) {
     final clear = total == 0;
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        gradient: LinearGradient(
-          colors: clear ?
-              [context.g.success, context.g.success] :
-              acute > 0 ?
-                  [context.g.danger, context.g.danger] :
-                  [context.g.warning, context.g.warning],
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            clear ? Icons.check_circle : Icons.flag,
-            color: context.g.surface,
-            size: 34,
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  clear ? "Nothing urgent" : "$total needing attention",
-                  style: TextStyle(
-                    fontSize: 22,
-                    color: context.g.surface,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                if (pastoral > 0) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    "$pastoral pastoral note${pastoral == 1 ? '' : 's'} below",
-                    style: const TextStyle(
-                      color: GuideColors.heroMuted,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-                if (acute > 0) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    "$acute needing urgent attention",
-                    style: TextStyle(
-                      color: context.g.surface,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 3),
-                Text(
-                  _isHod ?
-                      "All students (HOD view)" :
-                      "Your students · "
-                          "${AdminProfileProvider.current?.displayName ?? _guide ?? ''}",
-                  style: const TextStyle(color: GuideColors.heroMuted, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return GuideSummaryBanner(
+      tone: clear
+          ? GuideTone.good
+          : acute > 0
+              ? GuideTone.bad
+              : GuideTone.warn,
+      icon: clear ? Icons.check_circle_outline : Icons.flag_outlined,
+      title: clear ? "Nothing urgent" : "$total needing attention",
+      lines: [
+        if (pastoral > 0)
+          "$pastoral pastoral note${pastoral == 1 ? '' : 's'} below",
+        _isHod
+            ? "All students (HOD view)"
+            : "Your students · "
+                "${AdminProfileProvider.current?.displayName ?? _guide ?? ''}",
+      ],
+      emphasis: acute > 0 ? "$acute needing urgent attention" : null,
     );
   }
 
