@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'CalendarQueries.dart' show kScopeMandatory;
@@ -22,6 +23,10 @@ import 'StudentScope.dart';
 /// completion) and store the result in a field, never call these fresh
 /// inside `build()`.
 class UnseenAggregates {
+  /// Tests only: every aggregate is simply "nothing unseen" (no Firestore).
+  @visibleForTesting
+  static bool debugDisable = false;
+
   static Stream<Timestamp?> _maxTimestamp(
       Stream<QuerySnapshot<Map<String, dynamic>>> query, String field) {
     return query.map((snap) {
@@ -73,6 +78,7 @@ class UnseenAggregates {
   static StudentScope get _scope => StudentScope.current();
 
   static Stream<bool> associationsUnseen(String guide, bool isHod) {
+    if (debugDisable) return Stream.value(false);
     return SeenMarkers.unseenFrom(
       _maxTimestamp(_scope.historyStream('associations'), 'updatedAt'),
       SeenMarkers.seenAt(guide, 'associations'),
@@ -80,6 +86,7 @@ class UnseenAggregates {
   }
 
   static Stream<bool> expeditionReflectionsUnseen(String guide, bool isHod) {
+    if (debugDisable) return Stream.value(false);
     return SeenMarkers.unseenFrom(
       _maxTimestamp(_scope.historyStream('expeditionRegistrations'),
           'reflectionSubmittedAt'),
@@ -88,6 +95,7 @@ class UnseenAggregates {
   }
 
   static Stream<bool> serviceAssignmentsUnseen(String guide, bool isHod) {
+    if (debugDisable) return Stream.value(false);
     return SeenMarkers.unseenFrom(
       _maxTimestamp(
           _scope.historyStream('serviceAssignments'), 'statusUpdatedAt'),
@@ -96,6 +104,7 @@ class UnseenAggregates {
   }
 
   static Stream<bool> flaggedMessagesUnseen(String guide, bool isHod) {
+    if (debugDisable) return Stream.value(false);
     return SeenMarkers.unseenFrom(
       _maxTimestamp(_scope.historyStream('flaggedChatMessages'), 'createdAt'),
       SeenMarkers.seenAt(guide, 'flaggedMessages'),
@@ -103,6 +112,7 @@ class UnseenAggregates {
   }
 
   static Stream<bool> calendarEventsUnseen(String guide) {
+    if (debugDisable) return Stream.value(false);
     return SeenMarkers.unseenFrom(
       _maxTimestamp(
           FirebaseFirestore.instance
@@ -119,6 +129,7 @@ class UnseenAggregates {
   /// so "any target unseen" ORs each target's own `pendingProposal.
   /// proposedAt` against ITS OWN cursor, not one flat cursor.
   static Stream<bool> goalProposalsUnseen(String guide) {
+    if (debugDisable) return Stream.value(false);
     late StreamController<bool> controller;
     List<QueryDocumentSnapshot<Map<String, dynamic>>>? docs;
     Map<String, Timestamp>? cursors;
@@ -185,6 +196,7 @@ class UnseenAggregates {
   /// replaces the old chunked `uid whereIn` over the roster.
   static Stream<bool> bookCommitmentsRosterUnseen(
       String guide, bool isHod) {
+    if (debugDisable) return Stream.value(false);
     late StreamController<bool> controller;
     List<QueryDocumentSnapshot<Map<String, dynamic>>>? docs;
     Map<String, Timestamp>? cursors;
@@ -234,6 +246,10 @@ class UnseenAggregates {
   /// app's shape.
   static Stream<bool> studentCommentsRosterUnseen(
       String guide, bool isHod) async* {
+    if (debugDisable) {
+      yield false;
+      return;
+    }
     final uids = await myRosterUids(guide, isHod);
     if (uids.isEmpty) {
       yield false;

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/GuideTheme.dart';
+
 /// A small, restrained "new content" indicator — Master Task 2026-09-10,
 /// Part 6 item 7. One consistent look everywhere it appears in this app
 /// (and mirrored, same colour/size, in the Student app), regardless of
@@ -18,7 +20,7 @@ class UnseenDot extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: Colors.orange.shade600,
+        color: context.g.attention,
         shape: BoxShape.circle,
         border: Border.all(color: ringColor, width: 1.2),
       ),

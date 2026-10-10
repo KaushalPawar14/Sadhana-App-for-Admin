@@ -49,8 +49,13 @@ abstract final class GuideSpace {
   static const double xl = 20;
   static const double xxl = 24;
 
-  /// Room under a scrolling page for the floating navigation bar.
-  static const double navClearance = GuideShape.navHeight + GuideShape.navInset + 24;
+  /// Room under a scrolling tab page for the floating navigation bar (plus the
+  /// system inset below it).
+  static double navClearanceOf(BuildContext context) =>
+      GuideShape.navHeight +
+      GuideShape.navInset +
+      24 +
+      MediaQuery.viewPaddingOf(context).bottom;
 }
 
 abstract final class GuideMotion {

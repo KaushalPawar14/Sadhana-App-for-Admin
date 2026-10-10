@@ -43,6 +43,7 @@ class GuideColors extends ThemeExtension<GuideColors> {
     required this.danger,
     required this.success,
     required this.warning,
+    required this.attention,
     required this.scrim,
   });
 
@@ -99,6 +100,9 @@ class GuideColors extends ThemeExtension<GuideColors> {
   final Color danger;
   final Color success;
   final Color warning;
+
+  // The small dot that says there is something new (unseen content).
+  final Color attention;
 
   // Behind modal sheets and dialogs.
   final Color scrim;
@@ -238,6 +242,7 @@ class GuideColors extends ThemeExtension<GuideColors> {
     danger: Color(0xFFB23A3A),
     success: Color(0xFF2F7D5B),
     warning: Color(0xFFA9812F),
+    attention: Color(0xFFF57C00),
     scrim: Color(0x8014192B),
   );
 
@@ -285,6 +290,7 @@ class GuideColors extends ThemeExtension<GuideColors> {
     danger: Color(0xFFE06B6B),
     success: Color(0xFF4FB38A),
     warning: Color(0xFFC9A24A),
+    attention: Color(0xFFFFA43D),
     scrim: Color(0xB3000000),
   );
 

@@ -1,77 +1,55 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/material.dart';
-import 'package:lottie/lottie.dart';
-import 'package:provider/provider.dart';
+import 'dart:async';
 
-import '../Pages/GuideSignIn.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+import '../Pages/GoalHomePage.dart';
 import '../Pages/GuideCalendarPage.dart';
+import '../Pages/GuideSignIn.dart';
+import '../Pages/WeeklyPlanning.dart';
 import '../Services/UpdateFCM.dart';
 import '../Services/UpdateToken.dart';
+import '../theme/GuideColors.dart';
+import '../theme/GuideTheme.dart';
+import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
-import '../utils/CalendarQueries.dart' show kScopeMandatory;
-import '../utils/ColorProvider.dart';
+import '../utils/CalendarQueries.dart';
+import '../utils/GoalCompoundQueries.dart';
+import '../utils/GoalMetrics.dart';
+import '../utils/GuideLogout.dart';
+import '../utils/HomeData.dart';
+import '../utils/WeekSummary.dart';
+import '../utils/PlanningQueries.dart';
 import '../utils/UnseenAggregates.dart';
 import '../utils/UnseenDot.dart';
-import '../utils/UnseenFeatureBadge.dart';
+import '../widgets/GuideAppearanceSheet.dart';
+import '../widgets/GuideSurface.dart';
+import '../widgets/GuideTiles.dart';
 import 'FolkBoysWorkspace.dart';
 
-/// The middle "FOLK Boys" nav tab's own top-level screen (Part 4 of the
-/// Phase 1 device-test fixes).
+/// The Home tab: the guide's dashboard.
 ///
 /// ---------------------------------------------------------------------------
-/// One tile, not the board directly
+/// What is on it, and where every number comes from
 /// ---------------------------------------------------------------------------
-/// The device test asked for the board workspace to sit BEHIND a single
-/// entry tile, rather than opening as soon as the tab is shown. Tapping the
-/// tile pushes `FolkBoysWorkspace` as a normal page (with a normal back
-/// button); this screen itself is the tab's permanent body.
+/// Nothing here is new data. Each piece reads a source the app already reads on
+/// another screen, scoped to the signed-in admin exactly as that screen is:
 ///
-/// Reuses `Home/MainPage.dart`'s own `DashboardTile` widget — the exact
-/// visual style the old two-tile chooser used (Rule 1: reuse, don't invent a
-/// new look) — rather than rebuilding that gradient/shadow/press styling a
-/// second time. **Phase 5, Part 4: copied verbatim into this file**, not
-/// imported, since `MainPage.dart` is scheduled for full deletion in Phase 6
-/// and this was the one live cross-cluster dependency on it (grep-confirmed
-/// the only other use of `DashboardTile` is `MainPage.dart`'s own, now-dead,
-/// two-tile body). `MainPage.dart` keeps its own copy until Phase 6 deletes
-/// that whole file — same "temporary duplicate for one phase" pattern
-/// already used for `DobCard` in `Pages/StudentProfilePage.dart`.
+///  * Hero "Targets"    — `compoundTargetsStream(guideId)` (the stream behind
+///                        This Week's "Your targets this week" and the Targets
+///                        screen): active targets that have a plan.
+///  * Hero "Follow-ups" — `scopedInteractionLogsStream()` (This Week's
+///                        "Follow-ups due"), filtered by `followUpsDue`.
+///  * Hero "Overdue"    — `scopedAssociationsStream()` (This Week's "Overdue
+///                        meetings"), filtered by `overdueAssociations`.
+///  * Target cards      — the same `compoundTargetsStream` (phase x of y).
+///  * Board tile count  — `StudentScope.current().studentsStream()` (the roster
+///                        the board lists, role-scoped).
+///  * Calendar tile     — `visibleEventsFor(guideId)` (This Week's calendar
+///                        context and the Calendar screen itself).
 ///
-/// ---------------------------------------------------------------------------
-/// Guide resolution + FCM registration now live HERE, on tab entry
-/// ---------------------------------------------------------------------------
-/// This is the plumbing Phase 1 originally (and correctly) rescued from the
-/// old `DashboardScreen` (`Home/MainPage.dart`) — resolving the guide,
-/// redirecting to `FolkGuideSelectionPage` if none is set, and re-
-/// registering the FCM token via `updateAdminFcmToken` (a server callable
-/// now — the app never reads or writes `adminUsers` itself). It now runs here,
-/// in THIS screen's `initState`, because this is what actually loads the
-/// moment the tab is opened — `FolkBoysWorkspace` no longer runs any of this
-/// itself, it just receives the already-resolved guide as a constructor
-/// param once the tile is tapped.
-///
-/// ---------------------------------------------------------------------------
-/// Restored from the old `DashboardScreen` (drag-fix/seed-removal
-/// continuation task) — the fade-in entrance, the theme toggle, and the
-/// logged-in guide display
-/// ---------------------------------------------------------------------------
-/// All three were silently dropped when this screen replaced the old
-/// two-tile chooser and were never asked for again until now. Restored
-/// EXACTLY, not reimplemented:
-///   - `_opacity`/`AnimatedOpacity` — the same 600ms fade-in, starting 100ms
-///     after `initState`, byte-for-byte the old timing.
-///   - The dark-mode `IconButton` — calls the SAME
-///     `ColorProvider.toggleColor()` (`utils/ColorProvider.dart`), which
-///     persists to `SharedPreferences['isDarkMode']` and is the one theme
-///     mechanism the whole app already shares — nothing new introduced.
-///   - "Folk Guide: $guide" text — same wording, same conditional
-///     (`if (guide != null)`), same position: a top row, guide name on the
-///     left, toggle on the right, above the tile.
-/// Grep-confirmed nothing else existed in the old screen to account for:
-/// its only other content was the two-tile `ListView` (now one tile, an
-/// intentional, already-approved change from the board-redesign task) and
-/// the `DashboardTile`/`_DashboardTileState` classes (still reused via the
-/// `show DashboardTile` import above, unchanged).
+/// The guide resolution and FCM re-registration that used to run on the FOLK
+/// Boys tab still run here, on tab entry (the tab is built when first opened).
 class FolkBoysEntryScreen extends StatefulWidget {
   final String? selectedGuide;
 
@@ -84,35 +62,34 @@ class FolkBoysEntryScreen extends StatefulWidget {
 class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
   String? _guide;
 
-  /// Restored fade-in — same 100ms delay, same target, as the old
-  /// `DashboardScreen._opacity`.
-  double _opacity = 0;
-
-  /// Follow-up task, 2026-09-10 ("propagate orange dots to intermediate
-  /// tiles") — the "FOLK Boys Board" tile's own dot: any of THIS guide's
-  /// roster has an unseen student comment or book commitment, aggregated
-  /// via the shared `UnseenAggregates` roster helpers (same rule the
-  /// board's own `_visibleColumns` uses — HOD sees everyone, any other
-  /// admin sees the students their role allows — read independently,
-  /// never touching the board's own stream/columns). Built
-  /// once, from `_fetchSavedGuide()`, never in `build()`.
+  /// "Any of my roster has an unseen student comment or book commitment" — the
+  /// Board tile's dot (same roster helpers the board itself uses). Built once,
+  /// never in `build()`.
   Stream<bool>? _boardUnseen;
+
+  List<CompoundTarget>? _targets;
+  List<FollowUpItem>? _followUps;
+  List<OverdueItem>? _overdue;
+  int? _studentCount;
+  List<CalendarEvent>? _events;
+  final List<StreamSubscription<Object?>> _subs = [];
 
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (mounted) setState(() => _opacity = 1);
-    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _updateTokenForGuide();
       _fetchSavedGuide();
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // Ported unchanged from Home/MainPage.dart's DashboardScreen
-  // ---------------------------------------------------------------------------
+  @override
+  void dispose() {
+    for (final s in _subs) {
+      s.cancel();
+    }
+    super.dispose();
+  }
 
   Future<void> _fetchSavedGuide() async {
     final guide =
@@ -128,18 +105,38 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
         ]);
       }
     });
+    if (guide != null && guide.isNotEmpty) _listen(guide);
+  }
+
+  /// Starts the dashboard's own listeners, once.
+  void _listen(String guide) {
+    if (_subs.isNotEmpty) return;
+    final week = currentWeekRange();
+    final data = HomeData.instance;
+    _subs.add(data.targets(guide).listen((t) {
+      if (mounted) setState(() => _targets = t);
+    }, onError: (_) {}));
+    _subs.add(data.followUps(week).listen((f) {
+      if (mounted) setState(() => _followUps = f);
+    }, onError: (_) {}));
+    _subs.add(data.overdue().listen((o) {
+      if (mounted) setState(() => _overdue = o);
+    }, onError: (_) {}));
+    _subs.add(data.studentCount().listen((n) {
+      if (mounted) setState(() => _studentCount = n);
+    }, onError: (_) {}));
+    data.events(guide).then((e) {
+      if (mounted) setState(() => _events = e);
+    }).catchError((_) {});
   }
 
   Future<void> _updateTokenForGuide() async {
     final guide =
         widget.selectedGuide ?? await UpdateTokenService().getSavedGuide();
     if (guide == null) {
-      // Unreachable in practice as of Master Task, 2026-09-14: identity is
-      // now resolved and persisted BEFORE `CurvedNavBar` (and therefore
-      // this screen) is ever built (`main.dart`'s `SplashScreen` /
-      // `Pages/GuideSignIn.dart`), so `widget.selectedGuide` is never null
-      // and the `getSavedGuide()` fallback above never returns null either.
-      // Left in place defensively: if it somehow fires, go to the sign-in page.
+      // Unreachable in practice: identity is resolved and persisted BEFORE the
+      // shell is built (`main.dart`'s SplashScreen / `GuideSignInPage`). Left in
+      // place defensively: if it ever fires, go to the sign-in page.
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -159,334 +156,253 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Pieces
+  // ---------------------------------------------------------------------------
+
+  String get _weekLabel {
+    final w = currentWeekRange();
+    final last = w.end.subtract(const Duration(days: 1));
+    if (w.start.month == last.month) {
+      return '${DateFormat('dd').format(w.start)} – ${DateFormat('dd MMM').format(last)}';
+    }
+    return '${DateFormat('dd MMM').format(w.start)} – ${DateFormat('dd MMM').format(last)}';
+  }
+
+  List<CompoundTarget> get _activeTargets => [
+        for (final t in _targets ?? const <CompoundTarget>[])
+          if (t.isActive && t.totalPhases > 0) t,
+      ];
+
+  GuidePastel _pastelFor(CompoundTarget t) => switch (t.metric) {
+        kMetricChanting => GuidePastel.sage,
+        kMetricBooks => GuidePastel.sand,
+        _ => GuidePastel.mauve,
+      };
+
+  Widget _targetCard(CompoundTarget t) {
+    final metric = t.metricInfo;
+    final text = context.gText;
+    final fraction = t.totalPhases == 0 ? 0.0 : t.currentPhase / t.totalPhases;
+    final guide = _guide ?? '';
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => GoalHomePage(guideId: guide)),
+        ),
+        child: GuidePastelBox(
+          pastel: _pastelFor(t),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      "${metric?.label ?? t.metric} · ${t.studentCountGoal} "
+                      "students at ${t.perStudentValueGoal} ${metric?.unit ?? ''}"
+                          .trim(),
+                      style: text.onPastelBody.copyWith(fontSize: 14),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text("Phase ${t.currentPhase} of ${t.totalPhases}",
+                      style: text.onPastelSmall),
+                ],
+              ),
+              const SizedBox(height: 10),
+              GuideProgressBar(value: fraction, onPastel: true),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _boardSubtitle() {
+    final n = _studentCount;
+    if (n == null) return '';
+    final p = AdminProfileProvider.current;
+    final noun = p == null || p.isHod
+        ? (n == 1 ? 'student' : 'students')
+        : (p.isFemaleEnabler ? (n == 1 ? 'girl' : 'girls') : (n == 1 ? 'boy' : 'boys'));
+    return '$n $noun';
+  }
+
+  String _calendarSubtitle() {
+    final events = _events;
+    if (events == null) return '';
+    final now = eventsHappeningNow(events);
+    if (now.isNotEmpty) {
+      final more = now.length - 1;
+      return more > 0 ? '${now.first.title} +$more' : now.first.title;
+    }
+    final soon = eventsComingUp(events);
+    if (soon.isNotEmpty) {
+      return '${soon.first.title} · ${DateFormat('dd MMM').format(soon.first.eventDate)}';
+    }
+    return 'Nothing due today';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final width = mq.size.width;
-    final height = mq.size.height;
+    final t = context.gText;
+    final guide = _guide;
+    final profile = AdminProfileProvider.current;
+    final active = _activeTargets;
+    final dash = '–';
 
-    return Consumer<ColorProvider>(
-      builder: (context, colorProvider, child) {
-        final guide = _guide;
-        return Scaffold(
-          backgroundColor: colorProvider.color,
-          body: AnimatedOpacity(
-            duration: const Duration(milliseconds: 600),
-            opacity: _opacity,
-            curve: Curves.easeIn,
-            child: SafeArea(
-              // Scroll-only fix — `SingleChildScrollView` around everything
-              // is the ENTIRE overflow fix: if content is ever taller than
-              // the screen, it scrolls instead of erroring, regardless of
-              // tile sizing. Deliberately NOT paired with a
-              // `ConstrainedBox(minHeight: ...)` + centred `Column` (an
-              // earlier attempt) — that combination pushed the tiles far
-              // below the app bar with a large gap on a real device, since
-              // "centre within an estimated available height" can only ever
-              // be an approximation of the real, per-device space. No
-              // `LayoutBuilder` either (that caused a separate framework
-              // crash — see the tile block's own comment below). With
-              // neither, the Column below is exactly as tall as its
-              // children need and starts at the very top — the tiles sit
-              // immediately below the guide-name row, at their own tuned
-              // size, on every screen; only screens too short for that
-              // ever scroll.
-              child: SingleChildScrollView(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                      horizontal: width * 0.04, vertical: height * 0.02),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                    SizedBox(height: height * 0.01),
-                    // Restored: logged-in guide display + theme toggle — same
-                    // wording, same conditional, same position as the old
-                    // `DashboardScreen`.
-                    if (guide != null)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return ListView(
+      padding: EdgeInsets.only(bottom: GuideSpace.navClearanceOf(context)),
+      children: [
+        GuideTopBar(
+          showBack: false,
+          titleWidget: GuideLabel(DateFormat('EEEE, d MMMM').format(DateTime.now())),
+          actions: [
+            GuideRoundButton(
+              icon: context.g.isDark ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
+              tooltip: 'Appearance',
+              onPressed: () => showGuideAppearanceSheet(context),
+            ),
+            GuideRoundButton(
+              icon: Icons.logout_rounded,
+              tooltip: 'Log out',
+              onPressed: () => confirmAndLogout(context),
+            ),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 16, GuideSpace.pagePadding, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Hare Krishna,', style: t.small.copyWith(fontSize: 15)),
+              const SizedBox(height: 2),
+              Text(
+                (profile?.displayName.isNotEmpty ?? false)
+                    ? profile!.displayName
+                    : 'FOLK Guide',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: t.greeting,
+              ),
+              if (profile != null) ...[
+                const SizedBox(height: 4),
+                Text(profile.role.label, style: t.small),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: GuideSpace.pagePadding),
+          child: GuideHeroCard(
+            label: 'This week',
+            trailing: _weekLabel,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const WeeklyPlanningPage()),
+            ),
+            stats: [
+              GuideHeroStat(_targets == null ? dash : '${active.length}', 'Targets'),
+              GuideHeroStat(_followUps == null ? dash : '${_followUps!.length}', 'Follow-ups'),
+              GuideHeroStat(_overdue == null ? dash : '${_overdue!.length}', 'Overdue'),
+            ],
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(GuideSpace.pagePadding, 22, GuideSpace.pagePadding, 0),
+          child: GuideSectionTitle('Targets'),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: GuideSpace.pagePadding),
+          child: Column(
+            children: [
+              for (final target in active) _targetCard(target),
+              if (_targets != null && active.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: guide == null
+                        ? null
+                        : () => Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => GoalHomePage(guideId: guide)),
+                            ),
+                    child: GuideCard(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
                         children: [
-                          Text(
-                            "Folk Guide: $guide",
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                fontStyle: FontStyle.italic,
-                                color: colorProvider.secondColor
-                                    .withOpacity(0.8)),
-                          ),
-                          IconButton(
-                              onPressed: () {
-                                Provider.of<ColorProvider>(context,
-                                        listen: false)
-                                    .toggleColor();
-                              },
-                              icon: Icon(Icons.dark_mode,
-                                  color: colorProvider.secondColor, size: 28)),
+                          Expanded(
+                              child: Text('No active targets yet. Open Targets to create one.',
+                                  style: t.small)),
+                          Icon(Icons.chevron_right_rounded, color: context.g.mutedText),
                         ],
                       ),
-                    SizedBox(height: height * 0.04),
-                    // Square-tile task — both tiles roughly square,
-                    // substantially bigger than the old `height * 0.16`
-                    // short rectangles.
-                    //
-                    // LayoutBuilder REMOVED (crash fix, see below) — sized
-                    // from plain `MediaQuery`-derived `width`/`height`
-                    // (already computed once at the top of `build()`)
-                    // instead: `tileSize = min(width * 0.57, height *
-                    // 0.25)`, tuned down from two earlier, larger passes
-                    // (`(0.72, 0.34)`, then `(0.62, 0.30)`) after real-device
-                    // overflow reports. This exact fraction doesn't have to
-                    // be perfect, though: the `SingleChildScrollView` this
-                    // whole column now sits in (see `SafeArea`'s own comment
-                    // above) is the actual overflow fix — it scrolls instead
-                    // of erroring if these numbers are ever still too big on
-                    // some device. `gap` keeps scaling with `tileSize`
-                    // (`* 0.09`) exactly as before.
-                    //
-                    // ---------------------------------------------------
-                    // Why the LayoutBuilder had to go (real device crash)
-                    // ---------------------------------------------------
-                    // Real device red screen on tapping "Generate" in the
-                    // Guide Calendar's "Add calendar text" sheet:
-                    // `RenderObjectWithLayoutCallbackMixin.
-                    // scheduleLayoutCallback`: `'debugNeedsLayout' is not
-                    // true`, registered by
-                    // `EditableTextState._onChangedLiveTextInputStatus` →
-                    // `LiveTextInputStatusNotifier.update`. This is a known
-                    // Flutter framework issue: `LayoutBuilder`'s own render
-                    // object doc comment (`rendering/object.dart`,
-                    // `RenderObjectWithLayoutCallbackMixin`) explains that
-                    // an **offstage-but-still-mounted** `OverlayEntry` (its
-                    // own example: "an Overlay may skip laying out an
-                    // offstage OverlayEntry while keeping it in the tree")
-                    // can leave a `LayoutBuilder`'s pending rebuild
-                    // unresolved. `GuideCalendarPage` is PUSHED on top of
-                    // THIS screen (`Navigator.push`, not a replace) — this
-                    // screen, and its `LayoutBuilder`, stay mounted-but-
-                    // offstage underneath the whole time the calendar's
-                    // text field is focused and generating. A focused
-                    // `EditableText` reacting to the platform's async
-                    // Live-Text-input status (`setState` mid-frame) can
-                    // then collide with this offstage `LayoutBuilder`'s own
-                    // not-yet-consumed layout callback — exactly the
-                    // "'debugNeedsLayout' is not true" contradiction. Fixed
-                    // by removing the `LayoutBuilder` entirely rather than
-                    // trying to time its rebuild around a route two screens
-                    // away — no `LayoutBuilder` anywhere in this route's
-                    // stack means this failure mode cannot occur here
-                    // again, regardless of what's focused on the screen on
-                    // top.
-                    //
-                    // `DashboardTile` itself is completely unchanged (Rule
-                    // 1) — only how it's sized/arranged from outside
-                    // changed, never its own internal styling. No longer
-                    // wrapped in `Expanded` — that required a bounded-height
-                    // Flex ancestor, which this Column no longer has now
-                    // that it sits inside a scroll view (overflow fix).
-                    guide == null
-                        ? const Center(child: CircularProgressIndicator())
-                        : Builder(builder: (_) {
-                              // Plain local computation, not a widget — no
-                              // `LayoutBuilder` needed. `context` for the two
-                              // `onTap`s below is this Consumer builder's own
-                              // (already in scope, already used by the rest
-                              // of this screen — not tied to any sheet/modal
-                              // lifecycle the way the calendar bug's context
-                              // was).
-                              final tileSize = width * 0.57 < height * 0.25
-                                  ? width * 0.57
-                                  : height * 0.25;
-                              final gap = tileSize * 0.09;
-
-                              return Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    // Follow-up task, 2026-09-10 — "any of
-                                    // my roster has an unseen student
-                                    // comment or book commitment" (see
-                                    // `_boardUnseen`'s own doc comment).
-                                    StreamBuilder<bool>(
-                                      stream: _boardUnseen,
-                                      builder: (context, snap) => UnseenBadge(
-                                        show: snap.data ?? false,
-                                        child: SizedBox(
-                                      width: tileSize,
-                                      height: tileSize,
-                                      child: DashboardTile(
-                                        icon: Lottie.asset(
-                                          'assets/emoji/boy.json',
-                                          width: 55,
-                                          height: 55,
-                                        ),
-                                        title: "FOLK Boys\nBoard",
-                                        gradientColors: [
-                                          Colors.deepPurpleAccent,
-                                          Colors.lightBlue.shade300,
-                                        ],
-                                        onTap: () => Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) => FolkBoysWorkspace(
-                                                selectedGuide: guide),
-                                          ),
-                                        ),
-                                      ),
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(height: gap),
-                                    // Master Task 2026-09-10, Part 6 — a
-                                    // mandatory event/text-block only the
-                                    // HOD can post (`CalendarQueries.dart`'s
-                                    // own `_assertCanMutate`); every other
-                                    // guide should notice one landed since
-                                    // they last opened their calendar. Only
-                                    // `calendarEvents` is watched here —
-                                    // the rarer `calendarTextBlocks` isn't
-                                    // covered by this dot.
-                                    UnseenFeatureBadge(
-                                      featureKey: 'calendarEvents',
-                                      latestQuery: (g) => FirebaseFirestore
-                                          .instance
-                                          .collection('calendarEvents')
-                                          .where('scope',
-                                              isEqualTo: kScopeMandatory)
-                                          .snapshots(),
-                                      child: SizedBox(
-                                        width: tileSize,
-                                        height: tileSize,
-                                        child: DashboardTile(
-                                          icon: const Icon(
-                                            Icons.calendar_month,
-                                            color: Colors.amberAccent,
-                                            size: 55,
-                                          ),
-                                          title: "Calendar",
-                                          gradientColors: [
-                                            Colors.blue,
-                                            Colors.deepPurple.shade400,
-                                          ],
-                                          onTap: () => Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  GuideCalendarPage(
-                                                      selectedGuide: guide),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }),
-                      ],
                     ),
                   ),
                 ),
-              ),
-            ),
-        );
-      },
-    );
-  }
-}
-
-// -----------------------------------------------------------------------------
-// DashboardTile — copied verbatim from Home/MainPage.dart (Phase 5, Part 4).
-// See this file's header for why a temporary duplicate, not a shared move,
-// is the correct reading of "repoint before Phase 6 deletes MainPage.dart".
-// -----------------------------------------------------------------------------
-
-class DashboardTile extends StatefulWidget {
-  final String title;
-  final Widget icon;
-  final VoidCallback? onTap;
-  final List<Color> gradientColors;
-
-  const DashboardTile({
-    required this.title,
-    required this.icon,
-    required this.gradientColors,
-    this.onTap,
-  });
-
-  @override
-  _DashboardTileState createState() => _DashboardTileState();
-}
-
-class _DashboardTileState extends State<DashboardTile> {
-  bool isPressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => isPressed = true),
-      onTapUp: (_) => setState(() => isPressed = false),
-      onTapCancel: () => setState(() => isPressed = false),
-      onTap: widget.onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          gradient: LinearGradient(
-            colors: widget.gradientColors,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+            ],
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black26,
-              blurRadius: isPressed ? 6 : 14,
-              offset: Offset(0, isPressed ? 3 : 6),
-            ),
-          ],
         ),
-        child: Stack(
-          children: [
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: 45,
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(20)),
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.white.withOpacity(0.6),
-                      Colors.white.withOpacity(0.05),
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 12, GuideSpace.pagePadding, 0),
+          child: guide == null
+              ? const SizedBox(height: 116)
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      // "Any of my roster has an unseen student comment or book
+                      // commitment" (see `_boardUnseen`).
+                      child: StreamBuilder<bool>(
+                        stream: _boardUnseen,
+                        builder: (context, snap) => UnseenBadge(
+                          show: snap.data ?? false,
+                          offset: const Offset(10, 10),
+                          child: GuideGradientTile(
+                            pastel: GuidePastel.slate,
+                            icon: Icons.groups_2_outlined,
+                            title: 'FOLK Boys Board',
+                            subtitle: _boardSubtitle(),
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => FolkBoysWorkspace(selectedGuide: guide)),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: GuideSpace.cardGap),
+                    Expanded(
+                      // A mandatory event only the HOD can post: every other
+                      // guide should notice one landed since they last opened
+                      // their calendar (`calendarEvents` only).
+                      child: HomeData.instance.calendarBadge(
+                        child: GuideGradientTile(
+                          pastel: GuidePastel.mauve,
+                          icon: Icons.calendar_month_outlined,
+                          title: 'Calendar',
+                          subtitle: _calendarSubtitle(),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => GuideCalendarPage(selectedGuide: guide)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ),
-            Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  widget.icon,
-                  const SizedBox(height: 12),
-                  Text(
-                    widget.title,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ),
-          ],
         ),
-      ),
+      ],
     );
   }
 }
