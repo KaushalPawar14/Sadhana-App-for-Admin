@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- GuideColors.dark.pageBackground. -->
+    <color name="folk_page_background">#141519</color>
+</resources>

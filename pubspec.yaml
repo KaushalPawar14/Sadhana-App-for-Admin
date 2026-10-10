@@ -117,6 +117,24 @@ flutter:
           weight: 400
         - asset: assets/fonts/Satoshi-Bold.ttf
           weight: 500
+    # Ink & Brass design fonts (static instances generated from the official variable
+    # fonts, SIL OFL; the licences sit beside the files).
+    - family: Fraunces
+      fonts:
+        - asset: assets/fonts/Fraunces-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Fraunces-SemiBold.ttf
+          weight: 600
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
   # fonts:
   #   - family: Schyler
   #     fonts:

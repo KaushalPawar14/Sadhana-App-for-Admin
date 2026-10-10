@@ -1,18 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Theme applied to the Android Window while the process is starting when the OS's Dark Mode setting is on -->
+    <!-- Theme applied to the Android Window while the process is starting (OS dark mode on). -->
     <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
-        <!-- Show a splash screen on the activity. Automatically removed when
-             the Flutter engine draws its first frame -->
+        <!-- The window shows the app's page background until Flutter draws its
+             first frame (light: #F6F4EF, dark: #141519 - see colors.xml). -->
         <item name="android:windowBackground">@drawable/launch_background</item>
     </style>
-    <!-- Theme applied to the Android Window as soon as the process has started.
-         This theme determines the color of the Android Window while your
-         Flutter UI initializes, as well as behind your Flutter UI while its
-         running.
-
-         This Theme is only used starting with V2 of Flutter's Android embedding. -->
+    <!-- Theme applied as soon as the process has started: the window colour behind
+         the Flutter UI while it initializes and while it runs (also on resume, so
+         there is no white flash in dark mode). -->
     <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
-        <item name="android:windowBackground">?android:colorBackground</item>
+        <item name="android:windowBackground">@color/folk_page_background</item>
     </style>
 </resources>

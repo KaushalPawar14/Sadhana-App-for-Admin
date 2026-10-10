@@ -2,6 +2,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'theme/GuideTheme.dart';
+import 'theme/GuideTokens.dart';
+import 'theme/ThemeModeController.dart';
 import 'package:folk_guide_app/utils/BottomNavBar.dart';
 import 'package:folk_guide_app/utils/ColorProvider.dart';
 import 'package:folk_guide_app/utils/data_range_provider.dart';
@@ -42,6 +46,10 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Portrait only (the manifest locks it too, so there is no rotation flash
+  // before Flutter starts).
+  await SystemChrome.setPreferredOrientations(
+      const [DeviceOrientation.portraitUp]);
   final prefs = await SharedPreferences.getInstance();
   String? savedGuide = prefs.getString('selected_guide');
 
@@ -57,11 +65,17 @@ void main() async {
   // that file's header. Matches the Student app's `main.dart`, which
   // already awaits this before `runApp()`.
   await Firebase.initializeApp();
+  final themeController = await ThemeModeController.load();
 
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => ColorProvider()),
+        ChangeNotifierProvider<ThemeModeController>.value(
+            value: themeController),
+        // Mirrors the Light / Dark / Auto setting for the screens that still
+        // read ColorProvider.
+        ChangeNotifierProvider(
+            create: (_) => ColorProvider(controller: themeController)),
         ChangeNotifierProvider<AdminProfileProvider>.value(
             value: AdminProfileProvider.instance),
         ChangeNotifierProvider(create: (_) => DateRangeProvider()),
@@ -100,30 +114,15 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return Sizer(
       builder: (context, orientation, deviceType) {
-        final colorProvider = Provider.of<ColorProvider>(context);
-
-        return AnimatedTheme(
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.easeInOut,
-          data: ThemeData(
-            useMaterial3: true,
-            fontFamily: 'Satoshi',
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFFFFD180),
-              brightness: colorProvider.color == Colors.white
-                  ? Brightness.light
-                  : Brightness.dark,
-            ),
-            scaffoldBackgroundColor: colorProvider.color == Colors.white
-                ? const Color(0xFFFFF8E1)
-                : const Color(0xFF121212),
-          ),
-          child: MaterialApp(
-            navigatorKey: guideNavigatorKey,
-            debugShowCheckedModeBanner: false,
-            title: 'FOLK Guides',
-            home: SplashScreen(savedGuide: savedGuide),
-          ),
+        return MaterialApp(
+          navigatorKey: guideNavigatorKey,
+          debugShowCheckedModeBanner: false,
+          title: 'FOLK Guides',
+          theme: GuideTheme.light,
+          darkTheme: GuideTheme.dark,
+          themeMode: context.watch<ThemeModeController>().themeMode,
+          themeAnimationDuration: GuideMotion.of(context, GuideMotion.theme),
+          home: SplashScreen(savedGuide: savedGuide),
         );
       },
     );

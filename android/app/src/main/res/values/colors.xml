@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The app's page background (GuideColors.light.pageBackground). The window
+         shows it until Flutter draws its first frame, so there is no flash. -->
+    <color name="folk_page_background">#F6F4EF</color>
+</resources>
