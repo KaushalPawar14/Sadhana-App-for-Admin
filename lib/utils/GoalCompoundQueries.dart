@@ -102,6 +102,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import 'GoalMetrics.dart';
+import 'AdminProfile.dart';
 import 'StudentScope.dart';
 
 /// Same region every callable in this project's functions uses.
@@ -836,14 +837,31 @@ Future<void> rejectProposal({
 /// students.
 Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _ownedStudents(
     String guideId) async {
+  final owners = rosterOwnerIds(guideId);
   final snap = await StudentScope.current().studentsGet();
   return snap.docs
-      .where((d) => (d.data()['guideId'] ?? '').toString().trim() == guideId)
+      .where((d) => owners.contains((d.data()['guideId'] ?? '').toString().trim()))
       .toList();
 }
 
-/// Live, guideId-scoped roster count — the students this target's owner
-/// owns, read through the scoped student helper (see [_ownedStudents]).
+/// The admin ids whose students make up [guideId]'s goal roster: a GUIDE's own
+/// students PLUS his Male Enablers' students (his team); anyone else has just
+/// their own. Mirrors `rosterOwnerIds` in functions/goals.js, which counts the
+/// same roster on the server.
+Set<String> rosterOwnerIds(String guideId, {AdminProfile? profile}) {
+  final p = profile ?? AdminProfileProvider.current;
+  final owners = <String>{guideId};
+  if (p == null) return owners;
+  final owner = p.adminById(guideId);
+  if (owner == null || owner.role != AdminRole.guide) return owners;
+  for (final a in p.admins) {
+    if (a.role == AdminRole.maleEnabler && a.teamGuide == guideId) owners.add(a.id);
+  }
+  return owners;
+}
+
+/// Live roster count — the students this target's owner (and, for a Guide,
+/// his Male Enablers) own, read through the scoped student helper (see [_ownedStudents]).
 Future<int> liveRosterCount(String guideId) async {
   return (await _ownedStudents(guideId)).length;
 }

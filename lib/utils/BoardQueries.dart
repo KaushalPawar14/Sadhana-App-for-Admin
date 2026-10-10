@@ -121,6 +121,9 @@ library;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'AdminProfile.dart';
+import 'StudentScope.dart';
+
 // -----------------------------------------------------------------------------
 // Constants
 // -----------------------------------------------------------------------------
@@ -269,16 +272,25 @@ CollectionReference<Map<String, dynamic>> columnsRef(String boardId) =>
 CollectionReference<Map<String, dynamic>> placementsRef(String boardId) =>
     _boards().doc(boardId).collection(kPlacementsSubcollection);
 
-/// Every board, unfiltered.
-///
-/// Visibility is applied in Dart by [visibleBoards] rather than in the query:
-/// a guide must see their own boards **plus** the shared guideAssignment board
-/// (owned by nobody), which is two different `ownerGuideId` values and would
-/// need either two listeners or an `in` filter. One unfiltered listener over a
-/// handful of documents is cheaper and matches the single-equality-filter habit
-/// of this codebase.
+/// Every board this admin may open: the shared guideAssignment board (HOD only),
+/// boards this admin owns, and boards shared with them (equality / array-contains
+/// queries, merged). The security rules allow exactly these reads; visibility is
+/// then refined in Dart by [visibleBoards] (the guideAssignment board is hidden
+/// from a non-HOD).
 Stream<List<BoardDoc>> allBoardsStream() {
-  return _boards().snapshots().map((snap) =>
+  final profile = AdminProfileProvider.current;
+  final boards = _boards();
+  final queries = <Query<Map<String, dynamic>>>[
+    // The shared Guide Assignment board is HOD-only (the rules refuse the query
+    // to anyone else), so only the HOD asks for it.
+    if (profile != null && profile.isHod)
+      boards.where('kind', isEqualTo: kBoardKindGuideAssignment),
+    if (profile != null) ...[
+      boards.where('ownerGuideId', isEqualTo: profile.id),
+      boards.where('sharedWith', arrayContains: profile.id),
+    ],
+  ];
+  return StudentScope.mergedStream(queries).map((snap) =>
       snap.docs.map((d) => BoardDoc.from(d.id, d.data())).toList());
 }
 

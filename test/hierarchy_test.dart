@@ -402,6 +402,14 @@ void main() {
       }
     });
 
+    test('boards are listed with rule-provable queries, never an unfiltered boards read', () {
+      final board = codeOf(File('lib/utils/BoardQueries.dart'));
+      expect(board.contains('_boards().snapshots()'), isFalse);
+      expect(board.contains("where('ownerGuideId', isEqualTo: profile.id)"), isTrue);
+      expect(board.contains("where('sharedWith', arrayContains: profile.id)"), isTrue);
+      expect(board.contains('profile.isHod'), isTrue, reason: 'only the HOD asks for the guideAssignment board');
+    });
+
     test('reassignment goes only through the assignStudent callable', () {
       final board = codeOf(File('lib/utils/BoardQueries.dart'));
       expect(board.contains('reassignGuide'), isFalse);
@@ -413,7 +421,7 @@ void main() {
     });
 
     test('version bumped', () {
-      expect(File('pubspec.yaml').readAsStringSync(), contains('version: 1.1.4+10'));
+      expect(File('pubspec.yaml').readAsStringSync(), contains('version: 1.1.4+9'));
     });
   });
 }

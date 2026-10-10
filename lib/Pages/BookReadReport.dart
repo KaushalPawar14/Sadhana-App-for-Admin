@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/StudentScope.dart';
 
@@ -16,6 +17,8 @@ class _CheckSadhanaScreenState extends State<BookReadingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Legacy name-keyed `booksRead/{student}/{level}` data: HOD only (app and rules).
+    if (!AdminProfileProvider.viewerIsHod) return const _HodOnlyScreen();
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
 
@@ -236,6 +239,8 @@ class StudentDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Legacy name-keyed `booksRead/{student}/{level}` data: HOD only (app and rules).
+    if (!AdminProfileProvider.viewerIsHod) return const _HodOnlyScreen();
 
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
@@ -476,6 +481,30 @@ class StudentDetailScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+
+/// Shown instead of the legacy "Books Read" screens to anyone who is not a HOD
+/// (the old name-keyed `booksRead/{student}/{level}` data is HOD-only, in the app
+/// and in the security rules).
+class _HodOnlyScreen extends StatelessWidget {
+  const _HodOnlyScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Books Read')),
+      body: const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'This report is only available to the HOD.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
     );
   }
 }

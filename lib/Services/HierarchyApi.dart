@@ -172,6 +172,32 @@ class HierarchyApi {
     return (taken: r['taken'] == true, name: (r['name'] ?? '').toString());
   }
 
+  /// Gemini runs on the server (the API key is no longer in the app).
+  /// Returns the normalised draft map; throws [HierarchyException] with a
+  /// message that is safe to show the guide.
+  Future<Map<String, dynamic>> geminiExtractInteraction({
+    required String rawText,
+    required String studentName,
+  }) async {
+    final r = await _call('geminiExtractInteraction',
+        {'rawText': rawText, 'studentName': studentName});
+    final draft = r['draft'];
+    if (draft is! Map) throw HierarchyException('internal', 'Gemini returned the wrong shape. Try Extract again.');
+    return Map<String, dynamic>.from(draft);
+  }
+
+  Future<Map<String, String>> geminiSuggestNextAction({
+    required String contextText,
+    required String studentName,
+  }) async {
+    final r = await _call('geminiSuggestNextAction',
+        {'contextText': contextText, 'studentName': studentName});
+    return {
+      'recommendedNextAction': (r['recommendedNextAction'] ?? '').toString(),
+      'recommendedReasoning': (r['recommendedReasoning'] ?? '').toString(),
+    };
+  }
+
   Future<void> registerAdminToken(String token) =>
       _call('registerAdminToken', {'token': token});
 
