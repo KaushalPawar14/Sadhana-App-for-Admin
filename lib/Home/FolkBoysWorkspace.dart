@@ -1,19 +1,25 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import '../Pages/StudentComments.dart';
 import '../Pages/StudentProfilePage.dart';
 import '../Services/HierarchyApi.dart';
+import '../theme/GuideColors.dart';
+import '../theme/GuideTheme.dart';
+import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
+import '../utils/BoardData.dart';
 import '../utils/BoardQueries.dart';
 import '../utils/BookProgressData.dart';
-import '../utils/ColorProvider.dart';
 import '../utils/SeenMarkers.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentDeletion.dart';
 import '../utils/StudentScope.dart';
-import '../utils/UnseenFeatureBadge.dart';
+import '../widgets/GuideBoard.dart';
+import '../widgets/GuideButtons.dart';
+import '../widgets/GuideChips.dart';
+import '../widgets/GuideSurface.dart';
+import '../widgets/GuideTiles.dart';
 import 'Calendar.dart';
 
 /// FOLK Boys board workspace — the board CANVAS reached by tapping the one
@@ -322,7 +328,20 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   /// specifically undoes the flagged narrowing from wider layouts, per this
   /// task's own stated intent (helps smaller phones), though the actual
   /// on-screen result is still Rule-7-unverified.
-  static const double _columnWidth = 328;
+  /// The width of a board column on this screen: 330 dp where the screen allows
+  /// it, narrower on a small phone so the next column always peeks 28 dp (the
+  /// "swipe for more" hint). Set from [build].
+  double _colW = GuideBoardTokens.columnWidth;
+
+  static double _columnWidthFor(double screenWidth) =>
+      (screenWidth - GuideSpace.pagePadding - GuideBoardTokens.columnGap - GuideBoardTokens.peek)
+          .clamp(260.0, GuideBoardTokens.columnWidth);
+
+  /// How many books a level lists before "Show N more".
+  static const int _booksShown = 5;
+
+  /// Levels (keyed `uid_level`) whose whole book list is showing.
+  final Set<String> _allBooksShown = {};
 
   final ScrollController _hController = ScrollController();
 
@@ -415,7 +434,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   /// unassigned females). Never the whole `users` collection for a non-HOD.
   /// Sorted/bucketed in memory by the callers (no `orderBy`, no index).
   Stream<QuerySnapshot<Map<String, dynamic>>> _studentsStream() =>
-      StudentScope.current().studentsStream();
+      BoardData.instance.students();
 
   /// Human name of an admin id (falls back to the id itself).
   String _adminName(String id) =>
@@ -505,7 +524,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     _ensuring = true;
     try {
       // Deliberately unconditional, not HOD-gated — see this file's header.
-      await ensureGuideAssignmentBoard(all: all, hodGuide: guide);
+      await BoardData.instance.ensureGuideBoard(all: all, hodGuide: guide);
       _ensured = true;
     } catch (_) {
       // Next rebuild retries.
@@ -754,30 +773,19 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(title),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                boy.name,
-                style:
-                    const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700),
-              ),
+              Text(boy.name, style: ctx.gText.cardTitle),
               const SizedBox(height: 12),
-              _fromToRow("Currently with", from, Colors.grey.shade700),
+              _fromToRow(ctx, "Currently with", from),
               const SizedBox(height: 6),
-              _fromToRow("Moving to", to, const Color(0xFF00695C)),
+              _fromToRow(ctx, "Moving to", to, emphasised: true),
               const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.amber.shade200),
-                ),
+              GuideNotice(
                 child: Text(
                   "This changes who can see his private information and who "
                   "receives his notifications from now on.\n\n"
@@ -785,11 +793,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                   "flagged messages, LIT assessments and interaction logs do "
                   "NOT transfer. Nothing already recorded is moved, copied or "
                   "deleted.",
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.45,
-                    color: Colors.amber.shade900,
-                  ),
                 ),
               ),
             ],
@@ -801,31 +804,26 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             child: const Text("Cancel"),
           ),
           ElevatedButton(
-            style:
-                ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00695C)),
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(actionLabel, style: const TextStyle(color: Colors.white)),
+            child: Text(actionLabel),
           ),
         ],
       ),
     );
   }
 
-  Widget _fromToRow(String label, String value, Color colour) {
+  Widget _fromToRow(BuildContext ctx, String label, String value,
+      {bool emphasised = false}) {
+    final g = ctx.g;
+    final t = ctx.gText;
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          width: 100,
-          child: Text(
-            label,
-            style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
-          ),
-        ),
+        SizedBox(width: 104, child: Text(label, style: t.caption)),
         Expanded(
           child: Text(
             value,
-            style: TextStyle(
-                fontSize: 13.5, fontWeight: FontWeight.w700, color: colour),
+            style: t.bodyStrong.copyWith(color: emphasised ? g.brass : g.text),
           ),
         ),
       ],
@@ -859,9 +857,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       // Accept the hover for everyone — the real permission check happens on
       // drop, in `_handleDeleteDrop`, exactly like reassignment's own
       // `_handleDrop`. Rejecting the hover here would only hide the refusal
-      // message, not add real enforcement — see `_handleDeleteDrop`'s own
-      // doc comment for why the check is repeated there as the actual
-      // authority.
+      // message, not add real enforcement.
       onWillAcceptWithDetails: (details) => true,
       onAcceptWithDetails: (details) {
         final boy = _findBoy(allBoys, details.data);
@@ -869,32 +865,28 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
         _handleDeleteDrop(boy);
       },
       builder: (context, candidate, rejected) {
+        final g = context.g;
         final hovering = candidate.isNotEmpty;
+        final tone = hovering ? g.danger : g.mutedText;
         return Container(
-          margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-          padding: const EdgeInsets.symmetric(vertical: 14),
+          margin: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 0, GuideSpace.pagePadding, 8),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+          constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
           decoration: BoxDecoration(
-            color: hovering ? Colors.red.shade50 : Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: hovering ? Colors.red.shade400 : Colors.grey.shade300,
-              width: hovering ? 2 : 1,
-            ),
+            color: hovering ? g.danger.withValues(alpha: .12) : g.surface,
+            borderRadius: BorderRadius.circular(GuideShape.cardRadius),
+            border: Border.all(color: hovering ? g.danger : g.border, width: hovering ? 2 : 1),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.delete_forever,
-                  color: hovering ? Colors.red.shade700 : Colors.grey.shade500),
+              Icon(Icons.delete_outline_rounded, color: tone),
               const SizedBox(width: 8),
-              Text(
-                hovering
-                    ? "Release to delete permanently"
-                    : "Drop here to delete permanently",
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color:
-                      hovering ? Colors.red.shade700 : Colors.grey.shade600,
+              Flexible(
+                child: Text(
+                  hovering ? "Release to delete permanently" : "Drop here to delete permanently",
+                  textAlign: TextAlign.center,
+                  style: context.gText.bodyStrong.copyWith(color: tone),
                 ),
               ),
             ],
@@ -961,26 +953,16 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text("Delete this boy permanently?"),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                boy.name,
-                style: const TextStyle(
-                    fontSize: 15.5, fontWeight: FontWeight.w700),
-              ),
+              Text(boy.name, style: ctx.gText.cardTitle),
               const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.red.shade200),
-                ),
+              GuideNotice(
+                danger: true,
                 child: Text(
                   "This permanently deletes ALL of ${boy.name}'s data — "
                   "sadhana reports, scores, book progress, LIT assessments, "
@@ -989,11 +971,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                   "account (Firebase Authentication). This CANNOT be "
                   "undone. If he returns, he will need to register again "
                   "from scratch.",
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.45,
-                    color: Colors.red.shade900,
-                  ),
                 ),
               ),
             ],
@@ -1005,11 +982,10 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             child: const Text("Cancel"),
           ),
           ElevatedButton(
-            style:
-                ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: ctx.g.danger, foregroundColor: Colors.white),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("Delete permanently",
-                style: TextStyle(color: Colors.white)),
+            child: const Text("Delete permanently"),
           ),
         ],
       ),
@@ -1030,8 +1006,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       return showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Text("Deletion refused"),
           content: Text(result.refusalReason ??
               "Could not verify this deletion is safe to run."),
@@ -1056,7 +1030,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     return showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
           failed.isEmpty && !authFailedSoftly
               ? "${boy.name} deleted"
@@ -1074,17 +1047,17 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                 final Color color;
                 if (auth.deleted) {
                   line = "Sign-in account (Firebase Authentication): removed";
-                  color = Colors.black87;
+                  color = ctx.g.text;
                 } else if (auth.hadNoAuthAccount) {
                   line = "Sign-in account: none existed (manual entry, or "
                       "already removed)";
-                  color = Colors.black87;
+                  color = ctx.g.text;
                 } else {
                   line = "⚠️ Sign-in account could NOT be removed: "
                       "${auth.error}. His data has still been deleted below "
                       "— if he signs in again, he will be treated as a new "
                       "registration.";
-                  color = Colors.red.shade700;
+                  color = ctx.g.danger;
                 }
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 10),
@@ -1109,13 +1082,13 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                   "Failed — safe to retry, nothing here is destructive "
                   "twice:",
                   style: TextStyle(
-                      fontWeight: FontWeight.bold, color: Colors.red.shade700),
+                      fontWeight: FontWeight.bold, color: ctx.g.danger),
                 ),
                 const SizedBox(height: 4),
                 ...failed.map((s) => Text(
                       "• ${s.label}: ${s.error}",
                       style:
-                          TextStyle(fontSize: 12.5, color: Colors.red.shade700),
+                          TextStyle(fontSize: 12.5, color: ctx.g.danger),
                     )),
                 const SizedBox(height: 10),
               ],
@@ -1127,13 +1100,13 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                 style: TextStyle(
                     fontSize: 11,
                     fontStyle: FontStyle.italic,
-                    color: Colors.grey.shade600),
+                    color: ctx.g.mutedText),
               ),
               const SizedBox(height: 4),
               ...result.notFullyScrubbed.map((s) => Text(
                     "• $s",
                     style:
-                        TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                        TextStyle(fontSize: 11, color: ctx.g.mutedText),
                   )),
             ],
           ),
@@ -1147,224 +1120,91 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   }
 
   // ---------------------------------------------------------------------------
-  // Residence colours — Phase 2, Part 2.
+  // Residence — shown by the group avatar and pill on each card (`GuideGroup`:
+  // FOLK / Hostel / Localite, from `users.role`), with the legend under the top
+  // bar (`GuideGroupLegend`). A missing or unexpected role gets a neutral avatar
+  // and no pill, never a crash and never a hidden card; the board never writes
+  // `users.role`.
   // ---------------------------------------------------------------------------
-
-  /// Card tint by residence. `null` (rendered as plain white, today's exact
-  /// appearance) for a missing or unexpected `role` — never a crash, and the
-  /// card itself is never hidden, only left untinted. Matches
-  /// `BoardQueries.residenceSplit`'s own "unknown, never guessed" rule for
-  /// the same field.
-  ///
-  /// ⚠️ **Colour choice**: both are Material `shade50` — the palette's
-  /// lightest, lowest-saturation step, already used elsewhere in this app for
-  /// exactly this "sits behind text, must not fight it" role. FOLK keeps
-  /// `Colors.teal.shade50` — teal is this board's own established brand
-  /// colour, `Color(0xFF00695C)`, used throughout this file's dialogs/FAB and
-  /// the first entry in `BoardQueries.kColumnPalette`.
-  ///
-  /// ⚠️ **Hostel changed this task (Phase 3, Part 1) from blue to purple**,
-  /// per the product owner's explicit request, in the family of this app's
-  /// real brand purple `Color(0xFF6647B8)` — confirmed to actually exist
-  /// elsewhere in this codebase (`Students/.../BookPageList.dart:844`, the
-  /// Student app's own book-reader accent), not invented for this task.
-  /// `Colors.deepPurple.shade50` is used rather than a hand-picked hex: a
-  /// same-lightness comparison against `Colors.teal.shade50` (~12% brand
-  /// colour blended into white) applied to `0xFF6647B8` at that same ~12%
-  /// blend works out to `Color(0xFFEDE9F6)` — matching Material's real
-  /// `Colors.deepPurple.shade50` (`0xFFEDE7F6`) to within rounding. So the
-  /// named Material swatch already IS the correctly-blended light shade of
-  /// this app's actual brand purple, not just a same-family approximation.
-  ///
-  /// ⚠️ **Localite added Master Task 2026-09-03** — `Colors.red.shade50`,
-  /// the same "lightest, lowest-saturation Material step" rule as the other
-  /// two, in the one hue neither FOLK (teal) nor Hostel (purple) already
-  /// uses, per the product owner's explicit "red tint" request. Contrast
-  /// against this card's own body text colour (`Colors.black87`, unchanged
-  /// by this task) computed with the real WCAG relative-luminance formula,
-  /// not estimated: `#FFEBEE` (red.shade50) behind `black87` is **14.30:1**
-  /// — comfortably clear of WCAG AA's 4.5:1 for normal text, and in the same
-  /// range as the other two computed the same way (teal.shade50 14.14:1,
-  /// deepPurple.shade50 13.57:1). All three are effectively
-  /// indistinguishable in practice, exactly the "soft, low-saturation, sits
-  /// behind text" property the other two were already chosen for.
-  Color? _residenceTint(String role) {
-    if (role == kRoleFolk) return Colors.teal.shade50;
-    if (role == kRoleHostel) return Colors.deepPurple.shade50;
-    if (role == kRoleLocalite) return Colors.red.shade50;
-    return null;
-  }
-
-  /// A single-line legend, replacing the removed diagnostic banner's
-  /// position so the board does not gain vertical clutter (Phase 2, Part 2
-  /// item 3).
-  ///
-  /// ⚠️ **Theme check, by construction, since the app cannot be run (Rule
-  /// 7):** this legend sits directly on the `Scaffold`'s own
-  /// `colorProvider.color` background, which DOES flip between white and
-  /// `black87` with the theme toggle — unlike the student cards themselves,
-  /// which are already hardcoded `Colors.white` regardless of theme (a
-  /// pre-existing choice, unchanged by this task). So the legend's own
-  /// swatch outlines and text use `colorProvider.secondColor` (black in
-  /// light mode, white in dark mode — the same pair every AppBar/title in
-  /// this file already uses), while the swatch FILLS stay the fixed pastel
-  /// tints, exactly matching the fixed-white cards they describe. The card
-  /// tints themselves need no dark-mode variant precisely because the cards
-  /// they sit on never leave a white background — confirmed by reading the
-  /// code, not by a device run.
-  Widget _residenceLegend(ColorProvider colorProvider) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 2),
-      child: Row(
-        children: [
-          _legendSwatch(
-            colorProvider,
-            fill: Colors.teal.shade50,
-            outline: Colors.teal.shade300,
-            label: "FOLK",
-          ),
-          const SizedBox(width: 16),
-          _legendSwatch(
-            colorProvider,
-            fill: Colors.deepPurple.shade50,
-            outline: Colors.deepPurple.shade300,
-            label: "Hostel",
-          ),
-          const SizedBox(width: 16),
-          _legendSwatch(
-            colorProvider,
-            fill: Colors.red.shade50,
-            outline: Colors.red.shade300,
-            label: "Localite",
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _legendSwatch(
-    ColorProvider colorProvider, {
-    required Color fill,
-    required Color outline,
-    required String label,
-  }) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: fill,
-            shape: BoxShape.circle,
-            border: Border.all(color: outline),
-          ),
-        ),
-        const SizedBox(width: 5),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            color: colorProvider.secondColor.withOpacity(.7),
-          ),
-        ),
-      ],
-    );
-  }
 
   // ---------------------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------------------
 
-  /// ⚠️ **Phase 4 — this method now decides mandatory-vs-custom, but does
-  /// not change how the mandatory board itself renders at all.** The
-  /// `_activeBoardId == null` branch calls `_board(colorProvider, guide)`
-  /// exactly as before, byte-for-byte unchanged. A non-null id routes to
-  /// [_customBoardBody] instead — a fully separate rendering path. The extra
-  /// `allBoardsStream()` listener here (alongside the one `_board()` and
-  /// `_customBoardBody()` each already open internally) only drives the
-  /// AppBar's title/share-icon; it is not plumbed into either board's own
-  /// internals.
+  /// ⚠️ **Phase 4 — this method decides mandatory-vs-custom, but does not
+  /// change how the mandatory board itself renders**: the `_activeBoardId ==
+  /// null` branch calls `_board(guide)`. A non-null id routes to
+  /// [_customBoardBody] — a fully separate rendering path. The extra
+  /// `allBoardsStream()` listener here only drives the top bar's title and its
+  /// owner-only actions.
   @override
   Widget build(BuildContext context) {
-    return Consumer<ColorProvider>(
-      builder: (context, colorProvider, child) {
-        final guide = _guide;
-        return StreamBuilder<List<BoardDoc>>(
-          stream: allBoardsStream(),
-          builder: (context, boardsSnap) {
-            final allBoards = boardsSnap.data ?? const <BoardDoc>[];
-            BoardDoc? activeCustomBoard;
-            if (_activeBoardId != null) {
-              for (final b in allBoards) {
-                if (b.id == _activeBoardId) {
-                  activeCustomBoard = b;
-                  break;
-                }
-              }
-              // The active board vanished (deleted, or no longer shared with
-              // this viewer) — fall back to the mandatory board rather than
-              // rendering a dead reference. Scheduled for after this frame,
-              // since `setState` cannot run during `build`.
-              if (activeCustomBoard == null) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted && _activeBoardId != null) {
-                    setState(() => _activeBoardId = null);
-                  }
-                });
-              }
+    _colW = _columnWidthFor(MediaQuery.sizeOf(context).width);
+    final guide = _guide;
+    return StreamBuilder<List<BoardDoc>>(
+      stream: BoardData.instance.boards(),
+      builder: (context, boardsSnap) {
+        final allBoards = boardsSnap.data ?? const <BoardDoc>[];
+        BoardDoc? activeCustomBoard;
+        if (_activeBoardId != null) {
+          for (final b in allBoards) {
+            if (b.id == _activeBoardId) {
+              activeCustomBoard = b;
+              break;
             }
+          }
+          // The active board vanished (deleted, or no longer shared with this
+          // viewer) — fall back to the mandatory board rather than rendering a
+          // dead reference. Scheduled for after this frame, since `setState`
+          // cannot run during `build`.
+          if (activeCustomBoard == null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _activeBoardId != null) {
+                setState(() => _activeBoardId = null);
+              }
+            });
+          }
+        }
 
-            final title = activeCustomBoard == null
-                ? "FOLK Boys"
-                : (activeCustomBoard.title.isEmpty
-                    ? "(untitled)"
-                    : activeCustomBoard.title);
+        final title = activeCustomBoard == null
+            ? "FOLK Boys"
+            : (activeCustomBoard.title.isEmpty ? "(untitled)" : activeCustomBoard.title);
 
-            // Share is owner-only — see `isBoardOwner`'s own doc comment for
-            // why this is a narrower gate than day-to-day editing.
-            final canShare = activeCustomBoard != null &&
-                isBoardOwner(board: activeCustomBoard, guide: guide);
+        // Share / rename / delete are owner-only — see `isBoardOwner`'s doc
+        // comment for why this is a narrower gate than day-to-day editing.
+        final canShare =
+            activeCustomBoard != null && isBoardOwner(board: activeCustomBoard, guide: guide);
 
-            return Scaffold(
-              backgroundColor: colorProvider.color,
-              // A normal back button: this is a PUSHED page (from
-              // `FolkBoysEntryScreen`'s tile), not a bare tab body. `AppBar`
-              // supplies the back arrow automatically since
-              // `Navigator.canPop(context)` is true here.
-              appBar: AppBar(
-                elevation: 0,
-                backgroundColor: colorProvider.color,
-                iconTheme: IconThemeData(color: colorProvider.secondColor),
-                title: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: colorProvider.secondColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+        return GuideScaffold(
+          body: Column(
+            children: [
+              GuideTopBar(
+                title: title,
+                titleMaxLines: 2,
                 actions: [
-                  if (canShare)
-                    IconButton(
-                      tooltip: "Share board",
-                      icon: Icon(Icons.person_add_alt_1,
-                          color: colorProvider.secondColor),
-                      onPressed: () =>
-                          _shareCustomBoard(activeCustomBoard!, guide),
-                    ),
-                  // Rename/delete — owner-only (`canShare` is already
-                  // `isBoardOwner`, the same narrower gate — see that
-                  // function's own doc comment for why these two actions
-                  // don't extend to a shared-with collaborator).
+                  // Switch board (the board / table view switch).
+                  GuideRoundButton(
+                    icon: Icons.view_list_rounded,
+                    tooltip: "Switch board",
+                    onPressed: () => _openBoardSwitcher(guide),
+                  ),
+                  // "New board" — a plain action in the top bar (no FAB: a FAB
+                  // sat over the last row of cards).
+                  GuideRoundButton(
+                    icon: Icons.add_rounded,
+                    tooltip: "New board",
+                    onPressed: () => _createBoard(guide),
+                  ),
+                  // Share, rename, delete — owner-only (`canShare` is
+                  // `isBoardOwner`). Share used to be its own icon; it now sits
+                  // in this one menu with the other two.
                   if (canShare)
                     PopupMenuButton<String>(
                       tooltip: "Board options",
-                      icon: Icon(Icons.more_vert,
-                          color: colorProvider.secondColor),
                       onSelected: (v) {
                         switch (v) {
+                          case 'share':
+                            _shareCustomBoard(activeCustomBoard!, guide);
                           case 'rename':
                             _renameCustomBoard(activeCustomBoard!);
                           case 'delete':
@@ -1372,67 +1212,32 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                         }
                       },
                       itemBuilder: (_) => const [
-                        PopupMenuItem(
-                            value: 'rename', child: Text("Rename board")),
-                        PopupMenuItem(
-                            value: 'delete', child: Text("Delete board")),
+                        PopupMenuItem(value: 'share', child: Text("Share board")),
+                        PopupMenuItem(value: 'rename', child: Text("Rename board")),
+                        PopupMenuItem(value: 'delete', child: Text("Delete board")),
                       ],
+                      child: const GuideRoundIcon(icon: Icons.more_horiz_rounded),
                     ),
-                  // ⚠️ The "Submission status" (fact_check) icon that stood
-                  // here (Phase 5, Part 2) was REMOVED this task: it's still
-                  // reachable via Folk Analysis -> "Week Planning" ->
-                  // "Not submitted today" -> "Open Submission Status"
-                  // (`Pages/WeeklyPlanning.dart:325-328`, confirmed live
-                  // before removing this icon), and the matching "Semester
-                  // goal" flag icon was already removed the task before
-                  // this one for the same reason (Guide Targets got its own
-                  // permanent tile on the Folk Analysis tab). Removing this
-                  // one too de-clutters the AppBar further and avoids a
-                  // second, redundant path to a screen already reachable
-                  // elsewhere.
-                  IconButton(
-                    tooltip: "Switch board",
-                    icon:
-                        Icon(Icons.view_list, color: colorProvider.secondColor),
-                    onPressed: () => _openBoardSwitcher(guide),
-                  ),
-                  // "New board" — moved here from a bottom FAB (which sat
-                  // over student cards, overlapping the last row of the
-                  // board) into the AppBar as a plain action icon,
-                  // matching every other board-management action already
-                  // here. No FAB anywhere in this Scaffold anymore.
-                  IconButton(
-                    tooltip: "New board",
-                    icon: Icon(Icons.add, color: colorProvider.secondColor),
-                    onPressed: () => _createBoard(guide),
-                  ),
                 ],
               ),
-              body: guide.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Text(
-                          "No guide selected on this device.",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: colorProvider.secondColor),
+              Expanded(
+                child: guide.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Text(
+                            "No guide selected on this device.",
+                            textAlign: TextAlign.center,
+                            style: context.gText.body,
+                          ),
                         ),
-                      ),
-                    )
-                  // ⚠️ The `GoalProgressBar` strip that stood here (Phase 5,
-                  // Part 2) was REMOVED this task — redundant with the
-                  // "Guide Targets" tile on the Folk Analysis tab
-                  // (`Pages/Competition.dart`), which is the real navigation
-                  // entry point for the same feature. Reverted to calling
-                  // `_board`/`_customBoardBody` directly, exactly as before
-                  // Phase 5 wrapped this call site — neither method itself
-                  // was ever touched.
-                  : (_activeBoardId == null
-                      ? _board(colorProvider, guide)
-                      : _customBoardBody(
-                          colorProvider, guide, _activeBoardId!)),
-            );
-          },
+                      )
+                    : (_activeBoardId == null
+                        ? _board(guide)
+                        : _customBoardBody(guide, _activeBoardId!)),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -1455,7 +1260,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(title),
         content: TextField(
           controller: controller,
@@ -1535,9 +1339,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (sheetContext) {
         return DraggableScrollableSheet(
           initialChildSize: 0.6,
@@ -1545,36 +1346,73 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
           maxChildSize: 0.9,
           expand: false,
           builder: (context, scrollController) {
+            final g = context.g;
+            final t = context.gText;
             return StreamBuilder<List<BoardDoc>>(
-              stream: allBoardsStream(),
+              stream: BoardData.instance.boards(),
               builder: (context, snap) {
                 if (!snap.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                // ⚠️ The mandatory board's own tile is found directly from
-                // the UNFILTERED list, not from `visibleBoards()` — that
-                // function's `isGuideAssignment` branch is HOD-only by
-                // design (see its own doc comment), which is correct for
-                // deciding whether a generic "boards you own" list should
-                // list it, but wrong here: EVERY viewer, HOD or not, must be
-                // able to switch back to the mandatory board from inside a
-                // custom board, since `_activeBoardId == null` (the
-                // mandatory board) is this workspace's own default state for
-                // everyone, not an HOD-exclusive destination. The mandatory
-                // board's real access control lives entirely inside
-                // `_board()` itself (`_usersQuery()`/`_visibleColumns()`),
-                // untouched by this list.
-                final mandatory =
-                    snap.data!.where((b) => b.isGuideAssignment).toList();
+                // ⚠️ The mandatory board's own tile is found directly from the
+                // UNFILTERED list, not from `visibleBoards()` — that function's
+                // `isGuideAssignment` branch is HOD-only by design, which is
+                // right for a generic "boards you own" list but wrong here:
+                // EVERY viewer, HOD or not, must be able to switch back to the
+                // mandatory board from inside a custom board, since
+                // `_activeBoardId == null` is this workspace's own default
+                // state for everyone. The mandatory board's real access control
+                // lives entirely inside `_board()` itself.
+                final mandatory = snap.data!.where((b) => b.isGuideAssignment).toList();
                 final custom = visibleBoards(
                   all: snap.data!,
                   guide: guide,
                   isHod: _isHod,
                 ).where((b) => !b.isGuideAssignment).toList();
 
+                Widget row({
+                  required IconData icon,
+                  required String title,
+                  required String subtitle,
+                  required bool selected,
+                  required VoidCallback onTap,
+                }) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onTap,
+                      child: GuideCard(
+                        color: selected ? g.chipBackground : null,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 44),
+                          child: Row(
+                            children: [
+                              Icon(icon, color: g.mutedText),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(title, style: t.cardTitleSmall),
+                                    Text(subtitle, style: t.caption),
+                                  ],
+                                ),
+                              ),
+                              if (selected) Icon(Icons.check_rounded, color: g.brass),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
                 return ListView(
                   controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                   children: [
                     Center(
                       child: Container(
@@ -1582,79 +1420,52 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                         height: 4,
                         margin: const EdgeInsets.only(bottom: 14),
                         decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
+                          color: g.border,
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
                     ),
-                    Text(
-                      "Boards",
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
+                    Text("Boards", style: t.sectionTitle),
                     const SizedBox(height: 12),
-                    ...mandatory.map((b) => Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          color: _activeBoardId == null
-                              ? Colors.teal.shade50
-                              : null,
-                          child: ListTile(
-                            leading: const Icon(Icons.groups_outlined),
-                            title: const Text("Guide Assignment"),
-                            subtitle: const Text("The mandatory board"),
-                            trailing: _activeBoardId == null
-                                ? const Icon(Icons.check, color: Colors.teal)
-                                : null,
-                            onTap: () {
-                              setState(() => _activeBoardId = null);
-                              Navigator.pop(sheetContext);
-                            },
-                          ),
+                    ...mandatory.map((b) => row(
+                          icon: Icons.groups_outlined,
+                          title: "Guide Assignment",
+                          subtitle: "The mandatory board",
+                          selected: _activeBoardId == null,
+                          onTap: () {
+                            setState(() => _activeBoardId = null);
+                            Navigator.pop(sheetContext);
+                          },
                         )),
                     const SizedBox(height: 8),
-                    Text(
-                      "Custom boards",
-                      style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade700),
-                    ),
+                    Text("Custom boards", style: t.small.copyWith(fontWeight: FontWeight.w600)),
                     const SizedBox(height: 6),
                     if (custom.isEmpty)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 24),
                         child: Text(
-                          "No custom boards yet — tap \"New board\" to "
-                          "create one.",
+                          "No custom boards yet — tap \"New board\" to create one.",
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey.shade600),
+                          style: t.small,
                         ),
                       )
                     else
                       ...custom.map((b) {
-                        final selected = _activeBoardId == b.id;
                         final owned = b.isOwnedBy(guide);
                         final subtitle = owned
                             ? (b.sharedWith.isEmpty
                                 ? "Yours"
                                 : "Yours · shared with ${b.sharedWith.map(_adminName).join(', ')}")
                             : "Shared by ${_adminName(b.ownerGuideId)}";
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          color: selected ? Colors.teal.shade50 : null,
-                          child: ListTile(
-                            leading: const Icon(Icons.dashboard_outlined),
-                            title:
-                                Text(b.title.isEmpty ? "(untitled)" : b.title),
-                            subtitle: Text(subtitle),
-                            trailing: selected
-                                ? const Icon(Icons.check, color: Colors.teal)
-                                : null,
-                            onTap: () {
-                              setState(() => _activeBoardId = b.id);
-                              Navigator.pop(sheetContext);
-                            },
-                          ),
+                        return row(
+                          icon: Icons.dashboard_outlined,
+                          title: b.title.isEmpty ? "(untitled)" : b.title,
+                          subtitle: subtitle,
+                          selected: _activeBoardId == b.id,
+                          onTap: () {
+                            setState(() => _activeBoardId = b.id);
+                            Navigator.pop(sheetContext);
+                          },
                         );
                       }),
                   ],
@@ -1701,8 +1512,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text("Share this board"),
+            title: const Text("Share this board"),
           content: SizedBox(
             width: double.maxFinite,
             child: choices.isEmpty
@@ -1711,15 +1521,15 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 8),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
                         child: Text(
                           "Anyone checked gets full control of this board — "
                           "they can move cards, add/rename/delete columns, "
                           "and rename the board itself, the same as you. "
                           "They cannot delete the board or change who it is "
                           "shared with — that stays with you.",
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                          style: TextStyle(fontSize: 12, color: ctx.g.mutedText),
                         ),
                       ),
                       ...choices.map((a) => CheckboxListTile(
@@ -1793,7 +1603,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text("Delete this board?"),
         content: Text(
           "\"${board.title.isEmpty ? '(untitled)' : board.title}\" and all "
@@ -1807,9 +1616,10 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             child: const Text("Cancel"),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: ctx.g.danger, foregroundColor: Colors.white),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("Delete", style: TextStyle(color: Colors.white)),
+            child: const Text("Delete"),
           ),
         ],
       ),
@@ -1909,7 +1719,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     final picked = await showDialog<int>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text("Column colour"),
         content: Wrap(
           spacing: 12,
@@ -1926,7 +1735,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: column.colorValue == value
-                              ? Colors.black87
+                              ? ctx.g.text
                               : Colors.transparent,
                           width: 3,
                         ),
@@ -1979,7 +1788,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text("Delete this list?"),
         content: Text(
           cardCount == 0
@@ -1997,9 +1805,10 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             child: const Text("Cancel"),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: ctx.g.danger, foregroundColor: Colors.white),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("Delete", style: TextStyle(color: Colors.white)),
+            child: const Text("Delete"),
           ),
         ],
       ),
@@ -2032,7 +1841,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text("Remove ${boy.name} from this board?"),
         content: const Text(
           "This only removes him from THIS board's organisation. His "
@@ -2045,10 +1853,10 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             child: const Text("Cancel"),
           ),
           ElevatedButton(
-            style:
-                ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: ctx.g.warning, foregroundColor: ctx.g.onPrimary),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("Remove", style: TextStyle(color: Colors.white)),
+            child: const Text("Remove"),
           ),
         ],
       ),
@@ -2105,7 +1913,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                       return const Center(child: CircularProgressIndicator());
                     }
                     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                      stream: placementsStream(boardId),
+                      stream: BoardData.instance.placements(boardId),
                       builder: (context, placeSnap) {
                         final placedUids = (placeSnap.data?.docs ?? [])
                             .map((d) => d.id)
@@ -2134,16 +1942,14 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                                       height: 4,
                                       margin: const EdgeInsets.only(bottom: 14),
                                       decoration: BoxDecoration(
-                                        color: Colors.grey.shade300,
+                                        color: context.g.border,
                                         borderRadius: BorderRadius.circular(4),
                                       ),
                                     ),
                                   ),
                                   Text(
                                     "Add students to \"${column.title}\"",
-                                    style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold),
+                                    style: context.gText.sectionTitle,
                                   ),
                                 ],
                               ),
@@ -2159,8 +1965,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                                           "already on this board, or you have "
                                           "no students of your own yet.",
                                           textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                              color: Colors.grey.shade600),
+                                          style: context.gText.small,
                                         ),
                                       ),
                                     )
@@ -2179,11 +1984,8 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                                           subtitle: boy.isManualEntry
                                               ? Text(
                                                   "Guide-entered · not registered",
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    color:
-                                                        Colors.orange.shade800,
-                                                  ),
+                                                  style: context.gText.caption
+                                                      .copyWith(color: context.g.warning),
                                                 )
                                               : null,
                                           onChanged: (v) =>
@@ -2217,8 +2019,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                                           );
                                         },
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF00695C),
-                                    foregroundColor: Colors.white,
+                
                                   ),
                                   child: Text("Add (${selected.length})"),
                                 ),
@@ -2250,7 +2051,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   }) async {
     try {
       for (var i = 0; i < uids.length; i++) {
-        await movePlacement(
+        await BoardData.instance.movePlacement(
           boardId: boardId,
           studentUid: uids[i],
           columnId: columnId,
@@ -2274,9 +2075,9 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     }
   }
 
-  Widget _board(ColorProvider colorProvider, String guide) {
+  Widget _board(String guide) {
     return StreamBuilder<List<BoardDoc>>(
-      stream: allBoardsStream(),
+      stream: BoardData.instance.boards(),
       builder: (context, boardsSnap) {
         if (!boardsSnap.hasData) {
           return const Center(child: CircularProgressIndicator());
@@ -2297,7 +2098,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
         final boardId = board.id;
 
         return StreamBuilder<List<BoardColumn>>(
-          stream: columnsStream(boardId),
+          stream: BoardData.instance.columns(boardId),
           builder: (context, colSnap) {
             if (!colSnap.hasData) {
               return const Center(child: CircularProgressIndicator());
@@ -2332,7 +2133,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                 // loaded profile; `adminUsers` is no longer read directly.
                 if (!_reconciling) {
                   _reconciling = true;
-                  reconcileGuideColumns(
+                  BoardData.instance.reconcileColumns(
                     boardId: boardId,
                     roster: [
                       for (final a in _boardAdmins(AdminProfileProvider.require()))
@@ -2347,16 +2148,15 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
 
                 return Column(
                   children: [
-                    // Replaces the removed diagnostic banner's position —
-                    // see [_residenceLegend]'s own doc comment.
-                    _residenceLegend(colorProvider),
+                    // FOLK / Hostel / Localite legend under the top bar.
+                    const GuideGroupLegend(),
                     // Drag-to-delete target — see [_trashTarget]'s own
                     // doc comment. Only rendered while a card is actually
                     // being dragged.
                     _trashTarget(allBoys: boys),
                     Expanded(
                       child: _canvas(
-                        colorProvider: colorProvider,
+                        guide: guide,
                         boardId: boardId,
                         columns: visibleColumns,
                         allBoys: boys,
@@ -2437,7 +2237,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   }) async {
     if (!canEdit) return;
     try {
-      await movePlacement(
+      await BoardData.instance.movePlacement(
         boardId: boardId,
         studentUid: boy.uid,
         columnId: target.id,
@@ -2451,12 +2251,11 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   }
 
   Widget _customBoardBody(
-    ColorProvider colorProvider,
     String guide,
     String boardId,
   ) {
     return StreamBuilder<List<BoardDoc>>(
-      stream: allBoardsStream(),
+      stream: BoardData.instance.boards(),
       builder: (context, boardsSnap) {
         if (!boardsSnap.hasData) {
           return const Center(child: CircularProgressIndicator());
@@ -2474,7 +2273,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
         final canEdit = canEditBoard(board: board, guide: guide, isHod: _isHod);
 
         return StreamBuilder<List<BoardColumn>>(
-          stream: columnsStream(boardId),
+          stream: BoardData.instance.columns(boardId),
           builder: (context, colSnap) {
             if (!colSnap.hasData) {
               return const Center(child: CircularProgressIndicator());
@@ -2493,7 +2292,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             // rule than the previous "eligible OR already placed" union
             // this replaced.
             return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: placementsStream(boardId),
+              stream: BoardData.instance.placements(boardId),
               builder: (context, placeSnap) {
                 final placementColumnByUid = <String, String>{};
                 if (placeSnap.hasData) {
@@ -2507,7 +2306,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                   // Nobody has ever been placed here — skip the `users`
                   // read entirely, matching the blank-board empty state.
                   return _customCanvas(
-                    colorProvider: colorProvider,
                     boardId: boardId,
                     guide: guide,
                     canEdit: canEdit,
@@ -2541,7 +2339,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                         a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
                     return _customCanvas(
-                      colorProvider: colorProvider,
                       boardId: boardId,
                       guide: guide,
                       canEdit: canEdit,
@@ -2577,7 +2374,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   /// falling through to just the small "Add a list" tile at the far left,
   /// which would be easy to miss on first open.
   Widget _customCanvas({
-    required ColorProvider colorProvider,
     required String boardId,
     required String guide,
     required bool canEdit,
@@ -2587,39 +2383,30 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     required int Function(BoardColumn) columnCardCount,
   }) {
     if (columns.isEmpty) {
+      final g = context.g;
+      final t = context.gText;
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.view_column_outlined,
-                  size: 46, color: Colors.grey.shade400),
+              Icon(Icons.view_column_outlined, size: 46, color: g.mutedText),
               const SizedBox(height: 14),
-              Text(
-                "This board is empty",
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: colorProvider.secondColor,
-                ),
-              ),
+              Text("This board is empty", style: t.cardTitle),
               const SizedBox(height: 6),
               Text(
                 "Add a list to start organising students.",
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
+                style: t.small,
               ),
               if (canEdit) ...[
                 const SizedBox(height: 16),
-                ElevatedButton.icon(
+                GuidePrimaryButton(
+                  label: "Add a list",
+                  icon: Icons.add_rounded,
+                  expand: false,
                   onPressed: () => _addCustomColumn(boardId, columns),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text("Add a list"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00695C),
-                    foregroundColor: Colors.white,
-                  ),
                 ),
               ],
             ],
@@ -2628,11 +2415,21 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       );
     }
 
+    // Where each column's left edge rests when snapped.
+    final snap = <double>[];
+    var left = 0.0;
+    for (var i = 0; i < columns.length; i++) {
+      snap.add(left);
+      left += _colW + GuideBoardTokens.columnGap;
+    }
+    if (canEdit) snap.add(left);
+
     return ListView(
       controller: _hController,
       scrollDirection: Axis.horizontal,
-      physics: _scrollLocked ? const NeverScrollableScrollPhysics() : null,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
+      physics: _scrollLocked ? const NeverScrollableScrollPhysics() : GuideSnapPhysics(snapOffsets: snap),
+      padding: const EdgeInsets.fromLTRB(
+          GuideSpace.pagePadding, 4, GuideSpace.pagePadding - GuideBoardTokens.columnGap, 20),
       children: [
         for (final column in columns)
           _customColumnTile(
@@ -2645,30 +2442,40 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             boys: columnBoys(column),
             cardCount: columnCardCount(column),
           ),
-        if (canEdit)
-          Container(
-            width: 150,
-            margin: const EdgeInsets.only(right: 12),
-            child: InkWell(
-              onTap: () => _addCustomColumn(boardId, columns),
-              borderRadius: BorderRadius.circular(16),
-              child: DottedBorderBox(
+        if (canEdit) _newColumnTile(label: "Add a list", onTap: () => _addCustomColumn(boardId, columns)),
+      ],
+    );
+  }
+
+  /// The dashed tile at the end of the row ("New board" on the mandatory board,
+  /// "Add a list" on a custom one).
+  Widget _newColumnTile({required String label, required VoidCallback onTap}) {
+    final g = context.g;
+    return Container(
+      width: 160,
+      margin: const EdgeInsets.only(right: GuideBoardTokens.columnGap),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: GuideDashedBox(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 160),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.add, color: Colors.grey.shade600),
+                    Icon(Icons.add_rounded, color: g.mutedText),
                     const SizedBox(height: 6),
-                    Text(
-                      "Add a list",
-                      style:
-                          TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
-                    ),
+                    Text(label, textAlign: TextAlign.center, style: context.gText.small),
                   ],
                 ),
               ),
             ),
           ),
-      ],
+        ),
+      ),
     );
   }
 
@@ -2685,10 +2492,9 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     final colour = Color(column.colorValue);
 
     return DragTarget<String>(
-      // Read-only viewers, and drops of a student already in this column,
-      // are both rejected here — `canEdit` is re-checked again inside
-      // `_handlePlacementDrop` as the real authority, matching every other
-      // permission gate in this file.
+      // Read-only viewers, and drops of a student already in this column, are
+      // both rejected here — `canEdit` is re-checked again inside
+      // `_handlePlacementDrop` as the real authority.
       onWillAcceptWithDetails: (details) {
         if (!canEdit) return false;
         return !boys.any((b) => b.uid == details.data);
@@ -2707,106 +2513,44 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       },
       builder: (context, candidate, rejected) {
         final hovering = candidate.isNotEmpty;
+        final t = context.gText;
 
-        return Container(
-          width: _columnWidth,
-          margin: const EdgeInsets.only(right: 12),
-          decoration: BoxDecoration(
-            color: hovering ? colour.withOpacity(.10) : Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: hovering ? colour : colour.withOpacity(.28),
-              width: hovering ? 2 : 1,
-            ),
+        return GuideBoardColumnShell(
+          width: _colW,
+          tone: GuideColumnTone.plain,
+          hovering: hovering,
+          header: _customColumnHeader(
+            boardId: boardId,
+            guide: guide,
+            canEdit: canEdit,
+            column: column,
+            columns: columns,
+            colour: colour,
+            count: boys.length,
+            cardCount: cardCount,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _customColumnHeader(
-                boardId: boardId,
-                guide: guide,
-                canEdit: canEdit,
-                column: column,
-                columns: columns,
-                colour: colour,
-                count: boys.length,
-                cardCount: cardCount,
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: boys.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(18),
-                          child: Text(
-                            hovering ? "Drop here" : "Empty",
-                            style: TextStyle(
-                                fontSize: 12, color: Colors.grey.shade500),
-                          ),
-                        ),
-                      )
-                    : ListView.builder(
-                        physics: _scrollLocked
-                            ? const NeverScrollableScrollPhysics()
-                            : null,
-                        padding: const EdgeInsets.fromLTRB(10, 10, 10, 14),
-                        itemCount: boys.length,
-                        // ⚠️ **Part 3.5 — remove one student from this
-                        // board.** `_studentCard` itself is reused
-                        // completely UNCHANGED (its own `LongPressDraggable`
-                        // already claims long-press for the drag this task
-                        // must not touch) — a competing long-press or a menu
-                        // added INSIDE that card would risk exactly the
-                        // gesture-arena conflict this project spent five
-                        // rounds fixing. Instead, a small "×" badge is
-                        // overlaid from the OUTSIDE via `Stack`, as a SIBLING
-                        // of the card rather than a descendant of its own
-                        // `LongPressDraggable`/`GestureDetector` — Flutter
-                        // resolves its tap independently, with no shared
-                        // ancestor to compete in the same arena. Custom-board
-                        // only: the mandatory board's own `_columnTile` (a
-                        // separate, untouched code path) never renders this.
-                        itemBuilder: (context, i) => canEdit
-                            ? Stack(
-                                children: [
-                                  _studentCard(boy: boys[i], colour: colour),
-                                  Positioned(
-                                    top: 2,
-                                    right: 2,
-                                    child: InkWell(
-                                      customBorder: const CircleBorder(),
-                                      onTap: () => _confirmRemoveFromBoard(
-                                        boardId: boardId,
-                                        boy: boys[i],
-                                      ),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(3),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          shape: BoxShape.circle,
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color:
-                                                  Colors.black.withOpacity(.15),
-                                              blurRadius: 3,
-                                            ),
-                                          ],
-                                        ),
-                                        child: Icon(
-                                          Icons.close,
-                                          size: 13,
-                                          color: Colors.grey.shade700,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              )
-                            : _studentCard(boy: boys[i], colour: colour),
-                      ),
-              ),
-            ],
-          ),
+          body: boys.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Text(hovering ? "Drop here" : "Empty", style: t.caption),
+                  ),
+                )
+              : ListView.builder(
+                  physics: _scrollLocked ? const NeverScrollableScrollPhysics() : null,
+                  padding: const EdgeInsets.only(top: 4, bottom: 6),
+                  itemCount: boys.length,
+                  // Part 3.5 — remove one student from this board: a button on
+                  // the card's own top row (custom boards only; the mandatory
+                  // board never shows it).
+                  itemBuilder: (context, i) => _studentCard(
+                    boy: boys[i],
+                    colour: colour,
+                    onRemove: canEdit
+                        ? () => _confirmRemoveFromBoard(boardId: boardId, boy: boys[i])
+                        : null,
+                  ),
+                ),
         );
       },
     );
@@ -2829,94 +2573,62 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     required int count,
     required int cardCount,
   }) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 6, 10),
-      child: Row(
-        children: [
-          Container(width: 4, height: 30, color: colour),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    column.title.isEmpty ? "(untitled)" : column.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: colour,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: colour.withOpacity(.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    "$count",
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: colour,
-                    ),
-                  ),
-                ),
-              ],
+    final g = context.g;
+    return GuideBoardColumnHeader(
+      title: column.title,
+      accent: colour,
+      count: count,
+      actions: [
+        if (canEdit)
+          GuideCardIconButton(
+            icon: Icons.person_add_alt_1_outlined,
+            tooltip: "Add students",
+            onTap: () => _openAddStudentsPicker(
+              boardId: boardId,
+              column: column,
+              guide: guide,
+              currentCardCount: cardCount,
             ),
           ),
-          if (canEdit)
-            IconButton(
-              tooltip: "Add students",
-              icon: Icon(Icons.person_add_alt_1,
-                  size: 18, color: Colors.grey.shade600),
-              onPressed: () => _openAddStudentsPicker(
-                boardId: boardId,
-                column: column,
-                guide: guide,
-                currentCardCount: cardCount,
-              ),
+        if (canEdit && column.isEditable)
+          PopupMenuButton<String>(
+            tooltip: "List options",
+            onSelected: (v) {
+              switch (v) {
+                case 'rename':
+                  _renameCustomColumn(boardId, column);
+                case 'colour':
+                  _recolourCustomColumn(boardId, column);
+                case 'left':
+                  _shiftCustomColumn(boardId, columns, column, -1);
+                case 'right':
+                  _shiftCustomColumn(boardId, columns, column, 1);
+                case 'delete':
+                  _deleteCustomColumn(
+                    boardId: boardId,
+                    column: column,
+                    columns: columns,
+                    cardCount: cardCount,
+                    guide: guide,
+                  );
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'rename', child: Text("Rename")),
+              PopupMenuItem(value: 'colour', child: Text("Change colour")),
+              PopupMenuItem(value: 'left', child: Text("Move left")),
+              PopupMenuItem(value: 'right', child: Text("Move right")),
+              PopupMenuItem(value: 'delete', child: Text("Delete")),
+            ],
+            child: SizedBox(
+              width: GuideShape.touchTarget,
+              height: GuideShape.touchTarget,
+              child: Icon(Icons.more_vert, size: 18, color: g.mutedText),
             ),
-          if (canEdit && column.isEditable)
-            PopupMenuButton<String>(
-              icon: Icon(Icons.more_vert, size: 18, color: Colors.grey.shade600),
-              onSelected: (v) {
-                switch (v) {
-                  case 'rename':
-                    _renameCustomColumn(boardId, column);
-                  case 'colour':
-                    _recolourCustomColumn(boardId, column);
-                  case 'left':
-                    _shiftCustomColumn(boardId, columns, column, -1);
-                  case 'right':
-                    _shiftCustomColumn(boardId, columns, column, 1);
-                  case 'delete':
-                    _deleteCustomColumn(
-                      boardId: boardId,
-                      column: column,
-                      columns: columns,
-                      cardCount: cardCount,
-                      guide: guide,
-                    );
-                }
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'rename', child: Text("Rename")),
-                PopupMenuItem(value: 'colour', child: Text("Change colour")),
-                PopupMenuItem(value: 'left', child: Text("Move left")),
-                PopupMenuItem(value: 'right', child: Text("Move right")),
-                PopupMenuItem(value: 'delete', child: Text("Delete")),
-              ],
-            )
-          else
-            const SizedBox(width: 8),
-        ],
-      ),
+          )
+        else
+          const SizedBox(width: 8),
+      ],
     );
   }
 
@@ -2926,7 +2638,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   // ---------------------------------------------------------------------------
 
   Widget _canvas({
-    required ColorProvider colorProvider,
+    required String guide,
     required String boardId,
     required List<_LaneColumn> columns,
     required List<_Boy> allBoys,
@@ -2934,32 +2646,26 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     required String? Function(_LaneColumn) headerExtra,
   }) {
     if (columns.isEmpty) {
+      final g = context.g;
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.view_column_outlined,
-                  size: 46, color: Colors.grey.shade400),
+              Icon(Icons.view_column_outlined, size: 46, color: g.mutedText),
               const SizedBox(height: 14),
-              Text(
-                "Setting up guide columns…",
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: colorProvider.secondColor),
-              ),
+              Text("Setting up guide columns…", style: context.gText.cardTitle),
             ],
           ),
         ),
       );
     }
 
-    // A small vertical label opens each gender lane when the viewer sees
-    // both (HOD only) — a Guide / Enabler sees a single lane, so no label.
-    final bothLanes = columns.any((c) => c.lane == 'male') &&
-        columns.any((c) => c.lane == 'female');
+    // A small vertical label opens each gender lane when the viewer sees both
+    // (HOD only) — a Guide / Enabler sees a single lane, so no label.
+    final bothLanes =
+        columns.any((c) => c.lane == 'male') && columns.any((c) => c.lane == 'female');
     final items = <Object>[];
     String? currentLane;
     for (final c in columns) {
@@ -2968,16 +2674,33 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       items.add(c);
     }
 
+    // Where each column's left edge rests when snapped (a lane label between
+    // columns is accounted for), then the dashed "New board" tile.
+    final snap = <double>[];
+    var left = 0.0;
+    for (final item in items) {
+      if (item is String) {
+        left += _laneLabelWidth + GuideBoardTokens.columnGap;
+      } else {
+        snap.add(left);
+        left += _colW + GuideBoardTokens.columnGap;
+      }
+    }
+    snap.add(left);
+
     return ListView.builder(
       controller: _hController,
       scrollDirection: Axis.horizontal,
-      // Drag fix — `null` (not `AlwaysScrollableScrollPhysics()`) when
-      // unlocked, so the default platform scroll feel is unchanged. See
-      // `_scrollLocked`'s doc comment for the full history.
-      physics: _scrollLocked ? const NeverScrollableScrollPhysics() : null,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
-      itemCount: items.length,
+      // Drag fix — while a card is dragged the row must not scroll under the
+      // finger (see `_scrollLocked`); otherwise it snaps column by column.
+      physics: _scrollLocked ? const NeverScrollableScrollPhysics() : GuideSnapPhysics(snapOffsets: snap),
+      padding: const EdgeInsets.fromLTRB(
+          GuideSpace.pagePadding, 4, GuideSpace.pagePadding - GuideBoardTokens.columnGap, 20),
+      itemCount: items.length + 1,
       itemBuilder: (context, index) {
+        if (index == items.length) {
+          return _newColumnTile(label: "New board", onTap: () => _createBoard(guide));
+        }
         final item = items[index];
         if (item is String) return _laneLabel(item);
         final column = item as _LaneColumn;
@@ -2992,29 +2715,27 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     );
   }
 
+  static const double _laneLabelWidth = 30;
+
   /// The narrow vertical "MALES" / "FEMALES" strip that starts a gender lane.
   Widget _laneLabel(String lane) {
+    final g = context.g;
     final female = lane == 'female';
-    final colour = female ? Colors.pink.shade400 : Colors.blueGrey.shade600;
     return Container(
-      width: 30,
-      margin: const EdgeInsets.only(right: 12),
+      width: _laneLabelWidth,
+      margin: const EdgeInsets.only(right: GuideBoardTokens.columnGap),
       decoration: BoxDecoration(
-        color: colour.withOpacity(.10),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colour.withOpacity(.35)),
+        color: g.chipBackground,
+        borderRadius: BorderRadius.circular(GuideShape.columnRadius),
+        border: Border.all(color: g.border),
       ),
       child: Center(
         child: RotatedBox(
           quarterTurns: 3,
           child: Text(
             female ? "FEMALES" : "MALES",
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 2,
-              color: colour,
-            ),
+            maxLines: 1,
+            style: context.gText.label.copyWith(letterSpacing: 2, fontWeight: FontWeight.w700),
           ),
         ),
       ),
@@ -3029,6 +2750,13 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     required String? headerExtra,
   }) {
     final colour = Color(column.column.colorValue);
+    final mine = AdminProfileProvider.current?.id;
+    // Green tint on the viewer's own column, cool on Unassigned, plain otherwise.
+    final tone = column.isUnassigned
+        ? GuideColumnTone.unassigned
+        : (column.admin != null && column.admin!.id == mine
+            ? GuideColumnTone.folk
+            : GuideColumnTone.plain);
 
     return DragTarget<String>(
       // Every hover is accepted (except a card already in this column) so a
@@ -3052,119 +2780,37 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       builder: (context, candidate, rejected) {
         final hovering = candidate.isNotEmpty;
 
-        return Container(
-          width: _columnWidth,
-          margin: const EdgeInsets.only(right: 12),
-          decoration: BoxDecoration(
-            color: hovering ? colour.withOpacity(.10) : Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: hovering ? colour : colour.withOpacity(.28),
-              width: hovering ? 2 : 1,
-            ),
+        return GuideBoardColumnShell(
+          width: _colW,
+          tone: tone,
+          hovering: hovering,
+          header: GuideBoardColumnHeader(
+            title: column.title,
+            accent: colour,
+            count: boys.length,
+            subtitle: headerExtra,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _columnHeader(title: column.title, colour: colour, count: boys.length, headerExtra: headerExtra),
-              const Divider(height: 1),
-              Expanded(
-                child: boys.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(18),
-                          child: Text(
-                            hovering ? "Drop here" : "Empty",
-                            style: TextStyle(
-                                fontSize: 12, color: Colors.grey.shade500),
-                          ),
-                        ),
-                      )
-                    : ListView.builder(
-                        // Same drag fix as the outer horizontal list — this
-                        // column's own vertical scroll is ALSO an ancestor
-                        // of every card's `LongPressDraggable` and competes
-                        // in the exact same way.
-                        physics: _scrollLocked
-                            ? const NeverScrollableScrollPhysics()
-                            : null,
-                        padding: const EdgeInsets.fromLTRB(10, 10, 10, 14),
-                        itemCount: boys.length,
-                        itemBuilder: (context, i) =>
-                            _studentCard(boy: boys[i], colour: colour),
-                      ),
-              ),
-            ],
-          ),
+          body: boys.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Text(hovering ? "Drop here" : "Empty", style: context.gText.caption),
+                  ),
+                )
+              : ListView.builder(
+                  // Same drag fix as the outer horizontal list — this column's
+                  // own vertical scroll is ALSO an ancestor of every card's
+                  // `LongPressDraggable` and competes in the exact same way.
+                  physics: _scrollLocked ? const NeverScrollableScrollPhysics() : null,
+                  padding: const EdgeInsets.only(top: 4, bottom: 6),
+                  itemCount: boys.length,
+                  itemBuilder: (context, i) => _studentCard(boy: boys[i], colour: colour),
+                ),
         );
       },
     );
   }
 
-  Widget _columnHeader({
-    required String title,
-    required Color colour,
-    required int count,
-    required String? headerExtra,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 6, 10),
-      child: Row(
-        children: [
-          Container(width: 4, height: 30, color: colour),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title.isEmpty ? "(untitled)" : title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: colour,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: colour.withOpacity(.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        "$count",
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: colour,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                if (headerExtra != null) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    headerExtra,
-                    style:
-                        TextStyle(fontSize: 10.5, color: Colors.grey.shade600),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   /// ⚠️ **Drag attempt #5 — back to whole-card `LongPressDraggable`, per the
   /// product owner's explicit rejection of the handle icon.** Attempt #4's
@@ -3193,8 +2839,12 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   /// not a silent one; it is not addressed here because the task's own
   /// instruction is to test the permission fix first rather than layer on
   /// another speculative gesture change.
-  Widget _studentCard({required _Boy boy, required Color colour}) {
-    final cardBody = _cardBody(boy: boy, colour: colour);
+  Widget _studentCard({
+    required _Boy boy,
+    required Color colour,
+    VoidCallback? onRemove,
+  }) {
+    final cardBody = _cardBody(boy: boy, colour: colour, onRemove: onRemove);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 9),
@@ -3214,17 +2864,18 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
           _stopEdgeScroll();
           _unlockScroll();
         },
+        // Picked up: a soft shadow and a 1.02 scale.
         feedback: Material(
           color: Colors.transparent,
-          child: Opacity(
-            opacity: .92,
+          child: Transform.scale(
+            scale: 1.02,
             child: SizedBox(
-              width: _columnWidth - 20,
-              child:
-                  _cardBody(boy: boy, colour: colour, forceCollapsed: true),
+              width: _colW - 20,
+              child: _cardBody(boy: boy, colour: colour, forceCollapsed: true, lifted: true),
             ),
           ),
         ),
+        // The gap the card leaves behind while it travels.
         childWhenDragging: Opacity(opacity: .35, child: cardBody),
         child: cardBody,
       ),
@@ -3235,16 +2886,17 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     required _Boy boy,
     required Color colour,
     bool forceCollapsed = false,
+    bool lifted = false,
+    VoidCallback? onRemove,
   }) {
     final expanded = !forceCollapsed && _expandedUids.contains(boy.uid);
+    final g = context.g;
+    final t = context.gText;
+    final group = guideGroupOf(boy.role);
+    final duration = GuideMotion.of(context, GuideMotion.expand);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: _residenceTint(boy.role) ?? Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      clipBehavior: Clip.antiAlias,
+    return GuideBoardCardFrame(
+      lifted: lifted,
       // Plain GestureDetector, NOT InkWell — see this file's header for the
       // full drag-history diagnosis.
       child: GestureDetector(
@@ -3259,54 +2911,52 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                   }
                 }),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          padding: const EdgeInsets.fromLTRB(12, 10, 4, 4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Row 1: who, and the expand chevron (and, on a custom board, the
+              // remove-from-board button).
               Row(
                 children: [
-                  Container(
-                    width: 30,
-                    height: 30,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: colour.withOpacity(.12),
-                    ),
-                    child: Center(
+                  GuideGroupAvatar(name: boy.name, group: group),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Text(
-                        boy.name.isNotEmpty ? boy.name[0].toUpperCase() : '?',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w800,
-                          color: colour,
-                        ),
+                        boy.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: t.cardTitleSmall,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      boy.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 13.5, fontWeight: FontWeight.w600),
+                  if (!forceCollapsed)
+                    AnimatedRotation(
+                      turns: expanded ? .5 : 0,
+                      duration: duration,
+                      curve: GuideMotion.standard,
+                      child: Icon(Icons.keyboard_arrow_down_rounded, size: 22, color: g.mutedText),
                     ),
-                  ),
-                  // Left-to-right: calendar, comment, profile — i.e.
-                  // right-to-left: profile, comment, calendar — all three
-                  // wired. The scoring placeholder icon (bar-chart,
-                  // `onTap: null`) was removed this task: it was a Phase 1
-                  // stand-in for a scoring destination that no longer exists
-                  // separately — `StudentProfilePage` (the profile icon)
-                  // already carries both score cards, so the placeholder was
-                  // pure redundant dead weight that rendered greyed and read
-                  // as broken. A small gap between icons (added last task)
-                  // gives each `IconButton` clear space from its neighbour,
-                  // reducing the chance a slightly off-centre tap lands on
-                  // the wrong control.
-                  _cardIcon(
-                    icon: Icons.calendar_month,
+                  if (onRemove != null && !forceCollapsed)
+                    GuideCardIconButton(
+                      icon: Icons.close_rounded,
+                      tooltip: "Remove from this board",
+                      onTap: onRemove,
+                    )
+                  else
+                    const SizedBox(width: 10),
+                ],
+              ),
+              // Row 2: the group pill, and the three quick icons — calendar,
+              // comments, profile — each a 48 dp target.
+              Row(
+                children: [
+                  if (group != null) GuideGroupPill(group: group),
+                  const Spacer(),
+                  GuideCardIconButton(
+                    icon: Icons.calendar_month_outlined,
                     tooltip: "Calendar",
                     onTap: forceCollapsed
                         ? null
@@ -3321,32 +2971,14 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                               ),
                             ),
                   ),
-                  const SizedBox(width: 3),
-                  // Wired this task (Phase 2, Part 4) — reuses
                   // `showStudentCommentsDialog` unchanged, including its own
                   // internal `_canAccess` gate (HOD always; a guide only on
-                  // their own current student). Deliberately NOT
-                  // pre-checked here: duplicating that gate would be a
-                  // second copy of the same rule that could drift, and the
-                  // dialog already renders the correct "not yours" / "no
-                  // guide selected" states on its own when access fails —
-                  // see this file's header for the specific consequence for
-                  // an unassigned student.
-                  // Master Task 2026-09-10, Part 6 — per-student thread:
-                  // unseen means a message posted (by the OTHER party — HOD
-                  // or the assigned guide) since THIS viewer last opened
-                  // THIS student's thread, so one student's new message
-                  // never lights up every other student's icon too.
-                  UnseenFeatureBadge(
-                    featureKey: 'studentComments',
-                    subKey: boy.uid,
-                    timestampField: 'createdAt',
-                    latestQuery: (_) => FirebaseFirestore.instance
-                        .collection('studentComments')
-                        .doc(boy.uid)
-                        .collection('messages')
-                        .snapshots(),
-                    child: _cardIcon(
+                  // their own current student). Per-student unseen dot: a
+                  // message posted (by the OTHER party) since THIS viewer last
+                  // opened THIS student's thread.
+                  BoardData.instance.commentsBadge(
+                    studentUid: boy.uid,
+                    child: GuideCardIconButton(
                       icon: Icons.forum_outlined,
                       tooltip: "Comments",
                       onTap: forceCollapsed
@@ -3357,47 +2989,45 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                                 studentName: boy.name,
                                 studentGuideId: boy.guideId,
                               ).then((_) {
-                                SeenMarkers.markSeenSub(
-                                    _guide, 'studentComments', boy.uid);
+                                SeenMarkers.markSeenSub(_guide, 'studentComments', boy.uid);
                               }),
                     ),
                   ),
-                  const SizedBox(width: 3),
-                  // Profile icon (added Phase 3, Part 3) — opens
-                  // `StudentProfilePage`, the replacement for the old
-                  // `Pages/Profile.dart`. Now the last of three icons — the
-                  // fourth (scoring placeholder) that used to sit before
-                  // Calendar was removed this task.
-                  _cardIcon(
-                    icon: Icons.person_outline,
+                  GuideCardIconButton(
+                    icon: Icons.person_outline_rounded,
                     tooltip: "Profile",
                     onTap: forceCollapsed
                         ? null
                         : () => Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    StudentProfilePage(studentUid: boy.uid),
+                                builder: (_) => StudentProfilePage(studentUid: boy.uid),
                               ),
                             ),
                   ),
-                  if (!forceCollapsed)
-                    Icon(
-                      expanded ? Icons.expand_less : Icons.expand_more,
-                      size: 20,
-                      color: Colors.grey.shade500,
-                    ),
                 ],
               ),
-              // Manually-added student badge — Part 5, this task. Not
-              // optional per the task's own instruction: a roadmap phase can
-              // now be completed on guide-entered numbers alone, so this
-              // must always be visible, never hidden behind a tap.
-              if (boy.isManualEntry) _manualEntryBadge(),
-              if (expanded) ...[
-                const Divider(height: 18),
-                _expandedDetail(boy: boy),
-              ],
+              // Manually-added student badge: always visible, never behind a tap.
+              if (boy.isManualEntry)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8, right: 8),
+                  child: _manualEntryBadge(),
+                ),
+              GuideAnimatedSize(
+                duration: duration,
+                child: expanded
+                    ? Padding(
+                        padding: const EdgeInsets.only(right: 8, bottom: 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Divider(height: 14, color: g.border),
+                            _expandedDetail(boy: boy),
+                          ],
+                        ),
+                      )
+                    : const SizedBox(width: double.infinity),
+              ),
             ],
           ),
         ),
@@ -3425,7 +3055,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   /// `BooksProgressPage` itself only ever loads them for the one student it
   /// was opened for.
   Widget _expandedDetail({required _Boy boy}) {
-    _booksConfigFuture ??= loadBooksConfig();
+    _booksConfigFuture ??= BoardData.instance.booksConfig();
     // Master Task 2026-09-10, Part 6 — expanding this student's own card is
     // "seen" for their book commitments (per-student, so one student's
     // update never marks a different student's own panel seen). Fire-and-
@@ -3441,7 +3071,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
         // (`loadChantingCommitment`), just laid out to fit inside a card
         // instead of a full-width screen banner.
         FutureBuilder<int?>(
-          future: loadChantingCommitment(boy.uid),
+          future: BoardData.instance.chantingCommitment(boy.uid),
           builder: (context, snap) {
             if (!snap.hasData) return const SizedBox.shrink();
             return _commitmentRow(snap.data);
@@ -3454,7 +3084,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             if (configSnap.hasError) {
               return Text(
                 "Could not load the book list.",
-                style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500),
+                style: context.gText.caption,
               );
             }
             if (!configSnap.hasData) {
@@ -3479,14 +3109,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
               // student's documents (`constrainForStudent`: HOD none; else
               // `scopeTeam` / `scopeGuide` [+ `scopeGender`] from the
               // student's current assignment). Equality only — no index.
-              stream: StudentScope.current()
-                  .constrainForStudent(
-                    FirebaseFirestore.instance
-                        .collection('booksRead')
-                        .where('uid', isEqualTo: boy.uid),
-                    boy.ref,
-                  )
-                  .snapshots(),
+              stream: BoardData.instance.booksRead(boy.ref),
               builder: (context, progressSnap) {
                 if (!progressSnap.hasData) {
                   return const Padding(
@@ -3536,31 +3159,34 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   /// screen's full-width bordered container (there is no room for one inside
   /// a board card).
   Widget _commitmentRow(int? commitment) {
-    return Row(
-      children: [
-        Icon(
-          Icons.local_fire_department,
-          size: 15,
-          color: commitment == null
-              ? Colors.grey.shade400
-              : Colors.deepOrange.shade400,
-        ),
-        const SizedBox(width: 5),
-        Expanded(
-          child: Text(
-            commitment == null
-                ? "No chanting commitment set"
-                : "Committed to $commitment rounds/day",
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: commitment == null
-                  ? Colors.grey.shade500
-                  : Colors.black87,
+    final g = context.g;
+    final t = context.gText;
+    if (commitment == null) {
+      return Row(
+        children: [
+          Icon(Icons.local_fire_department_outlined, size: 16, color: g.mutedText),
+          const SizedBox(width: 6),
+          Expanded(child: Text("No chanting commitment set", style: t.caption)),
+        ],
+      );
+    }
+    // A sand chip: "Committed to N rounds/day".
+    return GuidePastelBox(
+      pastel: GuidePastel.sand,
+      radius: 12,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: Row(
+        children: [
+          const Icon(Icons.local_fire_department_outlined, size: 16, color: GuideColors.pastelAccent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              "Committed to $commitment rounds/day",
+              style: t.onPastelBody.copyWith(fontSize: 13),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -3611,10 +3237,19 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
 
     final levelKey = '${boy.uid}_$level';
     final open = _expandedLevels.contains(levelKey);
+    final showAll = _allBooksShown.contains(levelKey);
+    final listed = showAll ? displayOrder : displayOrder.take(_booksShown).toList();
+    final hidden = displayOrder.length - listed.length;
+
+    final g = context.g;
+    final t = context.gText;
+    final duration = GuideMotion.of(context, GuideMotion.expand);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // A plain GestureDetector, not InkWell — this file's convention for
+        // anything nested inside the draggable card.
         GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => setState(() {
@@ -3624,62 +3259,85 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
               _expandedLevels.add(levelKey);
             }
           }),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 5),
-            child: Row(
-              children: [
-                Icon(
-                  open ? Icons.expand_less : Icons.expand_more,
-                  size: 16,
-                  color: Colors.grey.shade600,
-                ),
-                const SizedBox(width: 3),
-                Text(
-                  kBookLevelLabels[level] ?? level,
-                  style: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(kBookLevelLabels[level] ?? level, style: t.cardTitleSmall),
+                      ),
+                      AnimatedRotation(
+                        turns: open ? .5 : 0,
+                        duration: duration,
+                        curve: GuideMotion.standard,
+                        child: Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: g.mutedText),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
                     books.isEmpty
                         ? "no books configured"
                         : "$finished of ${books.length} finished"
                             "${reading > 0 ? ' · $reading reading' : ''}",
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style:
-                        TextStyle(fontSize: 10.5, color: Colors.grey.shade600),
+                    style: t.caption,
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  GuideProgressBar(
+                    value: books.isEmpty ? 0 : finished / books.length,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-        if (open)
-          Padding(
-            padding: const EdgeInsets.only(left: 19, bottom: 4),
-            child: books.isEmpty
-                ? Text(
-                    "No books configured for this level.",
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade500,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: displayOrder
-                        .map((b) => _bookStatusRow(
-                            boy: boy,
-                            book: b,
-                            status:
-                                statusForBookEntry(entries['${b.level}_${b.key}']),
-                            entry: entries['${b.level}_${b.key}']))
-                        .toList(),
-                  ),
-          ),
+        GuideAnimatedSize(
+          duration: duration,
+          child: open
+              ? Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: books.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Text("No books configured for this level.", style: t.caption),
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (final b in listed)
+                              _bookStatusRow(
+                                boy: boy,
+                                book: b,
+                                status: statusForBookEntry(entries['${b.level}_${b.key}']),
+                                entry: entries['${b.level}_${b.key}'],
+                              ),
+                            if (hidden > 0)
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => setState(() => _allBooksShown.add(levelKey)),
+                                child: ConstrainedBox(
+                                  constraints:
+                                      const BoxConstraints(minHeight: GuideShape.touchTarget),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      "Show $hidden more",
+                                      style: t.bodyStrong.copyWith(color: g.brass),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
       ],
     );
   }
@@ -3713,72 +3371,59 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     required BookStatus status,
     required Map<String, dynamic>? entry,
   }) {
-    final (colour, icon, _) = bookStatusStyle(status);
+    final g = context.g;
+    final t = context.gText;
     final isCurrent = status == BookStatus.readingNow;
     final isFinished = status == BookStatus.finished;
+    final colour = isFinished ? g.success : (isCurrent ? g.brass : g.mutedText);
+    // Open circle: not started; ring with a dot: reading now; tick: done.
+    final icon = isFinished
+        ? Icons.check_circle_rounded
+        : (isCurrent ? Icons.timelapse_rounded : Icons.radio_button_unchecked_rounded);
     final commitmentDate = (entry?['commitmentDate'] as String?)?.trim();
     final commitmentSetBy = (entry?['commitmentSetBy'] as String?)?.trim();
 
+    // Tapping an unfinished book opens the guide-assign dialog (the ONLY way to
+    // mark a book finished from this card); a finished one is not tappable.
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: isFinished
-          ? null
-          : () => _openAssignBookDialog(boy: boy, book: book, entry: entry),
-      child: Padding(
-        // Task, 2026-09-15 — tightened from `vertical: 3` now that the
-        // "Mark finished" icon button (which forced a 28-logical-pixel
-        // minimum row height) is gone; rows are shorter on their own
-        // merits now, so less padding keeps them from looking too sparse.
-        padding: const EdgeInsets.symmetric(vertical: 1.5),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 1),
-              child: Icon(icon, size: 13, color: colour),
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    book.title.isEmpty ? "(untitled)" : book.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: status == BookStatus.notStarted
-                          ? Colors.grey.shade600
-                          : Colors.black87,
+      onTap: isFinished ? null : () => _openAssignBookDialog(boy: boy, book: book, entry: entry),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: isFinished ? 36 : GuideShape.touchTarget),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: colour),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      book.title.isEmpty ? "(untitled)" : book.title,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.body.copyWith(
+                        fontSize: 13,
+                        color: status == BookStatus.notStarted ? g.mutedText : g.text,
+                      ),
                     ),
-                  ),
-                  // Part 5 item 2 — current book's commitment date + who
-                  // set it. Never shown for a finished book (no
-                  // `commitmentDate` display makes sense once done) or a
-                  // not-started one (nothing has been committed yet).
-                  if (isCurrent && commitmentDate != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 1),
-                      child: Text(
+                    // The current book's commitment date and who set it.
+                    if (isCurrent && commitmentDate != null)
+                      Text(
                         commitmentSetBy == 'guide'
                             ? "Due $commitmentDate (set by guide)"
                             : "Due $commitmentDate (set by student)",
-                        style: TextStyle(
-                            fontSize: 9.5, color: Colors.grey.shade500),
+                        style: t.caption,
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            // The separate "Mark finished" tick button that used to live
-            // here was removed (task, 2026-09-15) — redundant with the
-            // "Mark as completed" action already inside the tap-the-title
-            // assign dialog ([_openAssignBookDialog]), and the row's own
-            // chevron below already signals the whole row is tappable.
-            if (!isFinished)
-              Icon(Icons.chevron_right, size: 14, color: Colors.grey.shade400),
-          ],
+              if (!isFinished) Icon(Icons.chevron_right_rounded, size: 18, color: g.mutedText),
+            ],
+          ),
         ),
       ),
     );
@@ -3839,9 +3484,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text("Mark finished",
-                style: TextStyle(color: Colors.white)),
+            child: const Text("Mark finished"),
           ),
         ],
       ),
@@ -3949,7 +3592,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                   Text(
                     "Choose a commitment date. This book becomes "
                     "${boy.name}'s current book, and they'll be notified.",
-                    style: const TextStyle(fontSize: 12.5),
+                    style: dialogContext.gText.small,
                   ),
                   const SizedBox(height: 14),
                   InkWell(
@@ -3969,7 +3612,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 10),
                       decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade300),
+                        border: Border.all(color: dialogContext.g.border),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Row(
@@ -3999,14 +3642,14 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                     child: OutlinedButton.icon(
                       onPressed: () =>
                           Navigator.pop(dialogContext, 'mark_finished'),
-                      icon: const Icon(Icons.check_circle_outline,
-                          size: 16, color: Colors.green),
-                      label: const Text(
+                      icon: Icon(Icons.check_circle_outline,
+                          size: 18, color: dialogContext.g.success),
+                      label: Text(
                         "Mark as completed",
-                        style: TextStyle(color: Colors.green),
+                        style: TextStyle(color: dialogContext.g.success),
                       ),
                       style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: Colors.green.shade300),
+                        side: BorderSide(color: dialogContext.g.success.withValues(alpha: .6)),
                       ),
                     ),
                   ),
@@ -4171,84 +3814,31 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   /// numbers alone, and that must read as different from a real submission
   /// at a glance, not merely on close inspection.
   Widget _manualEntryBadge() {
+    final g = context.g;
     return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: Colors.orange.shade100,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: Colors.orange.shade300),
+      padding: const EdgeInsets.only(top: 2),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: g.warning.withValues(alpha: .14),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: g.warning.withValues(alpha: .45)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.edit_note_rounded, size: 14, color: g.warning),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                "Guide-entered · not registered",
+                style: context.gText.pill.copyWith(color: g.text),
+              ),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.edit_note, size: 11, color: Colors.orange.shade800),
-                const SizedBox(width: 3),
-                Text(
-                  "Guide-entered · not registered",
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.orange.shade900,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _cardIcon({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback? onTap,
-  }) {
-    return SizedBox(
-      width: 34,
-      height: 34,
-      child: IconButton(
-        icon: Icon(icon, size: 18),
-        tooltip: tooltip,
-        onPressed: onTap,
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-        color: Colors.grey.shade700,
-        disabledColor: Colors.grey.shade300,
-      ),
-    );
-  }
-}
-
-// -----------------------------------------------------------------------------
-// DottedBorderBox — copied verbatim from Pages/BoardView.dart (Phase 5,
-// Part 4). `BoardView.dart` is scheduled for full deletion in Phase 6; this
-// was the one live cross-cluster dependency this file had on it (grep-
-// confirmed every other reference to that file from here was doc-comment
-// prose, not code). `BoardView.dart` keeps its own copy until Phase 6
-// deletes that whole file — same "temporary duplicate for one phase"
-// pattern already used for `DobCard` in `Pages/StudentProfilePage.dart`.
-// -----------------------------------------------------------------------------
-
-class DottedBorderBox extends StatelessWidget {
-  final Widget child;
-
-  const DottedBorderBox({super.key, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(.55),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade400),
-      ),
-      child: child,
-    );
-  }
 }

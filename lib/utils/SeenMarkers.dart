@@ -1,4 +1,6 @@
 import 'dart:async';
+
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Per-viewer "have I seen this yet" markers — Master Task 2026-09-10,
@@ -27,6 +29,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// just for this feature would be a second, parallel identity concept,
 /// not a reuse of the first (Rule 1).
 class SeenMarkers {
+  /// Tests only: nothing is written (no Firestore).
+  @visibleForTesting
+  static bool debugDisable = false;
+
   static final _col = FirebaseFirestore.instance.collection('seenMarkers');
 
   /// A flat, whole-feature cursor — `seenMarkers/{viewerId}.{featureKey}`.
@@ -44,7 +50,7 @@ class SeenMarkers {
   }
 
   static Future<void> markSeen(String viewerId, String featureKey) async {
-    if (viewerId.isEmpty) return;
+    if (viewerId.isEmpty || debugDisable) return;
     await _col.doc(viewerId).set({
       featureKey: FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
@@ -66,7 +72,7 @@ class SeenMarkers {
 
   static Future<void> markSeenSub(
       String viewerId, String featureKey, String subKey) async {
-    if (viewerId.isEmpty || subKey.isEmpty) return;
+    if (viewerId.isEmpty || subKey.isEmpty || debugDisable) return;
     await _col.doc(viewerId).set({
       featureKey: {subKey: FieldValue.serverTimestamp()},
     }, SetOptions(merge: true));

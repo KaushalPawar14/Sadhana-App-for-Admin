@@ -130,6 +130,7 @@ class GuideColors extends ThemeExtension<GuideColors> {
   static const Color onPastelMuted = Color(0xFF565B6C);
   static const Color pastelBorder = Color(0x0D14192B); // rgba(20,25,43,.05)
   static const Color pastelIconTile = Color(0x9EFFFFFF); // rgba(255,255,255,.62)
+  static const Color pastelAccent = Color(0xFFA9812F); // brass icons on a pastel widget (light brass in both themes)
 
   // Navigation bar text.
   static const Color navInactive = Color(0x9EF4F1EA); // rgba(244,241,234,.62)

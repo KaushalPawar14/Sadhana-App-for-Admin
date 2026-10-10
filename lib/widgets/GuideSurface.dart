@@ -202,6 +202,7 @@ class GuideTopBar extends StatelessWidget {
     this.onBack,
     this.showBack,
     this.actions = const [],
+    this.titleMaxLines = 1,
   });
 
   /// Plain-text title (serif 22).
@@ -217,6 +218,10 @@ class GuideTopBar extends StatelessWidget {
   final bool? showBack;
   final List<Widget> actions;
 
+  /// A long title wraps onto this many lines (text is never cut off mid-word at
+  /// large text sizes) before it is ellipsised.
+  final int titleMaxLines;
+
   @override
   Widget build(BuildContext context) {
     final t = context.gText;
@@ -225,7 +230,9 @@ class GuideTopBar extends StatelessWidget {
         (title == null
             ? const SizedBox.shrink()
             : Text(title!,
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: t.topBarTitle));
+                maxLines: titleMaxLines,
+                overflow: TextOverflow.ellipsis,
+                style: t.topBarTitle));
     return SafeArea(
       bottom: false,
       child: Padding(
@@ -318,6 +325,37 @@ class GuideAnimatedSize extends StatelessWidget {
       curve: GuideMotion.standard,
       alignment: alignment,
       child: child,
+    );
+  }
+}
+
+/// The look of [GuideRoundButton] without its own tap handling, for a control that
+/// brings its own (a popup menu button): a 40 dp circle in a 48 dp box.
+class GuideRoundIcon extends StatelessWidget {
+  const GuideRoundIcon({super.key, required this.icon, this.iconSize = 20});
+
+  final IconData icon;
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.g;
+    return SizedBox(
+      width: GuideShape.touchTarget,
+      height: GuideShape.touchTarget,
+      child: Center(
+        child: Container(
+          width: GuideShape.roundButton,
+          height: GuideShape.roundButton,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: g.surface,
+            border: Border.all(color: g.border),
+            boxShadow: g.cardShadow,
+          ),
+          child: Icon(icon, size: iconSize, color: g.text),
+        ),
+      ),
     );
   }
 }
