@@ -3891,20 +3891,48 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     final startDate = DateTime.now().toIso8601String().split('T')[0];
 
     try {
-      await FirebaseFirestore.instance
+      // A transaction, so the doc is read at the moment of writing: a book
+      // that is already completed (an end date, or marked finished by the
+      // student or a guide) is never made the student's CURRENT book.
+      final bookRef = FirebaseFirestore.instance
           .collection('booksRead')
-          .doc('${boy.uid}_${book.level}_${book.key}')
-          .set({
-        'uid': boy.uid,
-        'level': book.level,
-        'bookKey': book.key,
-        'bookTitle': book.title,
-        'isCurrentBook': true,
-        'startDate': startDate,
-        'commitmentDate': commitmentDate,
-        'commitmentSetAt': FieldValue.serverTimestamp(),
-        'commitmentSetBy': 'guide',
-      }, SetOptions(merge: true));
+          .doc('${boy.uid}_${book.level}_${book.key}');
+      final assigned = await FirebaseFirestore.instance
+          .runTransaction<bool>((tx) async {
+        final latest = (await tx.get(bookRef)).data();
+        final endDate = latest?['endDate'];
+        final endedBy = latest?['endedBy'];
+        final completed =
+            (endDate != null && endDate.toString().trim().isNotEmpty) ||
+                latest?['finishedViaButton'] == true ||
+                (endedBy != null && endedBy.toString().trim().isNotEmpty);
+        if (completed) return false;
+        tx.set(
+            bookRef,
+            {
+              'uid': boy.uid,
+              'level': book.level,
+              'bookKey': book.key,
+              'bookTitle': book.title,
+              'isCurrentBook': true,
+              'startDate': startDate,
+              'commitmentDate': commitmentDate,
+              'commitmentSetAt': FieldValue.serverTimestamp(),
+              'commitmentSetBy': 'guide',
+            },
+            SetOptions(merge: true));
+        return true;
+      });
+
+      if (!assigned) {
+        if (!mounted) return;
+        showSnackbar(
+            context,
+            "This book is already completed, so it cannot be assigned as a current book",
+            Colors.orange,
+            Icons.info);
+        return;
+      }
 
       await _notifyStudentOfBookAssignment(
         studentName: boy.name,

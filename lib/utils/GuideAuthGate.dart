@@ -3,6 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../Services/UpdateFCM.dart';
+import '../Services/UpdateToken.dart';
 import 'GuideRoster.dart';
 
 /// Real authentication for the Guide app.
@@ -59,6 +60,8 @@ class GuideAuthGate {
   /// (nothing reads it until the NEXT successful resolve), but there is no
   /// reason to leave it dangling either.
   static Future<void> signOut() async {
+    // Before the session ends, so the signed-in guide can still be resolved.
+    await clearAdminFcmTokenIfOurs();
     await GoogleSignIn().signOut();
     await FirebaseAuth.instance.signOut();
     final prefs = await SharedPreferences.getInstance();

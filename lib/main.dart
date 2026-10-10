@@ -28,6 +28,10 @@ import 'utils/NotificationRouter.dart';
 /// declaring its own.
 final GlobalKey<NavigatorState> guideNavigatorKey = GlobalKey<NavigatorState>();
 
+// Called by Firebase Messaging from native code (see `handleBG` in
+// Services/Notifications.dart): top-level, and annotated so a release (AOT) build
+// keeps it.
+@pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   print("Handling background message: ${message.messageId}");
@@ -76,9 +80,9 @@ void main() async {
     FirebaseCM firebaseCM = FirebaseCM();
     await firebaseCM.initNotifications();
 
-    if (savedGuide != null) {
-      await updateAdminFcmToken(savedGuide);
-    }
+    // The token itself is written only after a real sign-in (SplashScreen /
+    // GuideSignInPage), never from the cached `selected_guide`.
+    listenForAdminFcmTokenRefresh();
 
     await NotificationManager().prepareMissingReports();
     await _prepareNotifications();

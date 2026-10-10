@@ -6,6 +6,18 @@ import 'package:http/http.dart' as http;
 import 'AccessToken.dart';
 import '../utils/NotificationRouter.dart';
 
+// Handle background notifications. Called by Firebase Messaging from native code, in
+// its own isolate, so it must be a TOP-LEVEL function (it was an instance method,
+// which Firebase cannot call) carrying this pragma (a release/AOT build removes
+// anything unannotated). Same body as before.
+@pragma('vm:entry-point')
+Future<void> handleBG(RemoteMessage message) async {
+  print("Received background message: ${message.notification?.title}");
+  if (message.notification != null) {
+    await FirebaseCM().showLocalNotification(message);
+  }
+}
+
 class FirebaseCM {
   final FirebaseMessaging firebaseMessaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin localNotifications = FlutterLocalNotificationsPlugin();
@@ -65,14 +77,6 @@ class FirebaseCM {
 
     // Handle the initial message when the app is opened from a terminated state
     firebaseMessaging.getInitialMessage().then(handleMessageClick);
-  }
-
-  // Handle background notifications
-  Future<void> handleBG(RemoteMessage message) async {
-    print("Received background message: ${message.notification?.title}");
-    if (message.notification != null) {
-      await showLocalNotification(message);
-    }
   }
 
   // Handle notifications in the foreground

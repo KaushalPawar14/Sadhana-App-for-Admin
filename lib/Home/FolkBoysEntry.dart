@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../Pages/FolkGuideSelect.dart';
 import '../Pages/GuideCalendarPage.dart';
 import '../Services/UpdateFCM.dart';
+import '../Services/UpdateToken.dart';
 import '../utils/CalendarQueries.dart' show kScopeMandatory;
 import '../utils/ColorProvider.dart';
 import '../utils/GuideRoster.dart';
@@ -152,12 +153,8 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
 
     try {
       await UpdateTokenService().saveSelectedGuide(guide);
-      final fcmToken = await UpdateTokenService().getFCMToken();
-      if (fcmToken == null) return;
-      await FirebaseFirestore.instance
-          .collection('adminUsers')
-          .doc(guide)
-          .set({'fcmToken': fcmToken}, SetOptions(merge: true));
+      // Writes only if `guide` is really the signed-in guide.
+      await updateAdminFcmToken(guide);
     } catch (e) {
       // ignore: avoid_print
       print("Failed to update FCM token: $e");
