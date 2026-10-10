@@ -305,13 +305,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
             backgroundColor: colorProvider.color,
             elevation: 0,
             iconTheme: IconThemeData(color: colorProvider.secondColor),
-            title: Text(
-              "Priority Students",
-              style: TextStyle(
-                color: colorProvider.secondColor,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            title: Text("Priority Students"),
             actions: [
               IconButton(
                 tooltip: "Refresh",

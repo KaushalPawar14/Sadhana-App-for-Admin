@@ -57,13 +57,7 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
             backgroundColor: colorProvider.color,
             elevation: 0,
             iconTheme: IconThemeData(color: colorProvider.secondColor),
-            title: Text(
-              "Overdue Associations",
-              style: TextStyle(
-                color: colorProvider.secondColor,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            title: Text("Overdue Associations"),
           ),
           body: StreamBuilder<QuerySnapshot>(
                   stream: _associations,

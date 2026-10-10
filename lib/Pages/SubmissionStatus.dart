@@ -264,13 +264,7 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
             backgroundColor: colorProvider.color,
             elevation: 0,
             iconTheme: IconThemeData(color: colorProvider.secondColor),
-            title: Text(
-              "Submission Status",
-              style: TextStyle(
-                color: colorProvider.secondColor,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            title: Text("Submission Status"),
             actions: [
               IconButton(
                 tooltip: "Refresh",

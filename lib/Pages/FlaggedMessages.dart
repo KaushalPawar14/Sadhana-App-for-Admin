@@ -171,13 +171,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
                   backgroundColor: colorProvider.color,
                   elevation: 0,
                   iconTheme: IconThemeData(color: colorProvider.secondColor),
-                  title: Text(
-                    "Flagged Messages",
-                    style: TextStyle(
-                      color: colorProvider.secondColor,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  title: Text("Flagged Messages"),
                 ),
           body: _loading ?
               const Center(child: CircularProgressIndicator()) :

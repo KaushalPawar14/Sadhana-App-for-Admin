@@ -549,13 +549,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
             backgroundColor: colorProvider.color,
             elevation: 0,
             iconTheme: IconThemeData(color: colorProvider.secondColor),
-            title: Text(
-              "Interactions",
-              style: TextStyle(
-                color: colorProvider.secondColor,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            title: Text("Interactions"),
           ),
           floatingActionButton: FloatingActionButton.extended(
             backgroundColor: context.g.brass,
@@ -1109,13 +1103,7 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
             backgroundColor: colorProvider.color,
             elevation: 0,
             iconTheme: IconThemeData(color: colorProvider.secondColor),
-            title: Text(
-              "Interaction — ${widget.studentName}",
-              style: TextStyle(
-                color: colorProvider.secondColor,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            title: Text("Interaction — ${widget.studentName}"),
           ),
           body: _loading
               ? const Center(child: CircularProgressIndicator())

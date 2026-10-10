@@ -284,12 +284,12 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: .2),
+        color: GuideColors.heroDivider,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
         role,
-        style: TextStyle(color: context.g.onPrimary, fontWeight: FontWeight.w500),
+        style: context.gText.bodyStrong.copyWith(color: GuideColors.heroText),
       ),
     );
   }
@@ -325,18 +325,21 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
     if (!canAct) return badge;
 
     return InkWell(
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(24),
       onTap: () => _changeResidence(
         currentRole: role,
         student: student,
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          badge,
-          const SizedBox(width: 6),
-          const Icon(Icons.edit, size: 14, color: GuideColors.heroMuted),
-        ],
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            badge,
+            const SizedBox(width: 6),
+            const Icon(Icons.edit_outlined, size: 16, color: GuideColors.heroMuted),
+          ],
+        ),
       ),
     );
   }
