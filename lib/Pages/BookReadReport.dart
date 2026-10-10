@@ -5,6 +5,9 @@ import 'package:provider/provider.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/StudentScope.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
+import '../theme/GuideColors.dart';
 
 class BookReadingScreen extends StatefulWidget {
   const BookReadingScreen({super.key});
@@ -22,8 +25,7 @@ class _CheckSadhanaScreenState extends State<BookReadingScreen> {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
 
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
 
           appBar: AppBar(
             backgroundColor: colorProvider.color,
@@ -119,15 +121,15 @@ class _CheckSadhanaScreenState extends State<BookReadingScreen> {
                         borderRadius: BorderRadius.circular(20),
                         gradient: LinearGradient(
                           colors: [
-                            Colors.blue.shade300,
-                            Colors.blue.shade100,
+                            context.g.brass,
+                            context.g.brass.withValues(alpha: .14),
                           ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(.2),
+                            color: Colors.black.withValues(alpha: .2),
                             blurRadius: 8,
                             offset: const Offset(0, 4),
                           )
@@ -141,7 +143,7 @@ class _CheckSadhanaScreenState extends State<BookReadingScreen> {
                           /// Avatar
                           CircleAvatar(
                             radius: 30,
-                            backgroundColor: Colors.white.withOpacity(.4),
+                            backgroundColor: Colors.white.withValues(alpha: .4),
                             child: Text(
                               initial,
                               style: const TextStyle(
@@ -245,8 +247,7 @@ class StudentDetailScreen extends StatelessWidget {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
 
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
 
           appBar: AppBar(
             backgroundColor: colorProvider.color,
@@ -283,14 +284,14 @@ class StudentDetailScreen extends StatelessWidget {
                         padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(18),
-                          gradient: const LinearGradient(
-                            colors: [Colors.blueAccent, Colors.lightBlueAccent],
+                          gradient: LinearGradient(
+                            colors: [context.g.brass, context.g.brass],
                           ),
                         ),
                         child: Row(
                           children: [
 
-                            const Icon(Icons.menu_book, color: Colors.white, size: 30),
+                            Icon(Icons.menu_book, color: context.g.onPrimary, size: 30),
 
                             const SizedBox(width: 14),
 
@@ -301,16 +302,16 @@ class StudentDetailScreen extends StatelessWidget {
 
                                   const Text(
                                     "Currently Reading",
-                                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                                    style: TextStyle(color: GuideColors.heroMuted, fontSize: 14),
                                   ),
 
                                   const SizedBox(height: 4),
 
                                   Text(
                                     snapshot.data ?? "",
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 18,
-                                      color: Colors.white,
+                                      color: context.g.surface,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   )
@@ -350,7 +351,7 @@ class StudentDetailScreen extends StatelessWidget {
                                 width: 2,
                                 color: colorProvider.secondColor,
                               ),
-                              color: Colors.white,
+                              color: context.g.surface,
                             ),
 
                             child: Column(
@@ -359,10 +360,10 @@ class StudentDetailScreen extends StatelessWidget {
 
                                 Text(
                                   entry.key.toUpperCase(),
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.green,
+                                    color: context.g.success,
                                     letterSpacing: 1,
                                   ),
                                 ),
@@ -377,7 +378,7 @@ class StudentDetailScreen extends StatelessWidget {
 
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(14),
-                                      color: Colors.grey.shade100,
+                                      color: context.g.chipBackground,
                                     ),
 
                                     child: Row(
@@ -387,12 +388,12 @@ class StudentDetailScreen extends StatelessWidget {
                                           padding: const EdgeInsets.all(8),
                                           decoration: BoxDecoration(
                                             shape: BoxShape.circle,
-                                            color: Colors.blue.shade100,
+                                            color: context.g.brass.withValues(alpha: .14),
                                           ),
-                                          child: const Icon(
+                                          child: Icon(
                                             Icons.menu_book,
                                             size: 18,
-                                            color: Colors.blue,
+                                            color: context.g.brass,
                                           ),
                                         ),
 
@@ -416,19 +417,19 @@ class StudentDetailScreen extends StatelessWidget {
                                               Row(
                                                 children: [
 
-                                                  const Icon(
+                                                  Icon(
                                                     Icons.calendar_today,
                                                     size: 12,
-                                                    color: Colors.black,
+                                                    color: context.g.text,
                                                   ),
 
                                                   const SizedBox(width: 4),
 
                                                   Text(
                                                     book["startDate"],
-                                                    style: const TextStyle(
+                                                    style: TextStyle(
                                                       fontSize: 12,
-                                                      color: Colors.deepPurple,
+                                                      color: context.g.brass,
                                                     ),
                                                   ),
 
@@ -440,8 +441,8 @@ class StudentDetailScreen extends StatelessWidget {
                                                         : Icons.cancel,
                                                     size: 14,
                                                     color: book["notes"]
-                                                        ? Colors.green
-                                                        : Colors.red,
+                                                        ? context.g.success
+                                                        : context.g.danger,
                                                   ),
 
                                                   const SizedBox(width: 4),
@@ -453,8 +454,8 @@ class StudentDetailScreen extends StatelessWidget {
                                                     style: TextStyle(
                                                       fontSize: 12,
                                                       color: book["notes"]
-                                                          ? Colors.green
-                                                          : Colors.red,
+                                                          ? context.g.success
+                                                          : context.g.danger,
                                                     ),
                                                   )
                                                 ],
@@ -494,7 +495,7 @@ class _HodOnlyScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return GuideScaffold(
       appBar: AppBar(title: const Text('Books Read')),
       body: const Center(
         child: Padding(

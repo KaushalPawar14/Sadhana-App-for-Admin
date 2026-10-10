@@ -23,6 +23,8 @@ library;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../theme/GuideTheme.dart';
+import '../theme/GuideColors.dart';
 
 /// The three levels, in the order the ladder is read. Was `_kLevels` in
 /// `BooksProgress.dart`.
@@ -134,16 +136,16 @@ BookStatus statusForBookEntry(Map<String, dynamic>? entry) {
 }
 
 /// Colour / icon / label for one status. Was `_statusStyle`.
-(Color, IconData, String) bookStatusStyle(BookStatus status) {
+(Color, IconData, String) bookStatusStyle(BookStatus status, GuideColors g) {
   switch (status) {
     case BookStatus.finished:
-      return (Colors.green.shade700, Icons.check_circle, "Finished");
+      return (g.success, Icons.check_circle, "Finished");
     case BookStatus.readingNow:
       // Amber — a deliberate third colour, neither the green of finished nor
       // the grey of untouched. Kept from `BooksProgress.dart` verbatim.
-      return (Colors.amber.shade800, Icons.menu_book, "Reading now");
+      return (g.warning, Icons.menu_book, "Reading now");
     case BookStatus.notStarted:
-      return (Colors.grey.shade400, Icons.circle_outlined, "Not started");
+      return (g.mutedText, Icons.circle_outlined, "Not started");
   }
 }
 

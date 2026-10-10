@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../utils/ColorProvider.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
+import '../theme/GuideColors.dart';
 
 class Graphicalanalysis extends StatefulWidget {
   const Graphicalanalysis({super.key});
@@ -14,8 +17,7 @@ class _GraphicalanalysisState extends State<Graphicalanalysis> {
   @override
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(builder: (context, colorProvider, child){
-      return Scaffold(
-        backgroundColor: colorProvider.color,
+      return GuideScaffold(
         body: Center(
           child: Container(
             color: colorProvider.color,
@@ -61,7 +63,7 @@ BarTouchData get barTouchData => BarTouchData(
     ){
       return BarTooltipItem(
         rod.toY.toString(),
-        const TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold)
+        TextStyle(color: GuideColors.light.brass, fontWeight: FontWeight.bold)
       );
     }
   )
@@ -69,7 +71,7 @@ BarTouchData get barTouchData => BarTouchData(
 
 Widget getTitles(double value, TitleMeta meta){
   final style = TextStyle(
-    color: Colors.blueAccent,
+    color: GuideColors.light.brass,
     fontWeight: FontWeight.bold,
     fontSize: 14
   );
@@ -129,8 +131,8 @@ FlBorderData get borderData => FlBorderData(
 
 LinearGradient get _barGradient => LinearGradient(colors:
     [
-      Colors.blueAccent,
-      Colors.redAccent
+      GuideColors.light.brass,
+      GuideColors.light.danger
     ],
   begin: Alignment.bottomCenter,
   end: Alignment.topCenter,

@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/GoalCompoundQueries.dart';
 import '../utils/GoalMetrics.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// Per-target progress page — Part 7 of the compound-target task, updated
 /// when chanting switched from a weekly-report aggregation to a self-set
@@ -79,8 +81,7 @@ class _CompoundGoalProgressPageState extends State<CompoundGoalProgressPage> {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             elevation: 0,
             backgroundColor: colorProvider.color,
@@ -140,17 +141,17 @@ class _CompoundGoalProgressPageState extends State<CompoundGoalProgressPage> {
           Text(
             "Counts students COMMITTED to this many rounds/day — not actual "
             "chanting this week.",
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+            style: TextStyle(fontSize: 11, color: context.g.mutedText),
           ),
         ],
         const SizedBox(height: 14),
         Text("This phase — Phase ${phase.phaseNumber}",
-            style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600)),
+            style: TextStyle(fontSize: 12.5, color: context.g.mutedText)),
         const SizedBox(height: 6),
         _taskProgressCard(phase, target, unit),
         const SizedBox(height: 20),
         Text("Overall — the full goal",
-            style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600)),
+            style: TextStyle(fontSize: 12.5, color: context.g.mutedText)),
         const SizedBox(height: 6),
         _liveThresholdCard(
           compute: () => isChanting
@@ -180,14 +181,14 @@ class _CompoundGoalProgressPageState extends State<CompoundGoalProgressPage> {
   Widget _taskProgressCard(CompoundPhase phase, CompoundTarget target, String unit) {
     if (phase.tasks.isEmpty) {
       return Text("No tasks in this phase.",
-          style: TextStyle(fontSize: 13, color: Colors.grey.shade600));
+          style: TextStyle(fontSize: 13, color: context.g.mutedText));
     }
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: context.g.border),
       ),
       child: FutureBuilder<List<TaskProgress>>(
         future: livePhaseProgress(
@@ -249,8 +250,8 @@ class _CompoundGoalProgressPageState extends State<CompoundGoalProgressPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
-                  color: (complete ? Colors.green.shade700 : Colors.grey.shade400)
-                      .withOpacity(.12),
+                  color: (complete ? context.g.success : context.g.mutedText)
+                      .withValues(alpha: .12),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
@@ -262,7 +263,7 @@ class _CompoundGoalProgressPageState extends State<CompoundGoalProgressPage> {
                   style: TextStyle(
                       fontSize: 9.5,
                       fontWeight: FontWeight.w700,
-                      color: complete ? Colors.green.shade700 : Colors.grey.shade600),
+                      color: complete ? context.g.success : context.g.mutedText),
                 ),
               ),
             ],
@@ -273,9 +274,9 @@ class _CompoundGoalProgressPageState extends State<CompoundGoalProgressPage> {
             child: LinearProgressIndicator(
               value: fraction ?? 0,
               minHeight: 6,
-              backgroundColor: Colors.grey.shade200,
+              backgroundColor: context.g.chipBackground,
               valueColor: AlwaysStoppedAnimation<Color>(
-                complete ? Colors.green.shade700 : Colors.teal.shade700,
+                complete ? context.g.success : context.g.success,
               ),
             ),
           ),
@@ -316,9 +317,9 @@ class _CompoundGoalProgressPageState extends State<CompoundGoalProgressPage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: context.g.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -334,14 +335,14 @@ class _CompoundGoalProgressPageState extends State<CompoundGoalProgressPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.green.shade700.withOpacity(.12),
+                  color: context.g.success.withValues(alpha: .12),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text("live",
                     style: TextStyle(
                         fontSize: 9.5,
                         fontWeight: FontWeight.w700,
-                        color: Colors.green.shade700)),
+                        color: context.g.success)),
               ),
             ],
           ),
@@ -351,9 +352,9 @@ class _CompoundGoalProgressPageState extends State<CompoundGoalProgressPage> {
             child: LinearProgressIndicator(
               value: fraction ?? 0,
               minHeight: 6,
-              backgroundColor: Colors.grey.shade200,
+              backgroundColor: context.g.chipBackground,
               valueColor: AlwaysStoppedAnimation<Color>(
-                fraction == null ? Colors.grey.shade400 : Colors.teal.shade700,
+                fraction == null ? context.g.mutedText : context.g.success,
               ),
             ),
           ),

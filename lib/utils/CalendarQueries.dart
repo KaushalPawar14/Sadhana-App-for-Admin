@@ -241,45 +241,8 @@ const Map<String, String> kDefaultTypeDescriptions = {
       'the note field for details; no fixed assumption about availability.',
 };
 
-/// Calendar UI redesign, Part 4 — soft, low-saturation tints for range
-/// bands, ONE PER TYPE (replacing the earlier per-event-id assignment) so
-/// a band's colour carries meaning — exam, festival, program and other
-/// are always visually distinct from each other, not just from each
-/// other's OWN colour on a previous app run. Deliberately far from the
-/// indigo/orange already used for the mandatory/personal marker dots on
-/// single-day events, so a band is never mistaken for a dot's colour
-/// meaning.
-///
-/// Fixed regardless of [ColorProvider]'s light/dark theme (Part 1 item 3
-/// of the earlier redesign task, unchanged reasoning) — a band is its own
-/// light, opaque surface, so its contrast with the dark text drawn on it
-/// ([kRangeBandTextColor]) depends only on the band colour itself, never
-/// on the surrounding page's theme. Verified (WCAG relative-luminance
-/// contrast ratio, `black87` composited over each tint): exam (red)
-/// 12.01, festival (purple) 10.48, program (green) 12.41, other
-/// (blue-grey) 11.67 — every one clears the 4.5:1 AA threshold by more
-/// than double, in EITHER theme, because the check never depended on the
-/// theme in the first place.
-const Map<String, Color> kRangeColorByType = {
-  kEventTypeExam: Color(0xFFFFCDD2), // soft red
-  kEventTypeFestival: Color(0xFFE1BEE7), // soft purple
-  kEventTypeProgram: Color(0xFFC8E6C9), // soft green
-  kEventTypeOther: Color(0xFFCFD8DC), // neutral soft blue-grey
-};
-
-/// Day-number text colour drawn on top of a range band — see
-/// [kRangeColorByType]'s own doc comment for why this is fixed rather
-/// than theme-dependent.
-const Color kRangeBandTextColor = Color(0xDD000000); // Colors.black87
-
-/// Part 4 item 1 — a range's band colour is now its TYPE's colour, not a
-/// per-event hash. Two ranges of the SAME type still need the stacked-band
-/// treatment to stay separable when they overlap (item 3) — that logic
-/// lives in `GuideCalendarPage.dart`'s `_dayCell`/`_rangeBand`, unchanged
-/// by this switch; only WHICH colour a band gets changed.
-Color rangeColorForType(String type) {
-  return kRangeColorByType[type] ?? kRangeColorByType[kEventTypeOther]!;
-}
+/// (Range-band and dot colours now come from the theme: `GuideColors.eventColor` /
+/// `eventBand`, chosen per event by `guideEventTypeOf` in `widgets/GuideCalendar.dart`.)
 
 /// Master Task Part 1 item 3 — thrown when a range's `endDate` precedes its
 /// `eventDate`. Client-side counterpart to the server-side check in

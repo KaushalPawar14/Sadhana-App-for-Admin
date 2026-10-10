@@ -5,6 +5,8 @@ import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/GoalCompoundQueries.dart';
 import '../utils/Snackbar.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// Manual task editor for the CURRENT phase only (restored manual-editing
 /// task) — sits ALONGSIDE the AI note-driven regenerate/suggest flow in
@@ -363,7 +365,7 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
       if (!mounted) return;
       setState(() => _saving = false);
       showSnackbar(
-          context, "Could not save — please try again", Colors.red, Icons.error);
+          context, "Could not save — please try again", context.g.danger, Icons.error);
     }
   }
 
@@ -371,8 +373,7 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             elevation: 0,
             backgroundColor: colorProvider.color,
@@ -421,7 +422,7 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
           "Editing the CURRENT phase only — future phases are re-planned "
           "fresh from real data once they activate, so they aren't editable "
           "here.",
-          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+          style: TextStyle(fontSize: 11, color: context.g.mutedText),
         ),
         const SizedBox(height: 16),
         _rosterSection(),
@@ -442,7 +443,7 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
           Text(
             "This does NOT change the guide's live plan — it shows as a "
             "suggestion until they approve or reject it.",
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+            style: TextStyle(fontSize: 11, color: context.g.mutedText),
           ),
           const SizedBox(height: 14),
         ],
@@ -466,7 +467,7 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: context.g.border),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
@@ -478,7 +479,7 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
           Text(
             "Plain numbers — not ladder-constrained, matching the AI's own "
             "free-form roster reasoning. Leave both blank for no roster task.",
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+            style: TextStyle(fontSize: 11, color: context.g.mutedText),
           ),
           const SizedBox(height: 8),
           Row(
@@ -539,7 +540,7 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: context.g.border),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
@@ -574,7 +575,7 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                icon: Icon(Icons.delete_outline, color: context.g.danger),
                 onPressed: () => setState(() => _valueTasks.removeAt(index)),
               ),
             ],
@@ -582,7 +583,7 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
           Text(
             "'To' must be higher than 'From' — both from this target's "
             "fixed ladder.",
-            style: TextStyle(fontSize: 10.5, color: Colors.grey.shade500),
+            style: TextStyle(fontSize: 10.5, color: context.g.mutedText),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(

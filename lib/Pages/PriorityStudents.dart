@@ -8,6 +8,9 @@ import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/PlanningQueries.dart';
 import 'StudentProfilePage.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
+import '../theme/GuideColors.dart';
 
 /// Priority students (Phase 6, half 1, item 4).
 ///
@@ -189,13 +192,13 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
     if (dated.isEmpty) {
       // Distinct from a lapse — this student has never been engaged at all,
       // which may simply mean they were added recently.
-      flags.add((label: "Never logged an interaction", colour: Colors.purple));
+      flags.add((label: "Never logged an interaction", colour: context.g.brass));
     } else {
       final days = daysOverdue(dated.first);
       if (days >= _staleAfterDays) {
         flags.add((
           label: "No interaction in $days days",
-          colour: Colors.deepOrange,
+          colour: context.g.warning,
         ));
       }
     }
@@ -204,7 +207,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
     if (missing.contains(student.name)) {
       flags.add((
         label: "Has not submitted today's sadhana report",
-        colour: Colors.orange,
+        colour: context.g.warning,
       ));
     }
 
@@ -220,7 +223,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
     if (worstOverdue != null) {
       flags.add((
         label: "Meeting overdue by ${daysOverdue(worstOverdue)} days",
-        colour: Colors.red,
+        colour: context.g.danger,
       ));
     }
 
@@ -247,7 +250,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
         if (value > _lowAxis) return;
         flags.add((
           label: "$meaning ($key: $value of 5)",
-          colour: Colors.indigo,
+          colour: context.g.brass,
         ));
       }
 
@@ -297,8 +300,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             backgroundColor: colorProvider.color,
             elevation: 0,
@@ -355,15 +357,15 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
         borderRadius: BorderRadius.circular(18),
         gradient: LinearGradient(
           colors: count == 0
-              ? [Colors.green.shade600, Colors.green.shade300]
-              : [Colors.deepOrange.shade700, Colors.deepOrange.shade300],
+              ? [context.g.success, context.g.success]
+              : [context.g.warning, context.g.warning],
         ),
       ),
       child: Row(
         children: [
           Icon(
             count == 0 ? Icons.check_circle : Icons.flag,
-            color: Colors.white,
+            color: context.g.surface,
             size: 34,
           ),
           const SizedBox(width: 16),
@@ -375,23 +377,23 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
                   count == 0
                       ? "Nobody flagged"
                       : "$count need attention",
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 22,
-                    color: Colors.white,
+                    color: context.g.surface,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   _inScope > 0 ? "out of $_inScope students" : "",
-                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  style: const TextStyle(color: GuideColors.heroMuted, fontSize: 13),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   _isHod
                       ? "All students (HOD view)"
                       : "Your students · ${_guide ?? ''}",
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  style: const TextStyle(color: GuideColors.heroMuted, fontSize: 12),
                 ),
               ],
             ),
@@ -405,14 +407,14 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Center(
         child: Text(
           text,
           textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+          style: TextStyle(color: context.g.mutedText, fontSize: 14),
         ),
       ),
     );
@@ -423,7 +425,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -449,7 +451,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade600,
+                  color: context.g.mutedText,
                 ),
               ),
             ],

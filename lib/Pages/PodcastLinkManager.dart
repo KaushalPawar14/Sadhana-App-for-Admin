@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/DropboxLink.dart';
 import '../utils/Snackbar.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// Podcast / audiobook link manager — FOLK-2/4/8/12/16.
 ///
@@ -42,8 +44,7 @@ class PodcastLinkManagerPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             elevation: 0,
             backgroundColor: colorProvider.color,
@@ -313,7 +314,7 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
                     "dl=0 is corrected to dl=1 automatically, so the file "
                     "plays instead of opening Dropbox.",
                     style:
-                        TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        TextStyle(fontSize: 12, color: context.g.mutedText),
                   ),
                 ],
               ),
@@ -324,7 +325,7 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
                 child: const Text("Cancel"),
               ),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                style: ElevatedButton.styleFrom(backgroundColor: context.g.brass),
                 onPressed: () {
                   // Title is required — an untitled episode is unusable in the
                   // student's list, which shows the title before playback.
@@ -332,7 +333,7 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
                     setDialogState(
                         () => durationError = null); // clear stale error
                     showSnackbar(dialogContext, "Episode title is required",
-                        Colors.red, Icons.error);
+                        context.g.danger, Icons.error);
                     return;
                   }
 
@@ -345,7 +346,7 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
                   Navigator.pop(dialogContext, true);
                 },
                 child:
-                    const Text("Save", style: TextStyle(color: Colors.white)),
+                    Text("Save", style: TextStyle(color: context.g.onPrimary)),
               ),
             ],
           );
@@ -418,10 +419,10 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
             child: const Text("Cancel"),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: context.g.danger),
             onPressed: () => Navigator.pop(dialogContext, true),
             child:
-                const Text("Remove", style: TextStyle(color: Colors.white)),
+                Text("Remove", style: TextStyle(color: context.g.onPrimary)),
           ),
         ],
       ),
@@ -467,7 +468,7 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
       // An update() on a document that does not exist throws. That is the
       // likely cause here, and it means there was nothing to remove anyway.
       showSnackbar(
-          context, "Failed to remove episode", Colors.red, Icons.error);
+          context, "Failed to remove episode", context.g.danger, Icons.error);
     }
   }
 
@@ -486,11 +487,11 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(.05),
+            color: Colors.black.withValues(alpha: .05),
             blurRadius: 6,
             offset: const Offset(0, 3),
           ),
@@ -504,7 +505,7 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: Colors.grey.shade600,
+              color: context.g.mutedText,
             ),
           ),
           const SizedBox(height: 8),
@@ -517,10 +518,10 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
                 label: Text(entry.value),
                 selected: selected,
                 onSelected: (_) => setState(() => _language = entry.key),
-                selectedColor: Colors.teal.shade100,
+                selectedColor: context.g.success.withValues(alpha: .14),
                 labelStyle: TextStyle(
                   fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
-                  color: selected ? Colors.teal.shade900 : Colors.black87,
+                  color: selected ? context.g.success : context.g.text,
                 ),
               );
             }).toList(),
@@ -543,11 +544,11 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(.05),
+            color: Colors.black.withValues(alpha: .05),
             blurRadius: 6,
             offset: const Offset(0, 3),
           )
@@ -559,12 +560,12 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: hasLink ? Colors.green.shade50 : Colors.orange.shade50,
+              color: hasLink ? context.g.success.withValues(alpha: .14) : context.g.warning.withValues(alpha: .14),
             ),
             child: Icon(
               hasLink ? Icons.headphones : Icons.link_off,
               size: 18,
-              color: hasLink ? Colors.green : Colors.orange.shade800,
+              color: hasLink ? context.g.success : context.g.warning,
             ),
           ),
           const SizedBox(width: 12),
@@ -583,12 +584,12 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
                 Row(
                   children: [
                     Icon(Icons.schedule,
-                        size: 12, color: Colors.grey.shade600),
+                        size: 12, color: context.g.mutedText),
                     const SizedBox(width: 4),
                     Text(
                       duration.isEmpty ? "no duration" : duration,
                       style: TextStyle(
-                          fontSize: 12, color: Colors.grey.shade700),
+                          fontSize: 12, color: context.g.mutedText),
                     ),
                   ],
                 ),
@@ -599,7 +600,7 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 12,
-                    color: hasLink ? Colors.blue.shade700 : Colors.grey.shade600,
+                    color: hasLink ? context.g.brass : context.g.mutedText,
                     fontStyle: hasLink ? FontStyle.normal : FontStyle.italic,
                   ),
                 ),
@@ -620,7 +621,7 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
                   currentUrl: url,
                   isNew: false,
                 ),
-                icon: Icon(Icons.edit, size: 18, color: Colors.blue.shade700),
+                icon: Icon(Icons.edit, size: 18, color: context.g.brass),
               ),
               IconButton(
                 tooltip: "Remove",
@@ -631,7 +632,7 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
                   title: title,
                 ),
                 icon: Icon(Icons.delete_outline,
-                    size: 18, color: Colors.red.shade400),
+                    size: 18, color: context.g.danger),
               ),
             ],
           ),
@@ -653,14 +654,14 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.teal.shade100, Colors.teal.shade50],
+          colors: [context.g.success.withValues(alpha: .14), context.g.success.withValues(alpha: .14)],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(.06),
+            color: Colors.black.withValues(alpha: .06),
             blurRadius: 10,
             offset: const Offset(0, 5),
           )
@@ -682,17 +683,17 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
                   width: 6,
                   height: 22,
                   decoration: BoxDecoration(
-                    color: Colors.black,
+                    color: context.g.text,
                     borderRadius: BorderRadius.circular(6),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Text(
                   levelTitles[level] ?? level,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.black,
+                    color: context.g.text,
                   ),
                 ),
                 const Spacer(),
@@ -700,13 +701,13 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
                 // what is in each category without opening it.
                 Text(
                   numbers.length == 1 ? "1 episode" : "${numbers.length} episodes",
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                  style: TextStyle(fontSize: 12, color: context.g.mutedText),
                 ),
                 const SizedBox(width: 4),
                 Icon(
                   isOpen ? Icons.expand_less : Icons.expand_more,
                   size: 22,
-                  color: Colors.black87,
+                  color: context.g.text,
                 ),
               ],
             ),
@@ -721,7 +722,7 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Text(
                   "No episodes yet",
-                  style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+                  style: TextStyle(color: context.g.mutedText, fontSize: 13),
                 ),
               )
             else
@@ -749,7 +750,7 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
                 icon: const Icon(Icons.add, size: 18),
                 label: const Text("Add Episode"),
                 style:
-                    TextButton.styleFrom(foregroundColor: Colors.teal.shade900),
+                    TextButton.styleFrom(foregroundColor: context.g.success),
               ),
             ),
           ],

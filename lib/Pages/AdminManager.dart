@@ -5,6 +5,8 @@ import '../Services/HierarchyApi.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/GuideRoster.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// "Add Admin" / admin list — hierarchy version.
 ///
@@ -47,7 +49,7 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(text),
-      backgroundColor: error ? Colors.red.shade700 : null,
+      backgroundColor: error ? context.g.danger : null,
     ));
   }
 
@@ -56,8 +58,7 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
     final colorProvider = Provider.of<ColorProvider>(context);
     final profile = AdminProfileProvider.require();
 
-    return Scaffold(
-      backgroundColor: colorProvider.color,
+    return GuideScaffold(
       appBar: AppBar(
         title: const Text('Admins'),
         backgroundColor: Colors.transparent,
@@ -288,23 +289,23 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
                             ? 'They will join your team.'
                             : 'They will join your team Guide.',
                         style:
-                            const TextStyle(fontSize: 11, color: Colors.grey),
+                            TextStyle(fontSize: 11, color: context.g.mutedText),
                       ),
                     ],
                     const SizedBox(height: 10),
-                    const Text(
+                    Text(
                       'The name identifies this admin everywhere — students '
                       'assigned to them, their meetings and their '
                       'notifications — and cannot be renamed here later (a HOD '
                       'can change the name students see). The email is what '
                       'they sign in with.',
-                      style: TextStyle(fontSize: 11, color: Colors.grey),
+                      style: TextStyle(fontSize: 11, color: context.g.mutedText),
                     ),
                     if (error != null) ...[
                       const SizedBox(height: 8),
                       Text(error!,
-                          style: const TextStyle(
-                              color: Colors.red, fontSize: 12)),
+                          style: TextStyle(
+                              color: context.g.danger, fontSize: 12)),
                     ],
                   ],
                 ),
@@ -477,8 +478,8 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
                     if (error != null) ...[
                       const SizedBox(height: 8),
                       Text(error!,
-                          style: const TextStyle(
-                              color: Colors.red, fontSize: 12)),
+                          style: TextStyle(
+                              color: context.g.danger, fontSize: 12)),
                     ],
                   ],
                 ),
@@ -547,8 +548,8 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
               child: const Text('Cancel')),
           TextButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Remove',
-                  style: TextStyle(color: Colors.red))),
+              child: Text('Remove',
+                  style: TextStyle(color: context.g.danger))),
         ],
       ),
     );

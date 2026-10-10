@@ -10,6 +10,8 @@ import '../utils/ServiceAssignments.dart';
 import '../utils/ServiceBankContent.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// Service Bank — replaces `Pages/DevotionalServiceManager.dart` entirely
 /// (Phase: Service Bank, Part 4). Reached from the same "D" tile on
@@ -48,7 +50,7 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
     final guide = _selectedGuide;
     if (guide.isEmpty) {
       showSnackbar(context, "Still loading your guide profile — try again in a moment",
-          Colors.yellow, Icons.watch_later_outlined);
+          context.g.warning, Icons.watch_later_outlined);
       return;
     }
 
@@ -106,8 +108,8 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
               constraints:
                   BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: context.g.surface,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
               ),
               child: Column(
@@ -119,7 +121,7 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
                       width: 42,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
+                        color: context.g.chipBackground,
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
@@ -132,7 +134,7 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
                   const SizedBox(height: 4),
                   Text(
                     "Select students",
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    style: TextStyle(fontSize: 12, color: context.g.mutedText),
                   ),
                   const SizedBox(height: 12),
                   Flexible(
@@ -152,7 +154,7 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
                                   title: Text(s['name']!,
                                       style: const TextStyle(
                                           fontWeight: FontWeight.w600, fontSize: 14)),
-                                  activeColor: Colors.blue,
+                                  activeColor: context.g.brass,
                                   controlAffinity: ListTileControlAffinity.leading,
                                   onChanged: (checked) {
                                     setSheetState(() {
@@ -175,19 +177,19 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
                     child: ElevatedButton(
                       onPressed: (saving || selected.isEmpty) ? null : save,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
+                        backgroundColor: context.g.brass,
                         shape:
                             RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                       child: saving
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 20,
                               height: 20,
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white),
+                                  strokeWidth: 2, color: context.g.onPrimary),
                             )
-                          : const Text("Assign",
-                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                          : Text("Assign",
+                              style: TextStyle(color: context.g.onPrimary, fontWeight: FontWeight.w600)),
                     ),
                   ),
                 ],
@@ -216,10 +218,10 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(.05), blurRadius: 6, offset: const Offset(0, 3)),
+          BoxShadow(color: Colors.black.withValues(alpha: .05), blurRadius: 6, offset: const Offset(0, 3)),
         ],
       ),
       clipBehavior: Clip.antiAlias,
@@ -236,12 +238,12 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
             height: 32,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.blue.shade50,
+              color: context.g.brass.withValues(alpha: .14),
             ),
             child: Center(
               child: Text(
                 "${service.number}",
-                style: TextStyle(fontWeight: FontWeight.w800, color: Colors.blue.shade700),
+                style: TextStyle(fontWeight: FontWeight.w800, color: context.g.brass),
               ),
             ),
           ),
@@ -265,30 +267,30 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
+                  color: context.g.warning.withValues(alpha: .14),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.amber.shade200),
+                  border: Border.all(color: context.g.warning.withValues(alpha: .14)),
                 ),
                 child: Text(service.nuance!,
-                    style: TextStyle(fontSize: 12.5, color: Colors.amber.shade900, height: 1.4)),
+                    style: TextStyle(fontSize: 12.5, color: context.g.warning, height: 1.4)),
               ),
             ],
             if (service.context != null) ...[
               const SizedBox(height: 6),
               Text(service.context!,
-                  style: TextStyle(fontSize: 11.5, fontStyle: FontStyle.italic, color: Colors.grey.shade600, height: 1.4)),
+                  style: TextStyle(fontSize: 11.5, fontStyle: FontStyle.italic, color: context.g.mutedText, height: 1.4)),
             ],
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                color: context.g.brass.withValues(alpha: .14),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
                 "Assessment question: “${service.assessmentQuestion}”",
                 style: TextStyle(
-                    fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.blue.shade900, height: 1.4),
+                    fontSize: 12.5, fontWeight: FontWeight.w600, color: context.g.brass, height: 1.4),
               ),
             ),
             const SizedBox(height: 10),
@@ -328,8 +330,7 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
       builder: (context, colorProvider, child) {
         return DefaultTabController(
           length: 2,
-          child: Scaffold(
-            backgroundColor: colorProvider.color,
+          child: GuideScaffold(
             appBar: AppBar(
               elevation: 0,
               backgroundColor: colorProvider.color,
@@ -342,10 +343,10 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
                 style: TextStyle(
                     fontWeight: FontWeight.bold, color: colorProvider.secondColor, fontSize: 20),
               ),
-              bottom: const TabBar(
-                labelColor: Colors.blue,
-                unselectedLabelColor: Colors.grey,
-                indicatorColor: Colors.blue,
+              bottom: TabBar(
+                labelColor: context.g.brass,
+                unselectedLabelColor: context.g.mutedText,
+                indicatorColor: context.g.brass,
                 tabs: [Tab(text: "Services"), Tab(text: "Assigned")],
               ),
             ),
@@ -383,7 +384,7 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
         label: Text(label),
         selected: selected,
         onSelected: (_) => setState(() => _groupBy = value),
-        selectedColor: Colors.blue.shade100,
+        selectedColor: context.g.brass.withValues(alpha: .14),
       ),
     );
   }
@@ -420,7 +421,7 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
                 child: Center(
                   child: Text(
                     "No services assigned yet.",
-                    style: TextStyle(color: Colors.grey.shade700),
+                    style: TextStyle(color: context.g.mutedText),
                   ),
                 ),
               );
@@ -504,10 +505,10 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(.05), blurRadius: 6, offset: const Offset(0, 3)),
+          BoxShadow(color: Colors.black.withValues(alpha: .05), blurRadius: 6, offset: const Offset(0, 3)),
         ],
       ),
       clipBehavior: Clip.antiAlias,
@@ -518,7 +519,7 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
           childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
           title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
           subtitle: Text("${assignments.length} assignment${assignments.length == 1 ? '' : 's'}",
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              style: TextStyle(fontSize: 11, color: context.g.mutedText)),
           children: assignments.map((a) {
             return _assignmentRow(label: rowLabel(a), assignment: a);
           }).toList(),
@@ -530,13 +531,13 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
   Color _statusColor(String status) {
     switch (status) {
       case kStatusCompleted:
-        return Colors.green;
+        return context.g.success;
       case kStatusInProgress:
-        return Colors.orange;
+        return context.g.warning;
       case kStatusWithdrawn:
-        return Colors.grey;
+        return context.g.mutedText;
       default:
-        return Colors.blueGrey;
+        return context.g.mutedText;
     }
   }
 
@@ -546,7 +547,7 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: withdrawn ? Colors.grey.shade100 : Colors.grey.shade50,
+        color: withdrawn ? context.g.chipBackground : context.g.chipBackground,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -560,14 +561,14 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
                         decoration: withdrawn ? TextDecoration.lineThrough : null,
-                        color: withdrawn ? Colors.grey.shade500 : null)),
+                        color: withdrawn ? context.g.mutedText : null)),
                 const SizedBox(height: 3),
                 Row(
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: _statusColor(assignment.status).withOpacity(.12),
+                        color: _statusColor(assignment.status).withValues(alpha: .12),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(statusLabel(assignment.status),
@@ -584,8 +585,8 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
                             : Icons.hourglass_bottom,
                         size: 13,
                         color: assignment.competence!.level == kCompetenceYes
-                            ? Colors.green
-                            : Colors.grey,
+                            ? context.g.success
+                            : context.g.mutedText,
                       ),
                     ],
                   ],
@@ -663,9 +664,9 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
                   actions: [
                     TextButton(onPressed: () => Navigator.pop(dc, false), child: const Text("Cancel")),
                     ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                      style: ElevatedButton.styleFrom(backgroundColor: context.g.danger),
                       onPressed: () => Navigator.pop(dc, true),
-                      child: const Text("Unassign", style: TextStyle(color: Colors.white)),
+                      child: Text("Unassign", style: TextStyle(color: context.g.onPrimary)),
                     ),
                   ],
                 ),
@@ -684,8 +685,8 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
               constraints:
                   BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: context.g.surface,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
               ),
               child: SingleChildScrollView(
@@ -698,13 +699,13 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
                         width: 42,
                         height: 4,
                         decoration: BoxDecoration(
-                            color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4)),
+                            color: context.g.border, borderRadius: BorderRadius.circular(4)),
                       ),
                     ),
                     const SizedBox(height: 18),
                     Text(label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                     Text("${service.number}. ${service.title}",
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                        style: TextStyle(fontSize: 12, color: context.g.mutedText)),
                     const SizedBox(height: 16),
                     const Text("Status", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                     const SizedBox(height: 8),
@@ -728,7 +729,7 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
+                        color: context.g.brass.withValues(alpha: .14),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
@@ -736,7 +737,7 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
                         style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w600,
-                            color: Colors.blue.shade900,
+                            color: context.g.brass,
                             height: 1.4),
                       ),
                     ),
@@ -754,7 +755,7 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
                         ChoiceChip(
                           label: const Text("Yes"),
                           selected: competenceLevel == kCompetenceYes,
-                          selectedColor: Colors.green.shade100,
+                          selectedColor: context.g.success.withValues(alpha: .14),
                           onSelected: saving
                               ? null
                               : (_) => setSheetState(() => competenceLevel = kCompetenceYes),
@@ -776,7 +777,7 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
                       Text(
                         "Last assessed by ${assignment.competence!.assessedBy}"
                         "${assignment.competence!.assessedAt != null ? ' on ${DateFormat('dd MMM yyyy').format(assignment.competence!.assessedAt!)}' : ''}",
-                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                        style: TextStyle(fontSize: 11, color: context.g.mutedText, fontStyle: FontStyle.italic),
                       ),
                     ],
                     const SizedBox(height: 14),
@@ -786,15 +787,15 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
                       child: ElevatedButton(
                         onPressed: saving ? null : saveCompetence,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
+                          backgroundColor: context.g.brass,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                         child: saving
-                            ? const SizedBox(
+                            ? SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : const Text("Save assessment", style: TextStyle(color: Colors.white)),
+                                child: CircularProgressIndicator(strokeWidth: 2, color: context.g.onPrimary))
+                            : Text("Save assessment", style: TextStyle(color: context.g.onPrimary)),
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -802,8 +803,8 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
                       width: double.infinity,
                       child: TextButton.icon(
                         onPressed: saving ? null : unassign,
-                        icon: const Icon(Icons.remove_circle_outline, size: 16, color: Colors.red),
-                        label: const Text("Unassign", style: TextStyle(color: Colors.red)),
+                        icon: Icon(Icons.remove_circle_outline, size: 16, color: context.g.danger),
+                        label: Text("Unassign", style: TextStyle(color: context.g.danger)),
                       ),
                     ),
                   ],

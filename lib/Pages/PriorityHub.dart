@@ -6,6 +6,8 @@ import '../utils/StudentScope.dart';
 import '../utils/UnseenFeatureBadge.dart';
 import 'FlaggedMessages.dart';
 import 'PriorityStudents.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// Priority Students hub — the two "who needs attention" screens, together.
 ///
@@ -31,8 +33,7 @@ class PriorityHubPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             elevation: 0,
             backgroundColor: colorProvider.color,
@@ -60,7 +61,7 @@ class PriorityHubPage extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12.5,
                     height: 1.45,
-                    color: colorProvider.secondColor.withOpacity(.75),
+                    color: colorProvider.secondColor.withValues(alpha: .75),
                   ),
                 ),
               ),
@@ -146,12 +147,12 @@ class _HubButtonState extends State<_HubButton> {
               // Tinted to the button's own hue — a neutral grey shadow under a
               // saturated gradient reads as dirt, not depth.
               BoxShadow(
-                color: widget.colours.first.withOpacity(_pressed ? .22 : .40),
+                color: widget.colours.first.withValues(alpha: _pressed ? .22 : .40),
                 blurRadius: _pressed ? 8 : 16,
                 offset: Offset(0, _pressed ? 3 : 8),
               ),
               BoxShadow(
-                color: Colors.black.withOpacity(_pressed ? .06 : .12),
+                color: Colors.black.withValues(alpha: _pressed ? .06 : .12),
                 blurRadius: _pressed ? 4 : 10,
                 offset: Offset(0, _pressed ? 2 : 5),
               ),
@@ -163,11 +164,11 @@ class _HubButtonState extends State<_HubButton> {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(.22),
+                  color: Colors.white.withValues(alpha: .22),
                   borderRadius: BorderRadius.circular(13),
                 ),
                 child: Center(
-                  child: Icon(widget.icon, color: Colors.white, size: 22),
+                  child: Icon(widget.icon, color: context.g.onPrimary, size: 22),
                 ),
               ),
               const SizedBox(width: 14),
@@ -177,8 +178,8 @@ class _HubButtonState extends State<_HubButton> {
                   children: [
                     Text(
                       widget.title,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: context.g.surface,
                         fontSize: 16.5,
                         fontWeight: FontWeight.w700,
                         letterSpacing: .2,
@@ -188,7 +189,7 @@ class _HubButtonState extends State<_HubButton> {
                     Text(
                       widget.subtitle,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(.85),
+                        color: Colors.white.withValues(alpha: .85),
                         fontSize: 11.5,
                       ),
                     ),
@@ -197,7 +198,7 @@ class _HubButtonState extends State<_HubButton> {
               ),
               const SizedBox(width: 8),
               Icon(Icons.chevron_right,
-                  color: Colors.white.withOpacity(.9), size: 22),
+                  color: Colors.white.withValues(alpha: .9), size: 22),
             ],
           ),
         );

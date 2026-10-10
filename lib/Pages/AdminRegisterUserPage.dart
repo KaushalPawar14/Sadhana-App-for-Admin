@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/StudentNameGuard.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 class AdminRegisterUserPage extends StatefulWidget {
   const AdminRegisterUserPage({super.key});
@@ -98,7 +100,7 @@ class _AdminRegisterUserPageState extends State<AdminRegisterUserPage>
       passwordController.clear();
     } on FirebaseAuthException catch (e) {
       showSnackbar(
-          context, e.message ?? "Something went wrong", Colors.red, Icons.error);
+          context, e.message ?? "Something went wrong", context.g.danger, Icons.error);
     } finally {
       setState(() => isLoading = false);
     }
@@ -110,8 +112,7 @@ class _AdminRegisterUserPageState extends State<AdminRegisterUserPage>
     final height = MediaQuery.of(context).size.height;
 
     return Consumer<ColorProvider>(builder: (context, colorProvider, child) {
-      return Scaffold(
-        backgroundColor: colorProvider.color,
+      return GuideScaffold(
         appBar: AppBar(
           backgroundColor: colorProvider.color,
           title: AnimatedDefaultTextStyle(
@@ -235,11 +236,11 @@ class _AdminRegisterUserPageState extends State<AdminRegisterUserPage>
                       duration: Duration(milliseconds: 250),
                       curve: Curves.easeInOut,
                       child: isLoading
-                          ? CircularProgressIndicator(color: Colors.orange.shade300)
+                          ? CircularProgressIndicator(color: context.g.warning)
                           : ElevatedButton(
                         onPressed: registerUser,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
+                          backgroundColor: context.g.brass,
                           padding: EdgeInsets.symmetric(
                               horizontal: width * 0.1,
                               vertical: height * 0.02),

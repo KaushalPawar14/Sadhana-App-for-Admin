@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../widgets/GuideSurface.dart';
 
 import '../utils/ColorProvider.dart';  // For formatting the date
 
@@ -70,8 +71,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
   @override
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(builder: (context, colorProvider, child) {
-      return Scaffold(
-        backgroundColor: colorProvider.color,
+      return GuideScaffold(
         appBar: AppBar(
           leading: IconButton(
             icon: Icon(
@@ -83,7 +83,6 @@ class _ScoreScreenState extends State<ScoreScreen> {
               Navigator.pop(context);
             },
           ),
-          backgroundColor: colorProvider.color,
           title: Text('${widget.username}',style: TextStyle(color: colorProvider.secondColor),), // Display the username
         ),
         body: FutureBuilder<

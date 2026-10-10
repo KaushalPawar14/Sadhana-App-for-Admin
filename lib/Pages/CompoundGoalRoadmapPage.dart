@@ -5,6 +5,8 @@ import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/GoalCompoundQueries.dart';
 import '../utils/Snackbar.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// Full roadmap view — Part 2 (all phases, read-only) + Part 3 (free-text
 /// suggestion box), reachable from BOTH the guide's own weekly page and the
@@ -99,7 +101,7 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
     } catch (_) {
       if (mounted) {
         showSnackbar(context, "Could not regenerate the plan — please try again",
-            Colors.red, Icons.error);
+            context.g.danger, Icons.error);
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -110,8 +112,7 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             elevation: 0,
             backgroundColor: colorProvider.color,
@@ -170,7 +171,7 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
         Text(
           "Read-only — the day-to-day weekly page still shows only your "
           "current phase. This is the whole sequence, for reference.",
-          style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+          style: TextStyle(fontSize: 11.5, color: context.g.mutedText),
         ),
         const SizedBox(height: 14),
         if (phases.isEmpty)
@@ -180,7 +181,7 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
               target.totalPhases == 0
                   ? "The plan hasn't been generated yet."
                   : "Loading phases…",
-              style: TextStyle(color: Colors.grey.shade600),
+              style: TextStyle(color: context.g.mutedText),
             ),
           )
         else
@@ -211,10 +212,10 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: isCurrent ? Colors.teal.shade50 : Colors.white,
+        color: isCurrent ? context.g.success.withValues(alpha: .14) : context.g.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isCurrent ? Colors.teal.shade200 : Colors.grey.shade200,
+          color: isCurrent ? context.g.success.withValues(alpha: .14) : context.g.chipBackground,
         ),
       ),
       child: Column(
@@ -228,13 +229,13 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.teal.shade700.withOpacity(.12),
+                  color: context.g.success.withValues(alpha: .12),
                 ),
                 child: Text(
                   '${phase.phaseNumber}',
                   style: TextStyle(
                       fontSize: 12, fontWeight: FontWeight.w800,
-                      color: Colors.teal.shade700),
+                      color: context.g.success),
                 ),
               ),
               const SizedBox(width: 12),
@@ -251,7 +252,7 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: statusColor.withOpacity(.12),
+                  color: statusColor.withValues(alpha: .12),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(statusLabel,
@@ -267,7 +268,7 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
                 padding: const EdgeInsets.only(left: 42, bottom: 4),
                 child: Text(
                   "• ${task.describe(unit, uidToName)}",
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                  style: TextStyle(fontSize: 12, color: context.g.mutedText),
                 ),
               ),
           ],
@@ -279,13 +280,13 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
   (String, Color) _statusStyle(String status) {
     switch (status) {
       case kCompoundPhaseAchieved:
-        return ('achieved', Colors.green.shade700);
+        return ('achieved', context.g.success);
       case kCompoundPhaseActive:
-        return ('active', Colors.teal.shade700);
+        return ('active', context.g.success);
       case kCompoundPhaseFailed:
-        return ('failed', Colors.red.shade700);
+        return ('failed', context.g.danger);
       default:
-        return ('pending', Colors.grey.shade500);
+        return ('pending', context.g.mutedText);
     }
   }
 
@@ -293,9 +294,9 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: context.g.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -312,7 +313,7 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
                     "the rest of your roadmap — applies immediately, no "
                     "approval needed. Already-achieved phases are never "
                     "rewritten.",
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+            style: TextStyle(fontSize: 11, color: context.g.mutedText),
           ),
           const SizedBox(height: 10),
           TextField(
@@ -331,11 +332,11 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
             child: ElevatedButton.icon(
               onPressed: _submitting ? null : _submitSuggestion,
               icon: _submitting
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 14,
                       height: 14,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                          strokeWidth: 2, color: context.g.onPrimary))
                   : const Icon(Icons.auto_awesome, size: 16),
               label: Text(_submitting
                   ? "Regenerating with AI…"
@@ -344,7 +345,7 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
                       : "Regenerate roadmap"),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF00695C),
-                foregroundColor: Colors.white,
+                foregroundColor: context.g.onPrimary,
               ),
             ),
           ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../widgets/GuideSurface.dart';
 
 /// Blocking screen for a copy installed outside the Play Store (a sideloaded
 /// APK): it cannot be trusted to receive updates or to stay signed correctly,
@@ -26,7 +27,7 @@ class NonPlayInstallScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      child: Scaffold(
+      child: GuideScaffold(
         body: SafeArea(
           child: Center(
             child: Padding(

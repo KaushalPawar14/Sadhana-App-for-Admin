@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// Blocking "please update" screen — follow-up task, 2026-09-10.
 ///
@@ -42,8 +44,7 @@ class ForceUpdateScreen extends StatelessWidget {
       onPopInvokedWithResult: (didPop, result) {
         // Absorbed, deliberately — see this class's own doc comment.
       },
-      child: Scaffold(
-        backgroundColor: const Color(0xFFFFF8E1),
+      child: GuideScaffold(
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(28),
@@ -52,7 +53,7 @@ class ForceUpdateScreen extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.system_update_alt,
-                      size: 72, color: Colors.deepOrange.shade400),
+                      size: 72, color: context.g.warning),
                   const SizedBox(height: 24),
                   const Text(
                     "Update required",
@@ -66,7 +67,7 @@ class ForceUpdateScreen extends StatelessWidget {
                     "using the app.",
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                        fontSize: 14.5, height: 1.5, color: Colors.grey.shade800),
+                        fontSize: 14.5, height: 1.5, color: context.g.text),
                   ),
                   const SizedBox(height: 28),
                   SizedBox(
@@ -76,8 +77,8 @@ class ForceUpdateScreen extends StatelessWidget {
                       icon: const Icon(Icons.shop),
                       label: const Text("Update now"),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepOrange.shade400,
-                        foregroundColor: Colors.white,
+                        backgroundColor: context.g.warning,
+                        foregroundColor: context.g.onPrimary,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                     ),

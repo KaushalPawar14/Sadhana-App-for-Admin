@@ -8,6 +8,8 @@ import '../utils/ColorProvider.dart';
 import '../utils/SeenMarkers.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// Expedition (pilgrimage / retreat) management.
 ///
@@ -67,14 +69,14 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
     return DateFormat('dd MMM yyyy').format(value.toDate());
   }
 
-  static ({Color color, String label}) _statusStyle(String status) {
+  ({Color color, String label}) _statusStyle(String status) {
     switch (status) {
       case 'ongoing':
-        return (color: Colors.orange, label: 'Ongoing');
+        return (color: context.g.warning, label: 'Ongoing');
       case 'completed':
-        return (color: Colors.green, label: 'Completed');
+        return (color: context.g.success, label: 'Completed');
       default:
-        return (color: Colors.blue, label: 'Upcoming');
+        return (color: context.g.brass, label: 'Upcoming');
     }
   }
 
@@ -83,11 +85,11 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(.05),
+            color: Colors.black.withValues(alpha: .05),
             blurRadius: 8,
             offset: const Offset(0, 4),
           )
@@ -101,9 +103,9 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(.12),
+        color: color.withValues(alpha: .12),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(.4)),
+        border: Border.all(color: color.withValues(alpha: .4)),
       ),
       child: Text(
         label,
@@ -242,10 +244,10 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                 child: const Text("Cancel"),
               ),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                style: ElevatedButton.styleFrom(backgroundColor: context.g.brass),
                 onPressed: () => Navigator.pop(dialogContext, true),
                 child:
-                    const Text("Create", style: TextStyle(color: Colors.white)),
+                    Text("Create", style: TextStyle(color: context.g.onPrimary)),
               ),
             ],
           );
@@ -305,7 +307,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                       ? Icons.radio_button_checked
                       : Icons.radio_button_off,
                   size: 18,
-                  color: Colors.blue,
+                  color: context.g.brass,
                 ),
                 const SizedBox(width: 10),
                 Text(_statusStyle(s).label),
@@ -350,8 +352,8 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
             maxHeight: MediaQuery.of(sheetContext).size.height * 0.75,
           ),
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-          decoration: const BoxDecoration(
-            color: Colors.white,
+          decoration: BoxDecoration(
+            color: context.g.surface,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
@@ -363,7 +365,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                   width: 42,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
+                    color: context.g.chipBackground,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -377,7 +379,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
               const SizedBox(height: 4),
               Text(
                 "${registrations.length} registered",
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 12, color: context.g.mutedText),
               ),
               const SizedBox(height: 12),
               Flexible(
@@ -395,14 +397,14 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                           return ListTile(
                             contentPadding: EdgeInsets.zero,
                             leading: CircleAvatar(
-                              backgroundColor: Colors.blue.shade700,
+                              backgroundColor: context.g.brass,
                               child: Text(
                                 (data['studentName'] ?? '?')
                                     .toString()
                                     .characters
                                     .first
                                     .toUpperCase(),
-                                style: const TextStyle(color: Colors.white),
+                                style: TextStyle(color: context.g.onPrimary),
                               ),
                             ),
                             title: Text(
@@ -416,13 +418,13 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                                   : "Reflection pending",
                               style: TextStyle(
                                 fontSize: 11,
-                                color: reflected ? Colors.green : Colors.orange,
+                                color: reflected ? context.g.success : context.g.warning,
                               ),
                             ),
                             trailing: Icon(
                               reflected ? Icons.check_circle : Icons.schedule,
                               size: 18,
-                              color: reflected ? Colors.green : Colors.orange,
+                              color: reflected ? context.g.success : context.g.warning,
                             ),
                           );
                         }).toList(),
@@ -536,14 +538,14 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                       Row(
                         children: [
                           Icon(Icons.place,
-                              size: 15, color: Colors.grey.shade600),
+                              size: 15, color: context.g.mutedText),
                           const SizedBox(width: 5),
                           Expanded(
                             child: Text(
                               (data['location'] ?? 'No location').toString(),
                               style: TextStyle(
                                 fontSize: 12,
-                                color: Colors.grey.shade700,
+                                color: context.g.mutedText,
                               ),
                             ),
                           ),
@@ -553,24 +555,24 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                       Row(
                         children: [
                           Icon(Icons.event,
-                              size: 15, color: Colors.grey.shade600),
+                              size: 15, color: context.g.mutedText),
                           const SizedBox(width: 5),
                           Text(
                             _formatTs(data['tripDate']),
                             style: TextStyle(
                               fontSize: 12,
-                              color: Colors.grey.shade700,
+                              color: context.g.mutedText,
                             ),
                           ),
                           const SizedBox(width: 14),
                           Icon(Icons.people,
-                              size: 15, color: Colors.grey.shade600),
+                              size: 15, color: context.g.mutedText),
                           const SizedBox(width: 5),
                           Text(
                             "${registrations.length}$capacity",
                             style: TextStyle(
                               fontSize: 12,
-                              color: Colors.grey.shade700,
+                              color: context.g.mutedText,
                             ),
                           ),
                         ],
@@ -586,8 +588,8 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                           icon: const Icon(Icons.list_alt, size: 17),
                           label: const Text("View Registrations"),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.blue,
-                            side: const BorderSide(color: Colors.blue),
+                            foregroundColor: context.g.brass,
+                            side: BorderSide(color: context.g.brass),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -689,7 +691,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                                       "Registered ${_formatTs(data['registeredAt'])}",
                                       style: TextStyle(
                                         fontSize: 11,
-                                        color: Colors.grey.shade600,
+                                        color: context.g.mutedText,
                                       ),
                                     ),
                                   ],
@@ -697,7 +699,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                               ),
                               _chip(
                                 reflected ? "Submitted" : "Pending",
-                                reflected ? Colors.green : Colors.orange,
+                                reflected ? context.g.success : context.g.warning,
                               ),
                             ],
                           ),
@@ -721,8 +723,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
       builder: (context, colorProvider, child) {
         final guide = _selectedGuide;
 
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             elevation: 0,
             backgroundColor: colorProvider.color,
@@ -740,9 +741,9 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
             ),
             bottom: TabBar(
               controller: _tabController,
-              labelColor: Colors.blue,
-              unselectedLabelColor: Colors.grey,
-              indicatorColor: Colors.blue,
+              labelColor: context.g.brass,
+              unselectedLabelColor: context.g.mutedText,
+              indicatorColor: context.g.brass,
               tabs: const [
                 Tab(text: "Manage Trips"),
                 Tab(text: "Reflections"),
@@ -760,12 +761,12 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                 ),
           floatingActionButton: (guide != null && _tabController.index == 0)
               ? FloatingActionButton.extended(
-                  backgroundColor: Colors.blue,
+                  backgroundColor: context.g.brass,
                   onPressed: _createTripDialog,
-                  icon: const Icon(Icons.add, color: Colors.white),
-                  label: const Text(
+                  icon: Icon(Icons.add, color: context.g.onPrimary),
+                  label: Text(
                     "New Trip",
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(color: context.g.onPrimary),
                   ),
                 )
               : null,

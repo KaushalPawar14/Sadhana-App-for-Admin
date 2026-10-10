@@ -8,6 +8,9 @@ import '../utils/ColorProvider.dart';
 import '../utils/SeenMarkers.dart';
 import '../utils/SelectableDelete.dart';
 import '../utils/StudentScope.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
+import '../theme/GuideColors.dart';
 
 /// Phase 7 — flagged student chat messages.
 ///
@@ -156,10 +159,10 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: _selectionMode
               ? selectionAppBar(
+                  context: context,
                   count: _selectedIds.length,
                   onCancel: _cancelSelectionMode,
                   onDelete: _selectedIds.isEmpty ? null : _deleteSelected,
@@ -226,7 +229,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
                           _sectionHeader(
                             "Needs attention",
                             "${urgent.length}",
-                            Colors.red.shade700,
+                            context.g.danger,
                           ),
                           ...urgent.map((d) =>
                               _entry(d.id, d.data() as Map<String, dynamic>)),
@@ -235,7 +238,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
                           _sectionHeader(
                             "Pastoral notes",
                             "${pastoral.length}",
-                            Colors.blueGrey.shade600,
+                            context.g.mutedText,
                           ),
                           _sectionCaption(
                             "Not urgent. Worth raising next time you speak.",
@@ -270,7 +273,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              color: colour.withOpacity(.12),
+              color: colour.withValues(alpha: .12),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
@@ -292,7 +295,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
       padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
       child: Text(
         text,
-        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+        style: TextStyle(fontSize: 11, color: context.g.mutedText),
       ),
     );
   }
@@ -306,17 +309,17 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
         borderRadius: BorderRadius.circular(18),
         gradient: LinearGradient(
           colors: clear ?
-              [Colors.green.shade600, Colors.green.shade300] :
+              [context.g.success, context.g.success] :
               acute > 0 ?
-                  [Colors.red.shade800, Colors.red.shade400] :
-                  [Colors.orange.shade700, Colors.orange.shade300],
+                  [context.g.danger, context.g.danger] :
+                  [context.g.warning, context.g.warning],
         ),
       ),
       child: Row(
         children: [
           Icon(
             clear ? Icons.check_circle : Icons.flag,
-            color: Colors.white,
+            color: context.g.surface,
             size: 34,
           ),
           const SizedBox(width: 16),
@@ -326,9 +329,9 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
               children: [
                 Text(
                   clear ? "Nothing urgent" : "$total needing attention",
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 22,
-                    color: Colors.white,
+                    color: context.g.surface,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -337,7 +340,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
                   Text(
                     "$pastoral pastoral note${pastoral == 1 ? '' : 's'} below",
                     style: const TextStyle(
-                      color: Colors.white70,
+                      color: GuideColors.heroMuted,
                       fontSize: 13,
                     ),
                   ),
@@ -346,8 +349,8 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
                   const SizedBox(height: 3),
                   Text(
                     "$acute needing urgent attention",
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: context.g.surface,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
@@ -359,7 +362,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
                       "All students (HOD view)" :
                       "Your students · "
                           "${AdminProfileProvider.current?.displayName ?? _guide ?? ''}",
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  style: const TextStyle(color: GuideColors.heroMuted, fontSize: 12),
                 ),
               ],
             ),
@@ -373,14 +376,14 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Center(
         child: Text(
           "No student messages have been flagged.",
           textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+          style: TextStyle(color: context.g.mutedText, fontSize: 14),
         ),
       ),
     );
@@ -412,6 +415,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
     final selected = _selectedIds.contains(docId);
 
     return selectableCard(
+      context: context,
       selected: selected,
       selectionMode: _selectionMode,
       onTap: () {
@@ -423,7 +427,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
       child: Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         // Aligned to 16 + a shadow (Part 3 — same radius and elevation
         // treatment AssociationManager's `_shell` and InteractionLogger's
         // `_logCard` already use, so all three read as one design system).
@@ -431,13 +435,13 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
         // it's a real safety-relevant signal, not just decoration.
         borderRadius: BorderRadius.circular(16),
         border: acute ?
-            Border.all(color: Colors.red.shade400, width: 2) :
+            Border.all(color: context.g.danger, width: 2) :
             isPastoral ?
-                Border.all(color: Colors.blueGrey.shade100) :
-                Border.all(color: Colors.grey.shade200),
+                Border.all(color: context.g.chipBackground) :
+                Border.all(color: context.g.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(.05),
+            color: Colors.black.withValues(alpha: .05),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -458,10 +462,10 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
                           Icons.flag_outlined,
                   size: 18,
                   color: acute ?
-                      Colors.red.shade700 :
+                      context.g.danger :
                       isPastoral ?
-                          Colors.blueGrey.shade600 :
-                          Colors.orange.shade700,
+                          context.g.mutedText :
+                          context.g.warning,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -478,7 +482,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 3),
                     decoration: BoxDecoration(
-                      color: Colors.green.shade50,
+                      color: context.g.success.withValues(alpha: .14),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -486,7 +490,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
-                        color: Colors.green.shade800,
+                        color: context.g.success,
                       ),
                     ),
                   ),
@@ -500,7 +504,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.blueGrey.shade50,
+                  color: context.g.chipBackground,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -508,7 +512,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: Colors.blueGrey.shade800,
+                    color: context.g.mutedText,
                   ),
                 ),
               ),
@@ -521,7 +525,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.red.shade50,
+                  color: context.g.danger.withValues(alpha: .14),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -529,7 +533,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: Colors.red.shade800,
+                    color: context.g.danger,
                   ),
                 ),
               ),
@@ -544,20 +548,20 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
             const SizedBox(height: 10),
             Row(
               children: [
-                Icon(Icons.schedule, size: 12, color: Colors.grey.shade600),
+                Icon(Icons.schedule, size: 12, color: context.g.mutedText),
                 const SizedBox(width: 5),
                 Text(
                   whenText,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  style: TextStyle(fontSize: 11, color: context.g.mutedText),
                 ),
                 if (_showsGuideLabel && guideId.isNotEmpty) ...[
                   const SizedBox(width: 12),
-                  Icon(Icons.person_pin, size: 12, color: Colors.grey.shade600),
+                  Icon(Icons.person_pin, size: 12, color: context.g.mutedText),
                   const SizedBox(width: 4),
                   Text(
                     guideName,
                     style:
-                        TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                        TextStyle(fontSize: 11, color: context.g.mutedText),
                   ),
                 ],
               ],
@@ -689,8 +693,7 @@ class StudentChatTranscriptPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             backgroundColor: colorProvider.color,
             elevation: 0,
@@ -719,7 +722,7 @@ class StudentChatTranscriptPage extends StatelessWidget {
                       "Could not determine which conversation this "
                       "message belongs to.",
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey.shade600),
+                      style: TextStyle(color: context.g.mutedText),
                     ),
                   ),
                 );
@@ -753,7 +756,7 @@ class StudentChatTranscriptPage extends StatelessWidget {
                         child: Text(
                           "No conversation recorded for this exchange.",
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey.shade600),
+                          style: TextStyle(color: context.g.mutedText),
                         ),
                       ),
                     );
@@ -791,13 +794,13 @@ class StudentChatTranscriptPage extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 5),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
-          color: fromStudent ? Colors.white : Colors.blue.shade50,
+          color: fromStudent ? context.g.surface : context.g.brass.withValues(alpha: .14),
           borderRadius: BorderRadius.circular(14),
           border: flagged ?
               Border.all(
-                  color: acute ? Colors.red.shade400 : Colors.orange.shade400,
+                  color: acute ? context.g.danger : context.g.warning,
                   width: 2) :
-              Border.all(color: Colors.grey.shade200),
+              Border.all(color: context.g.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -809,7 +812,7 @@ class StudentChatTranscriptPage extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
-                    color: Colors.grey.shade600,
+                    color: context.g.mutedText,
                   ),
                 ),
                 if (flagged) ...[
@@ -817,7 +820,7 @@ class StudentChatTranscriptPage extends StatelessWidget {
                   Icon(
                     acute ? Icons.warning_amber_rounded : Icons.flag,
                     size: 12,
-                    color: acute ? Colors.red.shade700 : Colors.orange.shade700,
+                    color: acute ? context.g.danger : context.g.warning,
                   ),
                 ],
               ],
@@ -831,7 +834,7 @@ class StudentChatTranscriptPage extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 DateFormat('dd MMM, hh:mm a').format(when.toDate()),
-                style: TextStyle(fontSize: 9, color: Colors.grey.shade500),
+                style: TextStyle(fontSize: 9, color: context.g.mutedText),
               ),
             ],
           ],

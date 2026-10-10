@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
+import '../theme/GuideTheme.dart';
 
 /// Per-student comment thread — Phase 5 of the Book Reading redesign
 /// (built 2026-08-23). Opened by the chat icon on a student's row in All Boys
@@ -207,7 +208,7 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
     // cannot post after the guide's access has changed underneath it.
     if (!_canAccess) {
       showSnackbar(context, "You cannot post on this student's thread",
-          Colors.red, Icons.error);
+          context.g.danger, Icons.error);
       return;
     }
 
@@ -282,7 +283,7 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
       padding: const EdgeInsets.fromLTRB(16, 12, 6, 10),
       child: Row(
         children: [
-          Icon(Icons.forum_outlined, size: 20, color: Colors.blue.shade700),
+          Icon(Icons.forum_outlined, size: 20, color: context.g.brass),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -297,14 +298,14 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
                 ),
                 Text(
                   "Guide notes · not visible to the student",
-                  style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600),
+                  style: TextStyle(fontSize: 10.5, color: context.g.mutedText),
                 ),
               ],
             ),
           ),
           IconButton(
             icon: const Icon(Icons.close, size: 20),
-            color: Colors.grey.shade600,
+            color: context.g.mutedText,
             onPressed: () => Navigator.pop(context),
           ),
         ],
@@ -324,14 +325,14 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.lock_outline, size: 34, color: Colors.grey.shade400),
+              Icon(Icons.lock_outline, size: 34, color: context.g.mutedText),
               const SizedBox(height: 12),
               Text(
                 _guide == null || _guide!.isEmpty
                     ? "No guide selected on this device."
                     : "This student is not assigned to you.",
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                style: TextStyle(fontSize: 13, color: context.g.mutedText),
               ),
             ],
           ),
@@ -348,7 +349,7 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Text("Could not load comments",
-                  style: TextStyle(color: Colors.grey.shade700)),
+                  style: TextStyle(color: context.g.mutedText)),
             ),
           );
         }
@@ -377,7 +378,7 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
               child: Text(
                 "No comments yet.\nStart the thread below.",
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                style: TextStyle(fontSize: 13, color: context.g.mutedText),
               ),
             ),
           );
@@ -417,10 +418,10 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
         decoration: BoxDecoration(
-          color: isMine ? Colors.blue.shade50 : Colors.grey.shade100,
+          color: isMine ? context.g.brass.withValues(alpha: .14) : context.g.chipBackground,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isMine ? Colors.blue.shade100 : Colors.grey.shade200,
+            color: isMine ? context.g.brass.withValues(alpha: .14) : context.g.chipBackground,
           ),
         ),
         child: Column(
@@ -440,8 +441,8 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                   decoration: BoxDecoration(
                     color: isHodAuthor
-                        ? Colors.deepPurple.shade50
-                        : Colors.teal.shade50,
+                        ? context.g.brass.withValues(alpha: .14)
+                        : context.g.success.withValues(alpha: .14),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
@@ -450,8 +451,8 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
                       fontSize: 9,
                       fontWeight: FontWeight.w700,
                       color: isHodAuthor
-                          ? Colors.deepPurple.shade700
-                          : Colors.teal.shade700,
+                          ? context.g.brass
+                          : context.g.success,
                     ),
                   ),
                 ),
@@ -462,7 +463,7 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
             const SizedBox(height: 5),
             Text(
               when,
-              style: TextStyle(fontSize: 9.5, color: Colors.grey.shade500),
+              style: TextStyle(fontSize: 9.5, color: context.g.mutedText),
             ),
           ],
         ),
@@ -509,7 +510,7 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
                 )
               : IconButton(
                   icon: const Icon(Icons.send_rounded),
-                  color: Colors.blue.shade700,
+                  color: context.g.brass,
                   onPressed: _send,
                 ),
         ],

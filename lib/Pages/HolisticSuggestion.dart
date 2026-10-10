@@ -6,6 +6,7 @@ import '../Services/GeminiService.dart';
 import '../Services/UpdateFCM.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
+import '../theme/GuideTheme.dart';
 
 /// Holistic "suggested next action" (Phase 5, item 1 — final piece).
 ///
@@ -390,11 +391,11 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: context.g.surface,
             borderRadius: BorderRadius.circular(18),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(.05),
+                color: Colors.black.withValues(alpha: .05),
                 blurRadius: 10,
                 offset: const Offset(0, 5),
               )
@@ -419,7 +420,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
                     style: TextStyle(
                       fontSize: 13,
                       height: 1.45,
-                      color: Colors.grey.shade800,
+                      color: context.g.text,
                     ),
                   ),
                 ],
@@ -433,7 +434,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
                     "${generatedBy.isEmpty ? '' : ' · $generatedBy'}",
                     style: TextStyle(
                       fontSize: 11,
-                      color: Colors.grey.shade600,
+                      color: context.g.mutedText,
                     ),
                   ),
               ] else
@@ -441,7 +442,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
                   "Draws on this student's sadhana counters, book progress, "
                   "approved interaction logs and most recent LIT reading. "
                   "Runs only when you ask.",
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                  style: TextStyle(fontSize: 13, color: context.g.mutedText),
                 ),
               const SizedBox(height: 14),
               SizedBox(
@@ -460,7 +461,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
                               : "Get suggested next action",
                         ),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.blue.shade700,
+                          foregroundColor: context.g.brass,
                           padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
                       ),
@@ -478,14 +479,14 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.amber.shade50,
+        color: context.g.warning.withValues(alpha: .14),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.amber.shade200),
+        border: Border.all(color: context.g.warning.withValues(alpha: .14)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.info_outline, size: 15, color: Colors.amber.shade900),
+          Icon(Icons.info_outline, size: 15, color: context.g.warning),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -494,7 +495,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
               style: TextStyle(
                 fontSize: 11,
                 height: 1.35,
-                color: Colors.amber.shade900,
+                color: context.g.warning,
                 fontWeight: FontWeight.w500,
               ),
             ),

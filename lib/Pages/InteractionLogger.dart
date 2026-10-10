@@ -11,6 +11,8 @@ import '../utils/SelectableDelete.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
 import 'LitAssessment.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// Phase 5, item 1 — interaction logging.
 ///
@@ -294,7 +296,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                   "Saved. Could not auto-fill the details just now — open it "
                   "from the list and tap Re-extract, or edit the fields "
                   "yourself.",
-                  Colors.orange,
+                  context.g.warning,
                   Icons.info,
                 );
               } else {
@@ -324,8 +326,8 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                   maxHeight: MediaQuery.of(context).size.height * 0.9,
                 ),
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
+                decoration: BoxDecoration(
+                  color: context.g.surface,
                   borderRadius:
                       BorderRadius.vertical(top: Radius.circular(24)),
                 ),
@@ -339,7 +341,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                           width: 42,
                           height: 4,
                           decoration: BoxDecoration(
-                            color: Colors.grey.shade300,
+                            color: context.g.chipBackground,
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),
@@ -359,7 +361,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                         "afterward from the Interactions list.",
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.grey.shade600,
+                          color: context.g.mutedText,
                         ),
                       ),
                       const SizedBox(height: 14),
@@ -367,7 +369,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                         color: Colors.transparent,
                         child: ListTile(
                           contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.event, color: Colors.blue),
+                          leading: Icon(Icons.event, color: context.g.brass),
                           title: const Text("Interaction date"),
                           subtitle: Text(
                             DateFormat('dd MMM yyyy').format(interactionDate),
@@ -415,8 +417,8 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                         color: Colors.transparent,
                         child: ListTile(
                           contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.event_available,
-                              color: Colors.blue),
+                          leading: Icon(Icons.event_available,
+                              color: context.g.brass),
                           title: const Text("Follow-up date (optional)"),
                           subtitle: Text(
                             followUpDate == null
@@ -495,8 +497,8 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                                 size: 18),
                             label: const Text("Save"),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue,
-                              foregroundColor: Colors.white,
+                              backgroundColor: context.g.brass,
+                              foregroundColor: context.g.onPrimary,
                               padding: const EdgeInsets.symmetric(vertical: 14),
                             ),
                           ),
@@ -535,10 +537,10 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: _selectionMode
               ? selectionAppBar(
+                  context: context,
                   count: _selectedIds.length,
                   onCancel: _cancelSelectionMode,
                   onDelete: _selectedIds.isEmpty ? null : _deleteSelected,
@@ -556,12 +558,12 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
             ),
           ),
           floatingActionButton: FloatingActionButton.extended(
-            backgroundColor: Colors.blue,
+            backgroundColor: context.g.brass,
             onPressed: _openEntrySheet,
-            icon: const Icon(Icons.add, color: Colors.white),
-            label: const Text(
+            icon: Icon(Icons.add, color: context.g.onPrimary),
+            label: Text(
               "New",
-              style: TextStyle(color: Colors.white),
+              style: TextStyle(color: context.g.onPrimary),
             ),
           ),
           body: _studentRef == null && !_studentRefFailed
@@ -594,7 +596,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                       "No interactions logged yet.\n"
                       "Tap New to record one.",
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey.shade600),
+                      style: TextStyle(color: context.g.mutedText),
                     ),
                   ),
                 );
@@ -642,6 +644,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
     final selected = _selectedIds.contains(docId);
 
     return selectableCard(
+      context: context,
       selected: selected,
       selectionMode: _selectionMode,
       onTap: () {
@@ -652,7 +655,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -674,7 +677,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
+                    color: context.g.chipBackground,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -682,7 +685,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade700,
+                      color: context.g.mutedText,
                     ),
                   ),
                 ),
@@ -691,11 +694,11 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
           const SizedBox(height: 6),
           Row(
             children: [
-              const Icon(Icons.event, size: 13, color: Colors.grey),
+              Icon(Icons.event, size: 13, color: context.g.mutedText),
               const SizedBox(width: 4),
               Text(
                 dateText,
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                style: TextStyle(fontSize: 12, color: context.g.mutedText),
               ),
             ],
           ),
@@ -705,7 +708,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                color: context.g.brass.withValues(alpha: .14),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Column(
@@ -717,7 +720,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
                       letterSpacing: .4,
-                      color: Colors.blue.shade900,
+                      color: context.g.brass,
                     ),
                   ),
                   if (action.isNotEmpty) ...[
@@ -731,7 +734,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                       style: TextStyle(
                         fontSize: 12,
                         height: 1.35,
-                        color: Colors.grey.shade700,
+                        color: context.g.mutedText,
                       ),
                     ),
                   ],
@@ -1101,8 +1104,7 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             backgroundColor: colorProvider.color,
             elevation: 0,
@@ -1233,7 +1235,7 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(14),
       ),
       child: child,
@@ -1250,13 +1252,13 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
       color: Colors.transparent,
       child: ListTile(
         contentPadding: EdgeInsets.zero,
-        leading: const Icon(Icons.event, color: Colors.blue),
+        leading: Icon(Icons.event, color: context.g.brass),
         title: Text(label, style: const TextStyle(fontSize: 14)),
         subtitle: Text(
           value == null ? "Not set" : DateFormat(format).format(value),
           style: TextStyle(
             fontSize: 13,
-            color: value == null ? Colors.grey : Colors.black87,
+            color: value == null ? context.g.mutedText : context.g.text,
           ),
         ),
         trailing: const Icon(Icons.edit, size: 18),
@@ -1308,8 +1310,8 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
             icon: const Icon(Icons.save_outlined, size: 18),
             label: const Text("Save changes"),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
+              backgroundColor: context.g.success,
+              foregroundColor: context.g.onPrimary,
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
           ),

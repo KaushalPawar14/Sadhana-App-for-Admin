@@ -68,7 +68,7 @@ class _AdminControlPageState extends State<AdminControlPage> {
   Future<void> _openAddStudentDialog() async {
     if (_selectedGuide == null || _selectedGuide!.isEmpty) {
       showSnackbar(context, "Still loading your guide profile — try again in a moment",
-          Colors.yellow, Icons.watch_later_outlined);
+          context.g.warning, Icons.watch_later_outlined);
       return;
     }
 
@@ -320,7 +320,7 @@ class _AdminControlPageState extends State<AdminControlPage> {
                       const SizedBox(height: 10),
                       Text(error!,
                           style:
-                              const TextStyle(color: Colors.red, fontSize: 12)),
+                              TextStyle(color: context.g.danger, fontSize: 12)),
                     ],
                   ],
                 ),

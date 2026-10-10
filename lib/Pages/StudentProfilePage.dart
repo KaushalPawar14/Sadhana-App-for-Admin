@@ -12,6 +12,9 @@ import 'AbcdeActivityCard.dart';
 import 'HolisticSuggestion.dart';
 import 'InteractionLogger.dart';
 import 'LitAssessment.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
+import '../theme/GuideColors.dart';
 
 /// The student profile page — Phase 3 of the FOLK Boys board redesign.
 /// Opened by the new fourth card icon on `Home/FolkBoysWorkspace.dart`'s
@@ -161,14 +164,14 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.amber.shade50,
+        color: context.g.warning.withValues(alpha: .14),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.amber.shade200),
+        border: Border.all(color: context.g.warning.withValues(alpha: .14)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.lock_outline, size: 18, color: Colors.amber.shade900),
+          Icon(Icons.lock_outline, size: 18, color: context.g.warning),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -179,7 +182,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
               style: TextStyle(
                 fontSize: 12,
                 height: 1.4,
-                color: Colors.amber.shade900,
+                color: context.g.warning,
               ),
             ),
           ),
@@ -199,14 +202,14 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.orange.shade50,
+        color: context.g.warning.withValues(alpha: .14),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.orange.shade200),
+        border: Border.all(color: context.g.warning.withValues(alpha: .14)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.edit_note, size: 18, color: Colors.orange.shade900),
+          Icon(Icons.edit_note, size: 18, color: context.g.warning),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -217,7 +220,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
               style: TextStyle(
                 fontSize: 12,
                 height: 1.4,
-                color: Colors.orange.shade900,
+                color: context.g.warning,
               ),
             ),
           ),
@@ -240,11 +243,11 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
       margin: const EdgeInsets.symmetric(vertical: 10),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(.05),
+            color: Colors.black.withValues(alpha: .05),
             blurRadius: 10,
             offset: const Offset(0, 5),
           )
@@ -255,7 +258,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: color.withOpacity(.15),
+              color: color.withValues(alpha: .15),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: color, size: 26),
@@ -267,7 +270,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
               children: [
                 Text(
                   label,
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                  style: TextStyle(color: context.g.mutedText, fontSize: 13),
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -287,12 +290,12 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(.2),
+        color: Colors.white.withValues(alpha: .2),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
         role,
-        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+        style: TextStyle(color: context.g.onPrimary, fontWeight: FontWeight.w500),
       ),
     );
   }
@@ -338,7 +341,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
         children: [
           badge,
           const SizedBox(width: 6),
-          const Icon(Icons.edit, size: 14, color: Colors.white70),
+          const Icon(Icons.edit, size: 14, color: GuideColors.heroMuted),
         ],
       ),
     );
@@ -378,7 +381,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                 ListTile(
                   title: Text(option),
                   trailing: option == currentRole
-                      ? const Icon(Icons.check, color: Colors.green)
+                      ? Icon(Icons.check, color: context.g.success)
                       : null,
                   onTap: () => Navigator.pop(sheetContext, option),
                 ),
@@ -448,7 +451,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
           .set({'role': selected}, SetOptions(merge: true));
       if (context.mounted) {
         showSnackbar(
-            context, 'Residence updated', Colors.green, Icons.check_circle);
+            context, 'Residence updated', context.g.success, Icons.check_circle);
       }
     } catch (_) {
       if (context.mounted) {
@@ -476,8 +479,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
             stream: FirebaseFirestore.instance
                 .collection('users')
@@ -527,8 +529,8 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                             child: Padding(
                               padding: const EdgeInsets.only(left: 16),
                               child: IconButton(
-                                icon: const Icon(Icons.arrow_back_ios,
-                                    color: Colors.white),
+                                icon: Icon(Icons.arrow_back_ios,
+                                    color: context.g.surface),
                                 onPressed: () => Navigator.pop(context),
                               ),
                             ),
@@ -536,7 +538,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                           const SizedBox(height: 10),
                           CircleAvatar(
                             radius: 48,
-                            backgroundColor: Colors.white,
+                            backgroundColor: context.g.onPrimary,
                             child: Text(
                               name.isNotEmpty ? name[0].toUpperCase() : '?',
                               style: const TextStyle(
@@ -549,10 +551,10 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                           const SizedBox(height: 16),
                           Text(
                             name,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                              color: context.g.surface,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -576,13 +578,13 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                             value: isManual && email.isEmpty
                                 ? "Not registered yet"
                                 : email,
-                            color: Colors.blue,
+                            color: context.g.brass,
                           ),
                           _infoCard(
                             icon: Icons.phone_outlined,
                             label: "Mobile Number",
                             value: mobile,
-                            color: Colors.green,
+                            color: context.g.success,
                           ),
 
                           // DATE OF BIRTH — gated (Part 4).
@@ -724,7 +726,7 @@ class DobCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isSet = dob != null;
-    final colour = isSet ? Colors.pink : Colors.grey;
+    final colour = isSet ? context.g.danger : context.g.mutedText;
 
     return InkWell(
       borderRadius: BorderRadius.circular(18),
@@ -733,11 +735,11 @@ class DobCard extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 10),
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: context.g.surface,
           borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(.05),
+              color: Colors.black.withValues(alpha: .05),
               blurRadius: 10,
               offset: const Offset(0, 5),
             )
@@ -748,7 +750,7 @@ class DobCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: colour.withOpacity(.15),
+                color: colour.withValues(alpha: .15),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(Icons.cake_outlined, color: colour, size: 26),
@@ -760,7 +762,7 @@ class DobCard extends StatelessWidget {
                 children: [
                   Text(
                     "Date of Birth",
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                    style: TextStyle(color: context.g.mutedText, fontSize: 13),
                   ),
                   const SizedBox(height: 3),
                   Text(
@@ -770,13 +772,13 @@ class DobCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: isSet ? null : Colors.grey.shade500,
+                      color: isSet ? null : context.g.mutedText,
                     ),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.edit, size: 16, color: Colors.grey.shade400),
+            Icon(Icons.edit, size: 16, color: context.g.mutedText),
           ],
         ),
       ),
@@ -812,11 +814,11 @@ class InteractionLogSection extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 10),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(.05),
+            color: Colors.black.withValues(alpha: .05),
             blurRadius: 10,
             offset: const Offset(0, 5),
           )
@@ -830,12 +832,12 @@ class InteractionLogSection extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.deepPurple.withOpacity(.15),
+                  color: context.g.brass.withValues(alpha: .15),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.record_voice_over,
-                  color: Colors.deepPurple,
+                  color: context.g.brass,
                   size: 26,
                 ),
               ),
@@ -845,7 +847,7 @@ class InteractionLogSection extends StatelessWidget {
                   "Record what happened in your own words. It's saved "
                   "immediately — AI fills in the details, and you can edit "
                   "them afterward from the Interactions list.",
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                  style: TextStyle(color: context.g.mutedText, fontSize: 13),
                 ),
               ),
             ],
@@ -866,8 +868,8 @@ class InteractionLogSection extends StatelessWidget {
               icon: const Icon(Icons.edit_note, size: 18),
               label: const Text("Log Interaction"),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
-                foregroundColor: Colors.white,
+                backgroundColor: context.g.brass,
+                foregroundColor: context.g.onPrimary,
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),

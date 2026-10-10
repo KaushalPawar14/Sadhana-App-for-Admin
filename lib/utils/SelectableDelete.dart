@@ -21,12 +21,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'Snackbar.dart';
+import '../theme/GuideTheme.dart';
 
 /// AppBar shown once 1+ items are selected — visual language matches
 /// `Dashboard._buildSelectionAppBar` (red bar, close icon, delete icon,
 /// "$n selected" title) so this feels like the same mechanism, not a
 /// different one bolted on per screen.
 AppBar selectionAppBar({
+  required BuildContext context,
   required int count,
   required VoidCallback onCancel,
   required VoidCallback? onDelete,
@@ -38,16 +40,16 @@ AppBar selectionAppBar({
 }) {
   return AppBar(
     elevation: 0,
-    backgroundColor: Colors.red.shade700,
+    backgroundColor: context.g.danger,
     leading: IconButton(
-      icon: const Icon(Icons.close, color: Colors.white),
+      icon: Icon(Icons.close, color: context.g.onPrimary),
       onPressed: onCancel,
     ),
-    title: Text('$count selected', style: const TextStyle(color: Colors.white)),
+    title: Text('$count selected', style: TextStyle(color: context.g.onPrimary)),
     centerTitle: true,
     actions: [
       IconButton(
-        icon: const Icon(Icons.delete, color: Colors.white),
+        icon: Icon(Icons.delete, color: context.g.onPrimary),
         onPressed: onDelete,
       ),
     ],
@@ -64,6 +66,7 @@ AppBar selectionAppBar({
 /// design (colours, borders, badges already particular to each screen) is
 /// untouched — this only adds a layer on top.
 Widget selectableCard({
+  required BuildContext context,
   required Widget child,
   required bool selected,
   required bool selectionMode,
@@ -77,7 +80,7 @@ Widget selectableCard({
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           border: selected
-              ? Border.all(color: Colors.red.shade400, width: 2)
+              ? Border.all(color: context.g.danger, width: 2)
               : null,
         ),
         child: AnimatedOpacity(
@@ -101,11 +104,11 @@ Widget selectableCard({
           right: 8,
           child: Container(
             padding: const EdgeInsets.all(3),
-            decoration: const BoxDecoration(
-              color: Colors.red,
+            decoration: BoxDecoration(
+              color: context.g.danger,
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.check, size: 14, color: Colors.white),
+            child: Icon(Icons.check, size: 14, color: context.g.onPrimary),
           ),
         ),
     ],
@@ -166,15 +169,15 @@ Future<Set<String>> confirmAndDeleteSelected({
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: Colors.orange.shade50,
+              color: context.g.warning.withValues(alpha: .14),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.orange.shade200),
+              border: Border.all(color: context.g.warning.withValues(alpha: .14)),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(Icons.info_outline,
-                    size: 16, color: Colors.orange.shade800),
+                    size: 16, color: context.g.warning),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -182,7 +185,7 @@ Future<Set<String>> confirmAndDeleteSelected({
                     "AI-generated suggestions about this student, since "
                     "some recommendations draw on this history.",
                     style: TextStyle(
-                        fontSize: 12, color: Colors.orange.shade900),
+                        fontSize: 12, color: context.g.warning),
                   ),
                 ),
               ],
@@ -197,9 +200,9 @@ Future<Set<String>> confirmAndDeleteSelected({
         ),
         ElevatedButton(
           style:
-              ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
+              ElevatedButton.styleFrom(backgroundColor: context.g.danger),
           onPressed: () => Navigator.pop(dialogContext, true),
-          child: const Text("Delete", style: TextStyle(color: Colors.white)),
+          child: Text("Delete", style: TextStyle(color: context.g.onPrimary)),
         ),
       ],
     ),
@@ -253,7 +256,7 @@ Future<Set<String>> confirmAndDeleteSelected({
       deleted.length == 1
           ? "Deleted 1 $itemNounSingular"
           : "Deleted ${deleted.length} $itemNounPlural",
-      Colors.green,
+      context.g.success,
       Icons.check_circle,
     );
   } else {
@@ -262,7 +265,7 @@ Future<Set<String>> confirmAndDeleteSelected({
     if (deniedCount > 0) parts.add("$deniedCount not permitted");
     if (failedCount > 0) parts.add("$failedCount failed");
     showSnackbar(
-      context, parts.join(', '), Colors.orange, Icons.warning_amber_rounded);
+      context, parts.join(', '), context.g.warning, Icons.warning_amber_rounded);
   }
 
   return deleted;

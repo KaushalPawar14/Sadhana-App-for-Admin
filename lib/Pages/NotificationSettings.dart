@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../Services/HierarchyApi.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// One "whose students notify me" switch.
 class StudentGroupSwitch {
@@ -115,13 +117,13 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+          SnackBar(content: Text(e.message), backgroundColor: context.g.danger));
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('Could not save. Check your connection.'),
-          backgroundColor: Colors.red));
+          backgroundColor: context.g.danger));
     }
   }
 
@@ -140,8 +142,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   Widget build(BuildContext context) {
     final colorProvider = Provider.of<ColorProvider>(context);
 
-    return Scaffold(
-      backgroundColor: colorProvider.color,
+    return GuideScaffold(
       appBar: AppBar(
         title: const Text('Notifications'),
         backgroundColor: Colors.transparent,
@@ -169,12 +170,12 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   ? null
                   : (v) => setState(() => _typeValues[t.key] = v),
             ),
-          const Padding(
+          Padding(
             padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: Text(
               'A notification about a student reaches you only if both the '
               'student group and the type are on.',
-              style: TextStyle(fontSize: 11, color: Colors.grey),
+              style: TextStyle(fontSize: 11, color: context.g.mutedText),
             ),
           ),
         ],

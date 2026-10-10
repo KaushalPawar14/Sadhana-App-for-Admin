@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../Services/UpdateFCM.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
+import '../theme/GuideTheme.dart';
+import '../theme/GuideColors.dart';
 
 /// LIT assessment — private, guide-only (FOLK_HANDOFF.md Section 8).
 ///
@@ -41,14 +43,14 @@ const List<Map<String, String>> kLitAxes = [
   },
 ];
 
-Color _axisColor(String key) {
+Color _axisColor(String key, GuideColors g) {
   switch (key) {
     case 'L':
-      return Colors.indigo;
+      return g.brass;
     case 'I':
-      return Colors.teal;
+      return g.success;
     default:
-      return Colors.deepOrange;
+      return g.warning;
   }
 }
 
@@ -203,8 +205,8 @@ class _LitEntrySheetState extends State<_LitEntrySheet> {
           maxHeight: MediaQuery.of(context).size.height * 0.9,
         ),
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: context.g.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: SingleChildScrollView(
@@ -217,7 +219,7 @@ class _LitEntrySheetState extends State<_LitEntrySheet> {
                   width: 42,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
+                    color: context.g.chipBackground,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -234,19 +236,19 @@ class _LitEntrySheetState extends State<_LitEntrySheet> {
               Text(
                 "Private to guides. Three independent judgements — they are "
                 "never combined into one score.",
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 12, color: context.g.mutedText),
               ),
               if (widget.sourceInteractionId != null) ...[
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Icon(Icons.link, size: 14, color: Colors.grey.shade600),
+                    Icon(Icons.link, size: 14, color: context.g.mutedText),
                     const SizedBox(width: 6),
                     Text(
                       "Linked to the interaction you just approved",
                       style: TextStyle(
                         fontSize: 11,
-                        color: Colors.grey.shade600,
+                        color: context.g.mutedText,
                       ),
                     ),
                   ],
@@ -260,7 +262,7 @@ class _LitEntrySheetState extends State<_LitEntrySheet> {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade800,
+                  color: context.g.text,
                 ),
               ),
               const SizedBox(height: 6),
@@ -282,7 +284,7 @@ class _LitEntrySheetState extends State<_LitEntrySheet> {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade800,
+                  color: context.g.text,
                 ),
               ),
               const SizedBox(height: 8),
@@ -322,8 +324,8 @@ class _LitEntrySheetState extends State<_LitEntrySheet> {
                         icon: const Icon(Icons.lock_outline, size: 18),
                         label: const Text("Save privately"),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.indigo,
-                          foregroundColor: Colors.white,
+                          backgroundColor: context.g.brass,
+                          foregroundColor: context.g.onPrimary,
                         ),
                       ),
                     ),
@@ -340,7 +342,7 @@ class _LitEntrySheetState extends State<_LitEntrySheet> {
   /// this widget references the other two axes.
   Widget _axisSelector(Map<String, String> axis) {
     final key = axis['key']!;
-    final color = _axisColor(key);
+    final color = _axisColor(key, context.g);
     final value = _scores[key];
 
     return Padding(
@@ -360,8 +362,8 @@ class _LitEntrySheetState extends State<_LitEntrySheet> {
                 ),
                 child: Text(
                   key,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: context.g.surface,
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
                   ),
@@ -384,7 +386,7 @@ class _LitEntrySheetState extends State<_LitEntrySheet> {
             padding: const EdgeInsets.only(left: 36),
             child: Text(
               axis['hint']!,
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              style: TextStyle(fontSize: 11, color: context.g.mutedText),
             ),
           ),
           const SizedBox(height: 8),
@@ -405,10 +407,10 @@ class _LitEntrySheetState extends State<_LitEntrySheet> {
                       height: 42,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: selected ? color : Colors.white,
+                        color: selected ? color : context.g.surface,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: selected ? color : Colors.grey.shade300,
+                          color: selected ? color : context.g.chipBackground,
                           width: selected ? 2 : 1,
                         ),
                       ),
@@ -416,7 +418,7 @@ class _LitEntrySheetState extends State<_LitEntrySheet> {
                         '$score',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          color: selected ? Colors.white : Colors.grey.shade700,
+                          color: selected ? context.g.surface : context.g.mutedText,
                         ),
                       ),
                     ),
@@ -500,19 +502,19 @@ class _LitHistorySectionState extends State<LitHistorySection> {
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Colors.indigo.shade50,
+            color: context.g.brass.withValues(alpha: .14),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Row(
             children: [
-              Icon(Icons.lock_outline, size: 18, color: Colors.indigo.shade700),
+              Icon(Icons.lock_outline, size: 18, color: context.g.brass),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   "Guide-only. Never shown to the student.",
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.indigo.shade900,
+                    color: context.g.brass,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -531,7 +533,7 @@ class _LitHistorySectionState extends State<LitHistorySection> {
             icon: const Icon(Icons.add, size: 18),
             label: const Text("New LIT assessment"),
             style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.indigo,
+              foregroundColor: context.g.brass,
               padding: const EdgeInsets.symmetric(vertical: 12),
             ),
           ),
@@ -555,13 +557,13 @@ class _LitHistorySectionState extends State<LitHistorySection> {
               return Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: context.g.surface,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Center(
                   child: Text(
                     "No assessments recorded yet",
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                    style: TextStyle(color: context.g.mutedText, fontSize: 14),
                   ),
                 ),
               );
@@ -601,7 +603,7 @@ class _LitHistorySectionState extends State<LitHistorySection> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -614,7 +616,7 @@ class _LitHistorySectionState extends State<LitHistorySection> {
                   dateText,
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.grey.shade700,
+                    color: context.g.mutedText,
                   ),
                 ),
               ),
@@ -623,7 +625,7 @@ class _LitHistorySectionState extends State<LitHistorySection> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
+                    color: context.g.chipBackground,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -632,7 +634,7 @@ class _LitHistorySectionState extends State<LitHistorySection> {
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade800,
+                      color: context.g.text,
                     ),
                   ),
                 ),
@@ -652,7 +654,7 @@ class _LitHistorySectionState extends State<LitHistorySection> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: _axisColor(key).withOpacity(.10),
+                    color: _axisColor(key, context.g).withValues(alpha: .10),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
@@ -660,7 +662,7 @@ class _LitHistorySectionState extends State<LitHistorySection> {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
-                      color: _axisColor(key),
+                      color: _axisColor(key, context.g),
                     ),
                   ),
                 ),
@@ -680,14 +682,14 @@ class _LitHistorySectionState extends State<LitHistorySection> {
               Icon(
                 linked ? Icons.link : Icons.person_outline,
                 size: 12,
-                color: Colors.grey.shade600,
+                color: context.g.mutedText,
               ),
               const SizedBox(width: 5),
               Text(
                 linked
                     ? "From a logged interaction · $guide"
                     : "Standalone · $guide",
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 11, color: context.g.mutedText),
               ),
             ],
           ),

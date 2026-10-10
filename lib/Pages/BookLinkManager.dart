@@ -6,6 +6,8 @@ import '../utils/ColorProvider.dart';
 import '../utils/DropboxLink.dart';
 import '../utils/Snackbar.dart';
 import 'PodcastLinkManager.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// Book Link Manager
 ///
@@ -164,7 +166,7 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
                 const SizedBox(height: 8),
                 Text(
                   "Leave empty to remove the link.",
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  style: TextStyle(fontSize: 12, color: context.g.mutedText),
                 ),
               ],
             ),
@@ -174,11 +176,11 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
                 child: const Text("Cancel"),
               ),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                style: ElevatedButton.styleFrom(backgroundColor: context.g.brass),
                 onPressed: () =>
                     Navigator.pop(dialogContext, enteredUrl.trim()),
                 child:
-                    const Text("Save", style: TextStyle(color: Colors.white)),
+                    Text("Save", style: TextStyle(color: context.g.onPrimary)),
               ),
             ],
           );
@@ -218,11 +220,11 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(.05),
+            color: Colors.black.withValues(alpha: .05),
             blurRadius: 6,
             offset: const Offset(0, 3),
           ),
@@ -236,7 +238,7 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: Colors.grey.shade600,
+              color: context.g.mutedText,
             ),
           ),
           const SizedBox(height: 8),
@@ -249,10 +251,10 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
                 label: Text(entry.value),
                 selected: selected,
                 onSelected: (_) => setState(() => _language = entry.key),
-                selectedColor: Colors.blue.shade100,
+                selectedColor: context.g.brass.withValues(alpha: .14),
                 labelStyle: TextStyle(
                   fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
-                  color: selected ? Colors.blue.shade900 : Colors.black87,
+                  color: selected ? context.g.brass : context.g.text,
                 ),
               );
             }).toList(),
@@ -274,11 +276,11 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(.05),
+            color: Colors.black.withValues(alpha: .05),
             blurRadius: 6,
             offset: const Offset(0, 3),
           )
@@ -290,12 +292,12 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: hasLink ? Colors.green.shade50 : Colors.orange.shade50,
+              color: hasLink ? context.g.success.withValues(alpha: .14) : context.g.warning.withValues(alpha: .14),
             ),
             child: Icon(
               hasLink ? Icons.link : Icons.link_off,
               size: 18,
-              color: hasLink ? Colors.green : Colors.orange.shade800,
+              color: hasLink ? context.g.success : context.g.warning,
             ),
           ),
           const SizedBox(width: 12),
@@ -317,7 +319,7 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 12,
-                    color: hasLink ? Colors.blue.shade700 : Colors.grey.shade600,
+                    color: hasLink ? context.g.brass : context.g.mutedText,
                     fontStyle: hasLink ? FontStyle.normal : FontStyle.italic,
                   ),
                 ),
@@ -334,7 +336,7 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
             ),
             icon: const Icon(Icons.edit, size: 16),
             label: const Text("Edit"),
-            style: TextButton.styleFrom(foregroundColor: Colors.blue.shade700),
+            style: TextButton.styleFrom(foregroundColor: context.g.brass),
           ),
         ],
       ),
@@ -355,14 +357,14 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.blue.shade100, Colors.blue.shade50],
+          colors: [context.g.brass.withValues(alpha: .14), context.g.brass.withValues(alpha: .14)],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(.06),
+            color: Colors.black.withValues(alpha: .06),
             blurRadius: 10,
             offset: const Offset(0, 5),
           )
@@ -384,17 +386,17 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
                   width: 6,
                   height: 22,
                   decoration: BoxDecoration(
-                    color: Colors.black,
+                    color: context.g.text,
                     borderRadius: BorderRadius.circular(6),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Text(
                   levelTitles[level] ?? level,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.black,
+                    color: context.g.text,
                   ),
                 ),
                 const Spacer(),
@@ -402,13 +404,13 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
                 // is in each level without opening it.
                 Text(
                   "${books.length} books",
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                  style: TextStyle(fontSize: 12, color: context.g.mutedText),
                 ),
                 const SizedBox(width: 4),
                 Icon(
                   isOpen ? Icons.expand_less : Icons.expand_more,
                   size: 22,
-                  color: Colors.black87,
+                  color: context.g.text,
                 ),
               ],
             ),
@@ -423,7 +425,7 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
                 "No books found for this level",
-                style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+                style: TextStyle(color: context.g.mutedText, fontSize: 13),
               ),
             )
           else
@@ -445,8 +447,7 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             elevation: 0,
             backgroundColor: colorProvider.color,
@@ -511,7 +512,7 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
                   /// and are called from here. Its own accordion matches the
                   /// book levels above.
                   const SizedBox(height: 8),
-                  Divider(thickness: 1.2, color: Colors.grey.shade400),
+                  Divider(thickness: 1.2, color: context.g.mutedText),
                   const SizedBox(height: 14),
                   Row(
                     children: [

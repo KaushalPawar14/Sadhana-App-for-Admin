@@ -9,6 +9,8 @@ import '../utils/SeenMarkers.dart';
 import '../utils/Snackbar.dart';
 import 'CompoundGoalRoadmapPage.dart';
 import 'CompoundTaskEditorPage.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// The compound target's weekly page — Part 5, this continuation task.
 ///
@@ -98,8 +100,7 @@ class _GoalWeeklyPhasePageState extends State<GoalWeeklyPhasePage> {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             elevation: 0,
             backgroundColor: colorProvider.color,
@@ -160,9 +161,9 @@ class _GoalWeeklyPhasePageState extends State<GoalWeeklyPhasePage> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: context.g.surface,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.grey.shade200),
+            border: Border.all(color: context.g.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -178,7 +179,7 @@ class _GoalWeeklyPhasePageState extends State<GoalWeeklyPhasePage> {
                   child: Text(
                     "Value tasks count students who have COMMITTED to this "
                     "many rounds/day, not actual chanting this week.",
-                    style: TextStyle(fontSize: 10.5, color: Colors.grey.shade500),
+                    style: TextStyle(fontSize: 10.5, color: context.g.mutedText),
                   ),
                 ),
               _taskChecklist(phase, target, unit),
@@ -188,7 +189,7 @@ class _GoalWeeklyPhasePageState extends State<GoalWeeklyPhasePage> {
                 "now. It advances automatically every Monday, only once "
                 "EVERY task above is genuinely met — or immediately if you "
                 "finish early.",
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                style: TextStyle(fontSize: 11, color: context.g.mutedText),
               ),
               const SizedBox(height: 14),
               Row(
@@ -262,7 +263,7 @@ class _GoalWeeklyPhasePageState extends State<GoalWeeklyPhasePage> {
   Widget _taskChecklist(CompoundPhase phase, CompoundTarget target, String unit) {
     if (phase.tasks.isEmpty) {
       return Text("No tasks in this phase.",
-          style: TextStyle(fontSize: 13, color: Colors.grey.shade600));
+          style: TextStyle(fontSize: 13, color: context.g.mutedText));
     }
     return FutureBuilder<List<TaskProgress>>(
       future: livePhaseProgress(
@@ -312,7 +313,7 @@ class _GoalWeeklyPhasePageState extends State<GoalWeeklyPhasePage> {
               Icon(
                 complete ? Icons.check_circle : Icons.radio_button_unchecked,
                 size: 16,
-                color: complete ? Colors.green.shade700 : Colors.grey.shade400,
+                color: complete ? context.g.success : context.g.mutedText,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -323,7 +324,7 @@ class _GoalWeeklyPhasePageState extends State<GoalWeeklyPhasePage> {
               ),
               Text(
                 progress == null ? '—' : '${progress.actual}/${progress.target}',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 12, color: context.g.mutedText),
               ),
             ],
           ),
@@ -335,9 +336,9 @@ class _GoalWeeklyPhasePageState extends State<GoalWeeklyPhasePage> {
               child: LinearProgressIndicator(
                 value: fraction ?? 0,
                 minHeight: 5,
-                backgroundColor: Colors.grey.shade200,
+                backgroundColor: context.g.chipBackground,
                 valueColor: AlwaysStoppedAnimation<Color>(
-                  complete ? Colors.green.shade700 : Colors.teal.shade700,
+                  complete ? context.g.success : context.g.success,
                 ),
               ),
             ),
@@ -407,7 +408,7 @@ class _GoalWeeklyPhasePageState extends State<GoalWeeklyPhasePage> {
       if (!context.mounted) return;
       Navigator.pop(context);
       showSnackbar(context, "Could not update the end date — please try again",
-          Colors.red, Icons.error);
+          context.g.danger, Icons.error);
     }
   }
 
@@ -417,30 +418,30 @@ class _GoalWeeklyPhasePageState extends State<GoalWeeklyPhasePage> {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.blue.shade50,
+        color: context.g.brass.withValues(alpha: .14),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue.shade200),
+        border: Border.all(color: context.g.brass.withValues(alpha: .14)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.lightbulb_outline, size: 18, color: Colors.blue.shade800),
+              Icon(Icons.lightbulb_outline, size: 18, color: context.g.brass),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   "Suggested by your HOD — not yet applied",
                   style: TextStyle(
                       fontSize: 13, fontWeight: FontWeight.w700,
-                      color: Colors.blue.shade900),
+                      color: context.g.brass),
                 ),
               ),
             ],
           ),
           if (pending.note.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(pending.note, style: TextStyle(fontSize: 12.5, color: Colors.blue.shade900)),
+            Text(pending.note, style: TextStyle(fontSize: 12.5, color: context.g.brass)),
           ],
           const SizedBox(height: 8),
           Text(
@@ -449,13 +450,13 @@ class _GoalWeeklyPhasePageState extends State<GoalWeeklyPhasePage> {
               (i) => 'P${i + 1} (${pending.tasksFor(i).length} task'
                   '${pending.tasksFor(i).length == 1 ? '' : 's'})',
             ).join('  ·  ')}",
-            style: TextStyle(fontSize: 11.5, color: Colors.blue.shade800),
+            style: TextStyle(fontSize: 11.5, color: context.g.brass),
           ),
           const SizedBox(height: 4),
           Text(
             "Open \"Full roadmap\" after approving to see the full task "
             "list for each phase.",
-            style: TextStyle(fontSize: 10.5, color: Colors.blue.shade700),
+            style: TextStyle(fontSize: 10.5, color: context.g.brass),
           ),
           const SizedBox(height: 10),
           Row(
@@ -471,8 +472,8 @@ class _GoalWeeklyPhasePageState extends State<GoalWeeklyPhasePage> {
                 child: ElevatedButton(
                   onPressed: () => _approve(context, target),
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue.shade700,
-                      foregroundColor: Colors.white),
+                      backgroundColor: context.g.brass,
+                      foregroundColor: context.g.onPrimary),
                   child: const Text("Approve"),
                 ),
               ),

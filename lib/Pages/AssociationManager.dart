@@ -11,6 +11,8 @@ import '../utils/SelectableDelete.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
 import 'OverdueAssociations.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// Association — meeting requests raised by students.
 ///
@@ -147,11 +149,11 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
       padding: const EdgeInsets.only(top: 4),
       child: Row(
         children: [
-          Icon(Icons.person_pin, size: 13, color: Colors.grey.shade600),
+          Icon(Icons.person_pin, size: 13, color: context.g.mutedText),
           const SizedBox(width: 4),
           Text(
             "Guide: $label",
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+            style: TextStyle(fontSize: 11, color: context.g.mutedText),
           ),
         ],
       ),
@@ -281,10 +283,10 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                 child: const Text("Cancel"),
               ),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                style: ElevatedButton.styleFrom(backgroundColor: context.g.brass),
                 onPressed: () => Navigator.pop(dialogContext, true),
                 child:
-                    const Text("Save", style: TextStyle(color: Colors.white)),
+                    Text("Save", style: TextStyle(color: context.g.onPrimary)),
               ),
             ],
           );
@@ -434,8 +436,8 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
               ),
               child: Container(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
+                decoration: BoxDecoration(
+                  color: context.g.surface,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                 ),
                 child: Column(
@@ -447,7 +449,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                         width: 42,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
+                          color: context.g.chipBackground,
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
@@ -545,24 +547,24 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                       child: ElevatedButton(
                         onPressed: saving ? null : save,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
+                          backgroundColor: context.g.brass,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),
                         ),
                         child: saving
-                            ? const SizedBox(
+                            ? SizedBox(
                                 width: 20,
                                 height: 20,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Colors.white,
+                                  color: context.g.surface,
                                 ),
                               )
-                            : const Text(
+                            : Text(
                                 "Send Request",
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: context.g.surface,
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -591,12 +593,12 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey.shade300),
+          border: Border.all(color: context.g.border),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: Colors.grey.shade600),
+            Icon(icon, size: 18, color: context.g.mutedText),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -608,7 +610,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
               value,
               style: TextStyle(
                 color:
-                    value == "Not set" ? Colors.grey.shade500 : Colors.black87,
+                    value == "Not set" ? context.g.mutedText : context.g.text,
                 fontWeight:
                     value == "Not set" ? FontWeight.normal : FontWeight.w600,
               ),
@@ -693,6 +695,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
     final selected = _selectedIds.contains(docId);
 
     return selectableCard(
+      context: context,
       selected: selected,
       selectionMode: _selectionMode,
       onTap: () {
@@ -703,11 +706,11 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: context.g.surface,
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(.05),
+              color: Colors.black.withValues(alpha: .05),
               blurRadius: 8,
               offset: const Offset(0, 4),
             )
@@ -722,7 +725,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(.12),
+        color: color.withValues(alpha: .12),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
@@ -740,8 +743,8 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
     return OutlinedButton(
       onPressed: () => _cancelRequest(docId, data),
       style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.red,
-        side: const BorderSide(color: Colors.red),
+        foregroundColor: context.g.danger,
+        side: BorderSide(color: context.g.danger),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
         ),
@@ -775,20 +778,20 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                 ),
               ),
               if (isCounter)
-                _badge("Counter-proposal", Colors.purple)
+                _badge("Counter-proposal", context.g.brass)
               else if (requestedBy == 'guide')
-                _badge("Awaiting student confirmation", Colors.orange),
+                _badge("Awaiting student confirmation", context.g.warning),
             ],
           ),
           _guideLabel(data),
           const SizedBox(height: 8),
           Row(
             children: [
-              Icon(Icons.event, size: 15, color: Colors.grey.shade600),
+              Icon(Icons.event, size: 15, color: context.g.mutedText),
               const SizedBox(width: 5),
               Text(
                 "Preferred: ${_formatTs(data['preferredDate'])}",
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                style: TextStyle(fontSize: 12, color: context.g.mutedText),
               ),
             ],
           ),
@@ -796,7 +799,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
             const SizedBox(height: 10),
             Text(
               studentNotes,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+              style: TextStyle(fontSize: 12, color: context.g.mutedText),
             ),
           ],
 
@@ -807,7 +810,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
               width: double.infinity,
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: Colors.purple.withOpacity(.06),
+                color: context.g.brass.withValues(alpha: .06),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Column(
@@ -815,10 +818,10 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                 children: [
                   Text(
                     "Student proposed: ${_formatTs(counterDate)}",
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: Colors.purple,
+                      color: context.g.brass,
                     ),
                   ),
                   if (counterNote.isNotEmpty) ...[
@@ -826,7 +829,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                     Text(
                       counterNote,
                       style:
-                          TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                          TextStyle(fontSize: 12, color: context.g.mutedText),
                     ),
                   ],
                 ],
@@ -843,14 +846,14 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                 onPressed: () => _acceptCounterProposal(docId, data),
                 style: ElevatedButton.styleFrom(
                   elevation: 0,
-                  backgroundColor: Colors.green,
+                  backgroundColor: context.g.success,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
-                child: const Text(
+                child: Text(
                   "Accept Student's Date",
-                  style: TextStyle(color: Colors.white),
+                  style: TextStyle(color: context.g.onPrimary),
                 ),
               ),
             ),
@@ -861,8 +864,8 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                   child: OutlinedButton(
                     onPressed: () => _confirmRequest(docId, data),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.blue,
-                      side: const BorderSide(color: Colors.blue),
+                      foregroundColor: context.g.brass,
+                      side: BorderSide(color: context.g.brass),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -885,14 +888,14 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                     onPressed: () => _confirmRequest(docId, data),
                     style: ElevatedButton.styleFrom(
                       elevation: 0,
-                      backgroundColor: Colors.green,
+                      backgroundColor: context.g.success,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    child: const Text(
+                    child: Text(
                       "Confirm",
-                      style: TextStyle(color: Colors.white),
+                      style: TextStyle(color: context.g.onPrimary),
                     ),
                   ),
                 ),
@@ -958,11 +961,11 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
           const SizedBox(height: 8),
           Row(
             children: [
-              const Icon(Icons.event_available, size: 15, color: Colors.green),
+              Icon(Icons.event_available, size: 15, color: context.g.success),
               const SizedBox(width: 5),
               Text(
                 _formatTs(data['confirmedDate']),
-                style: const TextStyle(fontSize: 12, color: Colors.green),
+                style: TextStyle(fontSize: 12, color: context.g.success),
               ),
             ],
           ),
@@ -974,14 +977,14 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                   onPressed: () => _markComplete(docId, data),
                   style: ElevatedButton.styleFrom(
                     elevation: 0,
-                    backgroundColor: Colors.blue,
+                    backgroundColor: context.g.brass,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
-                  child: const Text(
+                  child: Text(
                     "Mark Complete",
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(color: context.g.onPrimary),
                   ),
                 ),
               ),
@@ -990,8 +993,8 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                 child: OutlinedButton(
                   onPressed: () => _cancelRequest(docId, data),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red,
-                    side: const BorderSide(color: Colors.red),
+                    foregroundColor: context.g.danger,
+                    side: BorderSide(color: context.g.danger),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -1031,8 +1034,8 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: (isCompleted ? Colors.blue : Colors.red)
-                      .withOpacity(.12),
+                  color: (isCompleted ? context.g.brass : context.g.danger)
+                      .withValues(alpha: .12),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -1040,7 +1043,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
-                    color: isCompleted ? Colors.blue : Colors.red,
+                    color: isCompleted ? context.g.brass : context.g.danger,
                   ),
                 ),
               ),
@@ -1050,7 +1053,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
           const SizedBox(height: 8),
           Text(
             _formatTs(data['confirmedDate'] ?? data['preferredDate']),
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+            style: TextStyle(fontSize: 12, color: context.g.mutedText),
           ),
           if (guideNotes.isNotEmpty) ...[
             const SizedBox(height: 10),
@@ -1058,7 +1061,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
               width: double.infinity,
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(.06),
+                color: context.g.brass.withValues(alpha: .06),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
@@ -1181,19 +1184,19 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
 
         final tabBar = TabBar(
           controller: _tabController,
-          labelColor: Colors.blue,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: Colors.blue,
+          labelColor: context.g.brass,
+          unselectedLabelColor: context.g.mutedText,
+          indicatorColor: context.g.brass,
           tabs: const [
             Tab(text: "Pending"),
             Tab(text: "Upcoming & History"),
           ],
         );
 
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: _selectionMode
               ? selectionAppBar(
+                  context: context,
                   count: _selectedIds.length,
                   onCancel: _cancelSelectionMode,
                   onDelete: _selectedIds.isEmpty ? null : _deleteSelected,
@@ -1261,12 +1264,12 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
           // Creating a meeting only belongs on the pending tab.
           floatingActionButton: (guide != null && _tabController.index == 0)
               ? FloatingActionButton.extended(
-                  backgroundColor: Colors.blue,
+                  backgroundColor: context.g.brass,
                   onPressed: () => _openCreateMeetingSheet(guide),
-                  icon: const Icon(Icons.add, color: Colors.white),
-                  label: const Text(
+                  icon: Icon(Icons.add, color: context.g.onPrimary),
+                  label: Text(
                     "New Meeting",
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(color: context.g.onPrimary),
                   ),
                 )
               : null,

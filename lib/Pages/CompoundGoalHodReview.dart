@@ -6,6 +6,8 @@ import '../utils/GoalCompoundQueries.dart';
 import '../utils/AdminProfile.dart';
 import 'CompoundGoalRoadmapPage.dart';
 import 'CompoundTaskEditorPage.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// HOD-facing: browse any guide's compound targets and either open the
 /// note-driven AI roadmap/suggestion view or manually edit the current
@@ -51,8 +53,7 @@ class _CompoundGoalHodReviewState extends State<CompoundGoalHodReview> {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             elevation: 0,
             backgroundColor: colorProvider.color,
@@ -132,9 +133,9 @@ class _CompoundGoalHodReviewState extends State<CompoundGoalHodReview> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: context.g.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -150,19 +151,19 @@ class _CompoundGoalHodReviewState extends State<CompoundGoalHodReview> {
             target.totalPhases == 0
                 ? "Plan not generated yet"
                 : "Phase ${target.currentPhase} of ${target.totalPhases}",
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            style: TextStyle(fontSize: 12, color: context.g.mutedText),
           ),
           if (pending != null) ...[
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.amber.shade50,
+                color: context.g.warning.withValues(alpha: .14),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 "A proposal is already pending — awaiting the guide's decision.",
-                style: TextStyle(fontSize: 11.5, color: Colors.amber.shade900),
+                style: TextStyle(fontSize: 11.5, color: context.g.warning),
               ),
             ),
           ],

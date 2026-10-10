@@ -8,6 +8,9 @@ import '../utils/ColorProvider.dart';
 import '../utils/PlanningQueries.dart';
 import '../utils/StudentScope.dart';
 import 'AssociationManager.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
+import '../theme/GuideColors.dart';
 
 /// Overdue associations dashboard (Phase 6, half 1, item 2).
 ///
@@ -49,8 +52,7 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             backgroundColor: colorProvider.color,
             elevation: 0,
@@ -108,15 +110,15 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
         borderRadius: BorderRadius.circular(18),
         gradient: LinearGradient(
           colors: count == 0
-              ? [Colors.green.shade600, Colors.green.shade300]
-              : [Colors.red.shade700, Colors.red.shade300],
+              ? [context.g.success, context.g.success]
+              : [context.g.danger, context.g.danger],
         ),
       ),
       child: Row(
         children: [
           Icon(
             count == 0 ? Icons.check_circle : Icons.event_busy,
-            color: Colors.white,
+            color: context.g.surface,
             size: 34,
           ),
           const SizedBox(width: 16),
@@ -126,9 +128,9 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
               children: [
                 Text(
                   "$count overdue",
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 22,
-                    color: Colors.white,
+                    color: context.g.surface,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -137,7 +139,7 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
                   _isHod
                       ? "All guides (HOD view)"
                       : "Your students · ${_profile.displayName}",
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  style: const TextStyle(color: GuideColors.heroMuted, fontSize: 12),
                 ),
               ],
             ),
@@ -151,13 +153,13 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Center(
         child: Text(
           "Nothing overdue",
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+          style: TextStyle(color: context.g.mutedText, fontSize: 14),
         ),
       ),
     );
@@ -181,7 +183,7 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -203,8 +205,8 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: status == 'pending'
-                      ? Colors.orange.shade50
-                      : Colors.blue.shade50,
+                      ? context.g.warning.withValues(alpha: .14)
+                      : context.g.brass.withValues(alpha: .14),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -213,8 +215,8 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     color: status == 'pending'
-                        ? Colors.orange.shade800
-                        : Colors.blue.shade800,
+                        ? context.g.warning
+                        : context.g.brass,
                   ),
                 ),
               ),
@@ -226,11 +228,11 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
             const SizedBox(height: 4),
             Row(
               children: [
-                Icon(Icons.person_pin, size: 13, color: Colors.grey.shade600),
+                Icon(Icons.person_pin, size: 13, color: context.g.mutedText),
                 const SizedBox(width: 4),
                 Text(
                   "Guide: $guideName",
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                  style: TextStyle(fontSize: 12, color: context.g.mutedText),
                 ),
               ],
             ),
@@ -239,11 +241,11 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
           const SizedBox(height: 8),
           Row(
             children: [
-              const Icon(Icons.event, size: 13, color: Colors.grey),
+              Icon(Icons.event, size: 13, color: context.g.mutedText),
               const SizedBox(width: 4),
               Text(
                 "$label ${DateFormat('dd MMM yyyy').format(item.since)}",
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                style: TextStyle(fontSize: 12, color: context.g.mutedText),
               ),
             ],
           ),
@@ -251,7 +253,7 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: Colors.red.shade50,
+              color: context.g.danger.withValues(alpha: .14),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
@@ -259,7 +261,7 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: Colors.red.shade800,
+                color: context.g.danger,
               ),
             ),
           ),

@@ -7,6 +7,8 @@ import '../utils/CompetitionScore.dart';
 import '../utils/SadhanaReportSource.dart';
 import '../utils/ScorecardPoints.dart';
 import '../Pages/AllGraph.dart' show GraphicalAnalysisSection;
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 class CalendarPage extends StatefulWidget {
   final String username;
@@ -68,9 +70,9 @@ class _CalendarPageState extends State<CalendarPage> {
 
   Color _getDayColor(DateTime day, Set<String> availableDates) {
     String formattedDate = _formatDate(day);
-    if (_selectedDay != null && isSameDay(day, _selectedDay)) return Colors.blue.shade400;
-    if (availableDates.contains(formattedDate)) return Colors.green.shade600;
-    return Colors.red.shade600;
+    if (_selectedDay != null && isSameDay(day, _selectedDay)) return context.g.brass;
+    if (availableDates.contains(formattedDate)) return context.g.success;
+    return context.g.danger;
   }
 
   Widget _dayCellWithColor(DateTime day, Color color, double size) {
@@ -87,7 +89,7 @@ class _CalendarPageState extends State<CalendarPage> {
       child: Text(
         '${day.day}',
         style: TextStyle(
-          color: Colors.white,
+          color: context.g.surface,
           fontWeight: FontWeight.w600,
           fontSize: size * 0.4,
         ),
@@ -129,7 +131,7 @@ class _CalendarPageState extends State<CalendarPage> {
               style: TextStyle(
                   fontWeight: FontWeight.bold, fontSize: 16, color: color)),
           SizedBox(height: 4),
-          Text(value, style: TextStyle(fontSize: 14, color: Colors.black87)),
+          Text(value, style: TextStyle(fontSize: 14, color: context.g.text)),
           if (progress != null)
             TweenAnimationBuilder<double>(
               tween: Tween(begin: 0.0, end: progress),
@@ -140,7 +142,7 @@ class _CalendarPageState extends State<CalendarPage> {
                   child: LinearProgressIndicator(
                     value: valueAnim,
                     color: color,
-                    backgroundColor: Colors.grey.shade300,
+                    backgroundColor: context.g.chipBackground,
                     minHeight: 8,
                   ),
                 );
@@ -180,8 +182,8 @@ class _CalendarPageState extends State<CalendarPage> {
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: Material(
           color: selected
-              ? Colors.deepPurple.shade400
-              : Colors.grey.withOpacity(.14),
+              ? context.g.brass
+              : context.g.mutedText.withValues(alpha: .14),
           borderRadius: BorderRadius.circular(20),
           child: InkWell(
             borderRadius: BorderRadius.circular(20),
@@ -195,7 +197,7 @@ class _CalendarPageState extends State<CalendarPage> {
                   Icon(icon,
                       size: 16,
                       color:
-                          selected ? Colors.white : colorProvider.secondColor),
+                          selected ? context.g.onPrimary : colorProvider.secondColor),
                   const SizedBox(width: 6),
                   Text(
                     label,
@@ -203,7 +205,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       fontSize: 12.5,
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                       color:
-                          selected ? Colors.white : colorProvider.secondColor,
+                          selected ? context.g.onPrimary : colorProvider.secondColor,
                     ),
                   ),
                 ],
@@ -304,7 +306,7 @@ class _CalendarPageState extends State<CalendarPage> {
             );
           },
         ),
-        Divider(thickness: 1.5, color: Colors.grey.shade300),
+        Divider(thickness: 1.5, color: context.g.border),
         Padding(
           padding: const EdgeInsets.only(bottom: 16),
           child: _selectedDayInfo(),
@@ -320,7 +322,7 @@ class _CalendarPageState extends State<CalendarPage> {
       child: Text(
         "$what could not be loaded for this student.",
         textAlign: TextAlign.center,
-        style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+        style: TextStyle(fontSize: 13, color: context.g.mutedText),
       ),
     );
   }
@@ -369,13 +371,13 @@ class _CalendarPageState extends State<CalendarPage> {
                     style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: Colors.grey),
+                        color: context.g.mutedText),
                   ),
                 )
               else ...[
-                _infoRow('Weekly Wins', '$weekly 🏆', Colors.amber.shade800),
-                _infoRow('Monthly Gold', '$gold 🥇', Colors.amber.shade700),
-                _infoRow('Monthly Silver', '$silver 🥈', Colors.blueGrey),
+                _infoRow('Weekly Wins', '$weekly 🏆', context.g.warning),
+                _infoRow('Monthly Gold', '$gold 🥇', context.g.warning),
+                _infoRow('Monthly Silver', '$silver 🥈', context.g.mutedText),
                 _infoRow('Monthly Bronze', '$bronze 🥉', Colors.brown.shade400),
               ],
             ],
@@ -439,7 +441,7 @@ class _CalendarPageState extends State<CalendarPage> {
             child: Text(
               'No scorecard yet 🗒️',
               style: TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey),
+                  fontSize: 16, fontWeight: FontWeight.bold, color: context.g.mutedText),
               textAlign: TextAlign.center,
             ),
           );
@@ -478,7 +480,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: Colors.deepPurple.shade400,
+                      color: context.g.brass,
                     ),
                   ),
                 ],
@@ -486,11 +488,11 @@ class _CalendarPageState extends State<CalendarPage> {
               const SizedBox(height: 2),
               // Same label/value rhythm as _infoRow, so these read as siblings
               // of the per-day rows below rather than a foreign card.
-              _infoRow('Chanting Rounds', '$chant 📿', Colors.purple.shade700),
-              _infoRow('Book Reading', '$book 📖', Colors.orange.shade700),
+              _infoRow('Chanting Rounds', '$chant 📿', context.g.brass),
+              _infoRow('Book Reading', '$book 📖', context.g.warning),
               _infoRow('Bhagavatam Classes', '$sbClass 🎧',
-                  Colors.blue.shade700),
-              _infoRow('Services Done', '$service 🙏', Colors.green.shade700),
+                  context.g.brass),
+              _infoRow('Services Done', '$service 🙏', context.g.success),
             ],
           ),
         );
@@ -574,7 +576,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     value: competition == null
                         ? '—'
                         : competition.weeklyTotalScore.toStringAsFixed(1),
-                    valueColor: Colors.amber.shade800,
+                    valueColor: context.g.warning,
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -589,7 +591,7 @@ class _CalendarPageState extends State<CalendarPage> {
                             "a fixed schedule.",
                     style: TextStyle(
                       fontSize: 11.5,
-                      color: Colors.grey.shade600,
+                      color: context.g.mutedText,
                       height: 1.35,
                     ),
                   ),
@@ -600,7 +602,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     value: competition == null
                         ? '—'
                         : competition.monthlyTotalScore.toStringAsFixed(1),
-                    valueColor: Colors.deepOrange.shade400,
+                    valueColor: context.g.warning,
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -614,7 +616,7 @@ class _CalendarPageState extends State<CalendarPage> {
                             "reset.",
                     style: TextStyle(
                       fontSize: 11.5,
-                      color: Colors.grey.shade600,
+                      color: context.g.mutedText,
                       height: 1.35,
                     ),
                   ),
@@ -623,7 +625,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     colorProvider,
                     label: "Total Points — raw activity count, not a ranking",
                     value: scorecard == null ? '—' : '${scorecard.total}',
-                    valueColor: Colors.deepPurple.shade400,
+                    valueColor: context.g.brass,
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -633,7 +635,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     "a comparison between students.",
                     style: TextStyle(
                       fontSize: 11.5,
-                      color: Colors.grey.shade600,
+                      color: context.g.mutedText,
                       height: 1.35,
                     ),
                   ),
@@ -711,7 +713,7 @@ class _CalendarPageState extends State<CalendarPage> {
           child: Text(
             'Select a date to see Sadhana 📖',
             style: TextStyle(
-                fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey),
+                fontSize: 16, fontWeight: FontWeight.bold, color: context.g.mutedText),
             textAlign: TextAlign.center,
           ),
         ),
@@ -727,7 +729,7 @@ class _CalendarPageState extends State<CalendarPage> {
           child: Text(
             'No data found for this date ❌',
             style: TextStyle(
-                fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey),
+                fontSize: 16, fontWeight: FontWeight.bold, color: context.g.mutedText),
           ),
         ),
       );
@@ -741,9 +743,9 @@ class _CalendarPageState extends State<CalendarPage> {
     }
 
     if (data.containsKey('chantRounds'))
-      add('Chanting Rounds', '${data['chantRounds']} 📿', Colors.purple.shade700);
+      add('Chanting Rounds', '${data['chantRounds']} 📿', context.g.brass);
     if (data.containsKey('bookReading'))
-      add('Book Reading', '${data['bookReading']} 📖', Colors.orange.shade700);
+      add('Book Reading', '${data['bookReading']} 📖', context.g.warning);
     if (data.containsKey('classHearing')) {
       double progress = data['classHearing'] == 2
           ? 1.0
@@ -755,7 +757,7 @@ class _CalendarPageState extends State<CalendarPage> {
           : data['classHearing'] == 1
           ? "Partial ⚠️"
           : "Missed ❌";
-      add('Class Hearing', val, Colors.teal.shade700, progress);
+      add('Class Hearing', val, context.g.success, progress);
     }
     if (data.containsKey('dailyServices')) {
       double progress = data['dailyServices'] == 2
@@ -768,13 +770,13 @@ class _CalendarPageState extends State<CalendarPage> {
           : data['dailyServices'] == 1
           ? "Partial ⚠️"
           : "Missed ❌";
-      add('Daily Services', val, Colors.red.shade700, progress);
+      add('Daily Services', val, context.g.danger, progress);
     }
     if (data.containsKey('templeEntry')) {
-      add('Temple Entry', '${data['templeEntry']} ⛪', Colors.blueGrey.shade700);
+      add('Temple Entry', '${data['templeEntry']} ⛪', context.g.mutedText);
     }
     if (data.containsKey('finishTiming')) {
-      add('Finish Timing', '${data['finishTiming']} ⏰', Colors.green.shade700);
+      add('Finish Timing', '${data['finishTiming']} ⏰', context.g.success);
     }
 
     return Padding(
@@ -783,14 +785,14 @@ class _CalendarPageState extends State<CalendarPage> {
         padding: EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Colors.white, Colors.grey.shade100],
+            colors: [context.g.onPrimary, context.g.chipBackground],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-                color: Colors.grey.withOpacity(0.2),
+                color: context.g.mutedText.withValues(alpha: 0.2),
                 blurRadius: 12,
                 offset: Offset(0, 6))
           ],
@@ -810,8 +812,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             backgroundColor: colorProvider.color,
             elevation: 0,

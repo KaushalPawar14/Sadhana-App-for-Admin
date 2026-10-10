@@ -6,6 +6,7 @@ import '../utils/AbcdeActivity.dart';
 import '../utils/SadhanaReportSource.dart';
 import '../utils/ServiceAssignments.dart';
 import '../utils/StudentScope.dart';
+import '../theme/GuideTheme.dart';
 
 /// Phase 8 — the ABCDE activity card.
 ///
@@ -389,11 +390,11 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
   Color _directionColour(String direction) {
     switch (direction) {
       case 'improving':
-        return Colors.green.shade700;
+        return context.g.success;
       case 'declining':
-        return Colors.orange.shade800;
+        return context.g.warning;
       default:
-        return Colors.grey.shade600;
+        return context.g.mutedText;
     }
   }
 
@@ -414,7 +415,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
     if (!trend.isKnown) {
       return Text(
         "not enough history for a trend",
-        style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+        style: TextStyle(fontSize: 11.5, color: context.g.mutedText),
       );
     }
 
@@ -437,7 +438,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
             "${trend.recentAvg.toStringAsFixed(1)} vs "
             "${trend.priorAvg.toStringAsFixed(1)} $unit/day "
             "(last 14 days vs the 14 before)",
-            style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700),
+            style: TextStyle(fontSize: 11.5, color: context.g.mutedText),
           ),
         ),
       ],
@@ -459,7 +460,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
             width: 26,
             height: 26,
             decoration: BoxDecoration(
-              color: colour.withOpacity(.12),
+              color: colour.withValues(alpha: .12),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Center(
@@ -498,12 +499,12 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
 
   Widget _value(String text) => Text(
         text,
-        style: const TextStyle(fontSize: 13.5, color: Colors.black87),
+        style: TextStyle(fontSize: 13.5, color: context.g.text),
       );
 
   Widget _muted(String text) => Text(
         text,
-        style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+        style: TextStyle(fontSize: 11.5, color: context.g.mutedText),
       );
 
   // --- C ---------------------------------------------------------------------
@@ -544,7 +545,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
           decoration: BoxDecoration(
-            color: const Color(0xFF00695C).withOpacity(.10),
+            color: const Color(0xFF00695C).withValues(alpha: .10),
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text(
@@ -561,7 +562,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
           child: Text(
             "${_chantAvg.toStringAsFixed(1)} rounds/day over 30 days "
             "· $_reportDaysInWindow of 30 days reported",
-            style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700),
+            style: TextStyle(fontSize: 11.5, color: context.g.mutedText),
           ),
         ),
       ],
@@ -703,11 +704,11 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(.05),
+            color: Colors.black.withValues(alpha: .05),
             blurRadius: 10,
             offset: const Offset(0, 5),
           )
@@ -728,7 +729,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
                       "Some activity data could not be loaded — "
                       "what is shown below may be incomplete.",
                       style: TextStyle(
-                          fontSize: 11.5, color: Colors.orange.shade900),
+                          fontSize: 11.5, color: context.g.warning),
                     ),
                   ),
                 _row(
@@ -790,7 +791,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
                     "Activity only. These five are shown side by side, never "
                     "combined into a single score.",
                     style:
-                        TextStyle(fontSize: 10.5, color: Colors.grey.shade500),
+                        TextStyle(fontSize: 10.5, color: context.g.mutedText),
                   ),
                 ),
               ],
@@ -827,13 +828,14 @@ class _Sparkline extends StatelessWidget {
           height: 38,
           width: double.infinity,
           child: CustomPaint(
-            painter: _SparklinePainter(series: series, colour: colour),
+            painter: _SparklinePainter(
+                series: series, colour: colour, zeroColour: context.g.chipBackground),
           ),
         ),
         const SizedBox(height: 3),
         Text(
           "30 days to yesterday · peak $peak $unitLabel",
-          style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600),
+          style: TextStyle(fontSize: 10.5, color: context.g.mutedText),
         ),
       ],
     );
@@ -843,8 +845,9 @@ class _Sparkline extends StatelessWidget {
 class _SparklinePainter extends CustomPainter {
   final List<int> series;
   final Color colour;
+  final Color zeroColour;
 
-  _SparklinePainter({required this.series, required this.colour});
+  _SparklinePainter({required this.series, required this.colour, required this.zeroColour});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -857,7 +860,7 @@ class _SparklinePainter extends CustomPainter {
 
     final barWidth = size.width / series.length;
     final paint = Paint()..color = colour;
-    final zeroPaint = Paint()..color = Colors.grey.shade300;
+    final zeroPaint = Paint()..color = zeroColour;
 
     for (int i = 0; i < series.length; i++) {
       final value = series[i];
@@ -885,5 +888,5 @@ class _SparklinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_SparklinePainter old) =>
-      old.series != series || old.colour != colour;
+      old.series != series || old.colour != colour || old.zeroColour != zeroColour;
 }

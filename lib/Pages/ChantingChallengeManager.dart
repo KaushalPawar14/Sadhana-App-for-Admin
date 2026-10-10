@@ -8,6 +8,8 @@ import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// Chanting Challenges — a COLLECTIVE roster target.
 ///
@@ -189,8 +191,8 @@ class _ChantingChallengeManagerPageState
                             : DateFormat('dd MMM yyyy').format(targetDate!),
                         style: TextStyle(
                           color: targetDate == null
-                              ? Colors.grey.shade600
-                              : Colors.black87,
+                              ? context.g.mutedText
+                              : context.g.text,
                         ),
                       ),
                     ),
@@ -203,7 +205,7 @@ class _ChantingChallengeManagerPageState
                     Text(
                       "Guides (leave empty for all students)",
                       style: TextStyle(
-                          fontSize: 12, color: Colors.grey.shade700),
+                          fontSize: 12, color: context.g.mutedText),
                     ),
                     const SizedBox(height: 6),
                     Builder(
@@ -223,7 +225,7 @@ class _ChantingChallengeManagerPageState
                           return Text(
                             "No guides found",
                             style: TextStyle(
-                                fontSize: 12, color: Colors.grey.shade600),
+                                fontSize: 12, color: context.g.mutedText),
                           );
                         }
 
@@ -246,12 +248,12 @@ class _ChantingChallengeManagerPageState
                                 }
                               }),
                               selectedColor: const Color(0xFF00695C)
-                                  .withOpacity(.15),
+                                  .withValues(alpha: .15),
                               checkmarkColor: const Color(0xFF00695C),
                               labelStyle: TextStyle(
                                 color: selected
                                     ? const Color(0xFF00695C)
-                                    : Colors.black87,
+                                    : context.g.text,
                                 fontWeight: selected
                                     ? FontWeight.w700
                                     : FontWeight.normal,
@@ -266,7 +268,7 @@ class _ChantingChallengeManagerPageState
                     const SizedBox(height: 10),
                     Text(error!,
                         style: TextStyle(
-                            fontSize: 12, color: Colors.red.shade600)),
+                            fontSize: 12, color: context.g.danger)),
                   ],
                   const SizedBox(height: 10),
                   Text(
@@ -277,7 +279,7 @@ class _ChantingChallengeManagerPageState
                     "Each student's first report for that date is what counts "
                     "— later edits to it do not change the total.",
                     style:
-                        TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+                        TextStyle(fontSize: 11.5, color: context.g.mutedText),
                   ),
                 ],
               ),
@@ -307,8 +309,8 @@ class _ChantingChallengeManagerPageState
                   }
                   Navigator.pop(dialogContext, true);
                 },
-                child: const Text("Create",
-                    style: TextStyle(color: Colors.white)),
+                child: Text("Create",
+                    style: TextStyle(color: context.g.onPrimary)),
               ),
             ],
           );
@@ -383,14 +385,14 @@ class _ChantingChallengeManagerPageState
                 ? "Challenge created · $sent students notified"
                 : "Challenge created · notified $sent of $total "
                     "(the rest have no notification token)",
-        Colors.green,
+        context.g.success,
         Icons.check_circle,
       );
     } catch (e) {
       if (!mounted) return;
       setState(() => _sending = false);
       showSnackbar(
-          context, "Could not create the challenge", Colors.red, Icons.error);
+          context, "Could not create the challenge", context.g.danger, Icons.error);
     }
   }
 
@@ -451,10 +453,10 @@ class _ChantingChallengeManagerPageState
             child: const Text("Cancel"),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: context.g.danger),
             onPressed: () => Navigator.pop(dialogContext, true),
             child:
-                const Text("Delete", style: TextStyle(color: Colors.white)),
+                Text("Delete", style: TextStyle(color: context.g.onPrimary)),
           ),
         ],
       ),
@@ -481,7 +483,7 @@ class _ChantingChallengeManagerPageState
 
       if (!mounted) return;
       showSnackbar(
-          context, "Challenge deleted", Colors.green, Icons.check_circle);
+          context, "Challenge deleted", context.g.success, Icons.check_circle);
     } catch (_) {
       if (!mounted) return;
       showSnackbar(context, "Could not delete the challenge", Colors.red,
@@ -504,7 +506,7 @@ class _ChantingChallengeManagerPageState
       });
       if (!mounted) return;
       showSnackbar(context, status == 'active' ? "Reopened" : "Closed as missed",
-          Colors.green, Icons.check_circle);
+          context.g.success, Icons.check_circle);
     } catch (_) {
       if (!mounted) return;
       showSnackbar(context, "Could not update", Colors.red, Icons.error);
@@ -517,15 +519,15 @@ class _ChantingChallengeManagerPageState
 
   /// The three collective states. Distinct colours so a guide can scan a list
   /// without reading labels.
-  static (Color colour, IconData icon, String label) _statusStyle(
+  (Color colour, IconData icon, String label) _statusStyle(
       String status) {
     switch (status) {
       case 'achieved':
-        return (Colors.green.shade700, Icons.emoji_events, "Achieved");
+        return (context.g.success, Icons.emoji_events, "Achieved");
       case 'missed':
-        return (Colors.orange.shade800, Icons.timer_off_outlined, "Missed");
+        return (context.g.warning, Icons.timer_off_outlined, "Missed");
       default:
-        return (const Color(0xFF00695C), Icons.bolt, "Active");
+        return (context.g.brass, Icons.bolt, "Active");
     }
   }
 
@@ -560,12 +562,12 @@ class _ChantingChallengeManagerPageState
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colour.withOpacity(.35)),
+        border: Border.all(color: colour.withValues(alpha: .35)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(.05),
+            color: Colors.black.withValues(alpha: .05),
             blurRadius: 8,
             offset: const Offset(0, 4),
           )
@@ -587,7 +589,7 @@ class _ChantingChallengeManagerPageState
                 padding:
                     const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                 decoration: BoxDecoration(
-                  color: colour.withOpacity(.12),
+                  color: colour.withValues(alpha: .12),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
@@ -625,7 +627,7 @@ class _ChantingChallengeManagerPageState
               ),
               Text(
                 " / $target rounds together",
-                style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
+                style: TextStyle(fontSize: 12.5, color: context.g.mutedText),
               ),
             ],
           ),
@@ -635,18 +637,18 @@ class _ChantingChallengeManagerPageState
             child: LinearProgressIndicator(
               value: fraction,
               minHeight: 7,
-              backgroundColor: Colors.grey.shade200,
+              backgroundColor: context.g.chipBackground,
               valueColor: AlwaysStoppedAnimation<Color>(colour),
             ),
           ),
           const SizedBox(height: 10),
           Row(
             children: [
-              Icon(Icons.event, size: 15, color: Colors.grey.shade700),
+              Icon(Icons.event, size: 15, color: context.g.mutedText),
               const SizedBox(width: 5),
               Text(dateText,
                   style:
-                      TextStyle(fontSize: 12.5, color: Colors.grey.shade800)),
+                      TextStyle(fontSize: 12.5, color: context.g.text)),
               // Multi-guide/all-students metadata is shown to any viewer who
               // can see this card — including a guide seeing an HOD
               // challenge that reaches their own roster via `guideIds`
@@ -658,7 +660,7 @@ class _ChantingChallengeManagerPageState
                 const SizedBox(width: 12),
                 Text("All students",
                     style:
-                        TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                        TextStyle(fontSize: 11, color: context.g.mutedText)),
               ] else if (_createdByHod((data['createdBy'] ?? '').toString()) &&
                   data['guideIds'] is List &&
                   (data['guideIds'] as List).isNotEmpty) ...[
@@ -666,7 +668,7 @@ class _ChantingChallengeManagerPageState
                 Text(
                   "Guides: ${(data['guideIds'] as List).map((g) => AdminProfileProvider.require().adminById('$g')?.displayName ?? '$g').join(', ')}",
                   style:
-                      TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      TextStyle(fontSize: 11, color: context.g.mutedText),
                 ),
               ] else if (_isHod &&
                   (data['guideId'] ?? '').toString().isNotEmpty) ...[
@@ -674,7 +676,7 @@ class _ChantingChallengeManagerPageState
                 Text(
                     "Guide: ${AdminProfileProvider.require().adminById('${data['guideId']}')?.displayName ?? data['guideId']}",
                     style:
-                        TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                        TextStyle(fontSize: 11, color: context.g.mutedText)),
               ],
             ],
           ),
@@ -713,7 +715,7 @@ class _ChantingChallengeManagerPageState
                 icon: const Icon(Icons.groups, size: 16),
                 label: const Text("Who contributed"),
                 style: TextButton.styleFrom(
-                    foregroundColor: Colors.grey.shade800),
+                    foregroundColor: context.g.text),
               ),
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -729,7 +731,7 @@ class _ChantingChallengeManagerPageState
                     TextButton(
                       onPressed: () => _setStatus(docId, 'missed'),
                       style: TextButton.styleFrom(
-                          foregroundColor: Colors.orange.shade800),
+                          foregroundColor: context.g.warning),
                       child: const Text("Close"),
                     )
                   else if (status == 'missed')
@@ -744,7 +746,7 @@ class _ChantingChallengeManagerPageState
                     IconButton(
                       tooltip: "Delete challenge",
                       icon: const Icon(Icons.delete_outline, size: 18),
-                      color: Colors.red.shade700,
+                      color: context.g.danger,
                       // Shrunk from the default 48x48 min tap target —
                       // reduces how easily this row's total width tips
                       // into overflow on narrow screens in the first
@@ -769,8 +771,7 @@ class _ChantingChallengeManagerPageState
       builder: (context, colorProvider, child) {
         final guide = _selectedGuide;
 
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             elevation: 0,
             backgroundColor: colorProvider.color,
@@ -791,16 +792,16 @@ class _ChantingChallengeManagerPageState
                   backgroundColor: const Color(0xFF00695C),
                   onPressed: _sending ? null : _openCreateSheet,
                   icon: _sending
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
+                              strokeWidth: 2, color: context.g.onPrimary),
                         )
-                      : const Icon(Icons.add, color: Colors.white),
+                      : Icon(Icons.add, color: context.g.onPrimary),
                   label: Text(
                     _sending ? "Notifying…" : "New Challenge",
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: context.g.onPrimary),
                   ),
                 ),
           body: StreamBuilder<QuerySnapshot>(
@@ -845,7 +846,7 @@ class _ChantingChallengeManagerPageState
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(Icons.self_improvement,
-                                  size: 46, color: Colors.grey.shade400),
+                                  size: 46, color: context.g.mutedText),
                               const SizedBox(height: 14),
                               Text(
                                 "No challenges yet",
@@ -862,7 +863,7 @@ class _ChantingChallengeManagerPageState
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                     fontSize: 12.5,
-                                    color: Colors.grey.shade600),
+                                    color: context.g.mutedText),
                               ),
                             ],
                           ),
@@ -913,8 +914,7 @@ class ChallengeContributionsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             elevation: 0,
             backgroundColor: colorProvider.color,
@@ -966,7 +966,7 @@ class ChallengeContributionsPage extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12.5,
                         height: 1.4,
-                        color: colorProvider.secondColor.withOpacity(.8),
+                        color: colorProvider.secondColor.withValues(alpha: .8),
                       ),
                     ),
                   ),
@@ -977,7 +977,7 @@ class ChallengeContributionsPage extends StatelessWidget {
                         "No contributions yet.",
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                            fontSize: 13, color: Colors.grey.shade600),
+                            fontSize: 13, color: context.g.mutedText),
                       ),
                     ),
                   ...docs.map((d) {
@@ -991,9 +991,9 @@ class ChallengeContributionsPage extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 12),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: context.g.surface,
                         borderRadius: BorderRadius.circular(13),
-                        border: Border.all(color: Colors.grey.shade200),
+                        border: Border.all(color: context.g.border),
                       ),
                       child: Row(
                         children: [
@@ -1002,7 +1002,7 @@ class ChallengeContributionsPage extends StatelessWidget {
                             height: 38,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: const Color(0xFF00695C).withOpacity(.10),
+                              color: const Color(0xFF00695C).withValues(alpha: .10),
                             ),
                             child: Center(
                               child: Text(
@@ -1032,7 +1032,7 @@ class ChallengeContributionsPage extends StatelessWidget {
                                         .format(updated.toDate()),
                                     style: TextStyle(
                                         fontSize: 10.5,
-                                        color: Colors.grey.shade500),
+                                        color: context.g.mutedText),
                                   ),
                               ],
                             ),
@@ -1040,7 +1040,7 @@ class ChallengeContributionsPage extends StatelessWidget {
                           Text(
                             rounds == 1 ? "round" : "rounds",
                             style: TextStyle(
-                                fontSize: 11.5, color: Colors.grey.shade600),
+                                fontSize: 11.5, color: context.g.mutedText),
                           ),
                         ],
                       ),

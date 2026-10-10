@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import '../utils/BookProgressData.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/StudentScope.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// Per-student book reading progress — Phase 4 of the Book Reading redesign
 /// (built 2026-08-23). Reached from the student action sheet's "Books" entry.
@@ -134,8 +136,7 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             elevation: 0,
             backgroundColor: colorProvider.color,
@@ -220,12 +221,12 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
           margin: const EdgeInsets.fromLTRB(14, 10, 14, 0),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: context.g.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: commitment == null
-                  ? Colors.grey.shade200
-                  : Colors.deepOrange.withOpacity(.35),
+                  ? context.g.chipBackground
+                  : context.g.warning.withValues(alpha: .35),
             ),
           ),
           child: Row(
@@ -234,8 +235,8 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
                 Icons.local_fire_department,
                 size: 18,
                 color: commitment == null
-                    ? Colors.grey.shade400
-                    : Colors.deepOrange.shade400,
+                    ? context.g.mutedText
+                    : context.g.warning,
               ),
               const SizedBox(width: 8),
               Text(
@@ -246,8 +247,8 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
                   color: commitment == null
-                      ? Colors.grey.shade500
-                      : Colors.black87,
+                      ? context.g.mutedText
+                      : context.g.text,
                 ),
               ),
             ],
@@ -265,7 +266,7 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
           text,
           textAlign: TextAlign.center,
           style: TextStyle(
-              fontSize: 13, color: colorProvider.secondColor.withOpacity(.8)),
+              fontSize: 13, color: colorProvider.secondColor.withValues(alpha: .8)),
         ),
       ),
     );
@@ -345,7 +346,7 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
               "${reading > 0 ? ' · $reading reading' : ''}",
               style: TextStyle(
                 fontSize: 11.5,
-                color: colorProvider.secondColor.withOpacity(.7),
+                color: colorProvider.secondColor.withValues(alpha: .7),
               ),
             ),
           ),
@@ -356,7 +357,7 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
 
   /// One book. Not tappable — see this file's header.
   Widget _bookRow(BookConfigEntry book, BookStatus status, Map<String, dynamic>? entry) {
-    final (colour, icon, label) = bookStatusStyle(status);
+    final (colour, icon, label) = bookStatusStyle(status, context.g);
     final madeNotes = entry?['madeNotes'] == true;
     final unavailable = !book.hasLink;
 
@@ -364,12 +365,12 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: status == BookStatus.notStarted
-              ? Colors.grey.shade200
-              : colour.withOpacity(.35),
+              ? context.g.chipBackground
+              : colour.withValues(alpha: .35),
         ),
       ),
       child: Row(
@@ -396,8 +397,8 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
                         ? FontWeight.w500
                         : FontWeight.w600,
                     color: unavailable && status == BookStatus.notStarted
-                        ? Colors.grey.shade500
-                        : Colors.black87,
+                        ? context.g.mutedText
+                        : context.g.text,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -419,13 +420,13 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.edit_note,
-                              size: 14, color: Colors.indigo.shade400),
+                              size: 14, color: context.g.brass),
                           const SizedBox(width: 2),
                           Text(
                             "Notes",
                             style: TextStyle(
                               fontSize: 10.5,
-                              color: Colors.indigo.shade400,
+                              color: context.g.brass,
                             ),
                           ),
                         ],
@@ -436,7 +437,7 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
                         style: TextStyle(
                           fontSize: 10.5,
                           fontStyle: FontStyle.italic,
-                          color: Colors.grey.shade400,
+                          color: context.g.mutedText,
                         ),
                       ),
                   ],

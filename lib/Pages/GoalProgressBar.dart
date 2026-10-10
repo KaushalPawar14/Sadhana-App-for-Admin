@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../utils/GoalCompoundQueries.dart';
 import 'GoalHomePage.dart';
+import '../theme/GuideTheme.dart';
 
 /// The always-visible goal strip on `Home/Dashboard.dart` — rewritten for the
 /// compound-target system when the old aggregate-SUM goal system was
@@ -47,12 +48,12 @@ class GoalProgressBar extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+              color: context.g.surface,
+              border: Border(bottom: BorderSide(color: context.g.border)),
             ),
             child: Row(
               children: [
-                Icon(Icons.flag, size: 15, color: Colors.teal.shade700),
+                Icon(Icons.flag, size: 15, color: context.g.success),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -61,7 +62,7 @@ class GoalProgressBar extends StatelessWidget {
                     style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
                   ),
                 ),
-                Icon(Icons.chevron_right, size: 18, color: Colors.grey.shade500),
+                Icon(Icons.chevron_right, size: 18, color: context.g.mutedText),
               ],
             ),
           ),

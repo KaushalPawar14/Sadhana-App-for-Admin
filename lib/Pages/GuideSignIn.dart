@@ -9,6 +9,8 @@ import '../utils/BottomNavBar.dart';
 import '../utils/GuideAuthGate.dart';
 import '../utils/NotificationRouter.dart';
 import '../utils/Snackbar.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// The Guide app's entire "login" (Master Task, 2026-09-14 — "Replace the
 /// Guide app's name picker with Google Sign-In, and add admin management").
@@ -138,7 +140,7 @@ class _GuideSignInPageState extends State<GuideSignInPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return GuideScaffold(
       body: SafeArea(
         child: Center(
           child: Padding(
@@ -154,7 +156,7 @@ class _GuideSignInPageState extends State<GuideSignInPage> {
                 Text(
                   'Sign in with your registered Google account to continue.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11.sp, color: Colors.black54),
+                  style: TextStyle(fontSize: 11.sp, color: context.g.mutedText),
                 ),
                 SizedBox(height: 4.h),
                 SizedBox(
@@ -162,7 +164,7 @@ class _GuideSignInPageState extends State<GuideSignInPage> {
                   child: OutlinedButton(
                     onPressed: _isLoading ? null : _signInWithGoogle,
                     style: OutlinedButton.styleFrom(
-                      backgroundColor: Colors.white,
+                      backgroundColor: context.g.onPrimary,
                       side: const BorderSide(color: Color(0xFFD2D2D4)),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -183,7 +185,7 @@ class _GuideSignInPageState extends State<GuideSignInPage> {
                               Text(
                                 'Sign in with Google',
                                 style: TextStyle(
-                                  color: Colors.black87,
+                                  color: context.g.text,
                                   fontSize: 13.sp,
                                   fontWeight: FontWeight.w600,
                                 ),

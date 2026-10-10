@@ -5,6 +5,9 @@ import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/StudentScope.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
+import '../theme/GuideColors.dart';
 
 /// A full standalone page wrapping [GraphicalAnalysisSection] in its own
 /// `Scaffold`/`AppBar`. Kept for continuity, but its only caller
@@ -28,14 +31,12 @@ class _ChantingGraphState extends State<AllGraph> {
   @override
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(builder: (context, colorProvider, child) {
-      return Scaffold(
-        backgroundColor: colorProvider.color,
+      return GuideScaffold(
         appBar: AppBar(
           title: Text(
             widget.username,
             style: TextStyle(color: colorProvider.secondColor),
           ),
-          backgroundColor: colorProvider.color,
           iconTheme: IconThemeData(
             color: colorProvider.secondColor,
           ),
@@ -528,7 +529,7 @@ class _GraphicalAnalysisSectionState extends State<GraphicalAnalysisSection> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 40),
                   child: Divider(
-                    color: colorProvider.secondColor.withOpacity(0.5),
+                    color: colorProvider.secondColor.withValues(alpha: 0.5),
                     thickness: 1.5,
                   ),
                 ),
@@ -538,7 +539,7 @@ class _GraphicalAnalysisSectionState extends State<GraphicalAnalysisSection> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 40),
                   child: Divider(
-                    color: colorProvider.secondColor.withOpacity(0.5),
+                    color: colorProvider.secondColor.withValues(alpha: 0.5),
                     thickness: 1.5,
                   ),
                 ),
@@ -548,7 +549,7 @@ class _GraphicalAnalysisSectionState extends State<GraphicalAnalysisSection> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 40),
                   child: Divider(
-                    color: colorProvider.secondColor.withOpacity(0.5),
+                    color: colorProvider.secondColor.withValues(alpha: 0.5),
                     thickness: 1.5,
                   ),
                 ),
@@ -570,13 +571,13 @@ class MyPieChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final total = data.values.fold(0, (a, b) => a + b);
-    if (total == 0) return const Center(child: Text("No data"));
+    if (total == 0) return Center(child: Text("No data"));
 
     final sections = data.entries.map((e) {
       Color color;
-      if (e.key == 'Fully') color = Colors.green;
-      else if (e.key == 'Partial') color = Colors.yellow;
-      else color = Colors.red;
+      if (e.key == 'Fully') color = context.g.success;
+      else if (e.key == 'Partial') color = context.g.warning;
+      else color = context.g.danger;
 
       final percent = (e.value / total * 100);
       return PieChartSectionData(
@@ -584,10 +585,10 @@ class MyPieChart extends StatelessWidget {
         value: e.value.toDouble(),
         title: '${percent.toStringAsFixed(1)}%',
         radius: 75,
-        titleStyle: const TextStyle(
+        titleStyle: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.bold,
-          color: Colors.black,
+          color: context.g.text,
         ),
       );
     }).toList();
@@ -596,7 +597,7 @@ class MyPieChart extends StatelessWidget {
           return Column(
             children: [
               Text(title, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: colorProvider.secondColor)),
-              const SizedBox(height: 10),
+              SizedBox(height: 10),
               SizedBox(
                 height: 250,
                 child: PieChart(
@@ -607,13 +608,13 @@ class MyPieChart extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  LegendItem(color: Colors.green, text: "Fully"),
-                  LegendItem(color: Colors.yellow, text: "Partial"),
-                  LegendItem(color: Colors.red, text: "Missed"),
+                  LegendItem(color: context.g.success, text: "Fully"),
+                  LegendItem(color: context.g.warning, text: "Partial"),
+                  LegendItem(color: context.g.danger, text: "Missed"),
                 ],
               ),
             ],
@@ -623,7 +624,7 @@ class MyPieChart extends StatelessWidget {
 
 class FinishTimingChart extends StatelessWidget {
   final List<int> data;
-  const FinishTimingChart({super.key, required this.data});
+  FinishTimingChart({super.key, required this.data});
 
   @override
   Widget build(BuildContext context) {
@@ -653,11 +654,11 @@ class FinishTimingChart extends StatelessWidget {
               gridData: FlGridData(show: false),
               extraLinesData: ExtraLinesData(horizontalLines: [
                 HorizontalLine(
-                    y: 780, color: Colors.green, strokeWidth: 2), // 1:00 PM
+                    y: 780, color: context.g.success, strokeWidth: 2), // 1:00 PM
                 HorizontalLine(
-                    y: 960, color: Colors.yellow, strokeWidth: 2), // 4:00 PM
+                    y: 960, color: context.g.warning, strokeWidth: 2), // 4:00 PM
                 HorizontalLine(
-                    y: 1320, color: Colors.red, strokeWidth: 2), // 10:00 PM
+                    y: 1320, color: context.g.danger, strokeWidth: 2), // 10:00 PM
               ]),
               alignment: BarChartAlignment.spaceAround,
               maxY: 1320, // ✅ Cap Y axis at 10:00 PM
@@ -665,15 +666,15 @@ class FinishTimingChart extends StatelessWidget {
           ),
         ),
 
-        const SizedBox(height: 12),
+        SizedBox(height: 12),
 
         // ✅ Legend
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: const [
-            LegendItem(color: Colors.green, text: "1:00 PM"),
-            LegendItem(color: Colors.yellow, text: "4:00 PM"),
-            LegendItem(color: Colors.red, text: "10:00 PM"),
+          children: [
+            LegendItem(color: context.g.success, text: "1:00 PM"),
+            LegendItem(color: context.g.warning, text: "4:00 PM"),
+            LegendItem(color: context.g.danger, text: "10:00 PM"),
           ],
         )
       ],
@@ -683,7 +684,7 @@ class FinishTimingChart extends StatelessWidget {
 
 class TempleEntryChart extends StatelessWidget {
   final List<int> data;
-  const TempleEntryChart({super.key, required this.data});
+  TempleEntryChart({super.key, required this.data});
 
   @override
   Widget build(BuildContext context) {
@@ -703,7 +704,7 @@ class TempleEntryChart extends StatelessWidget {
     });
 
     // Always cap chart’s Y-axis at 12:00 pm (720 minutes)
-    const double maxY = 600;
+    double maxY = 600;
 
     return Column(
       children: [
@@ -716,11 +717,11 @@ class TempleEntryChart extends StatelessWidget {
               gridData: FlGridData(show: false),
               extraLinesData: ExtraLinesData(horizontalLines: [
                 HorizontalLine(
-                    y: 330, color: Colors.green, strokeWidth: 2), // 5:30
+                    y: 330, color: context.g.success, strokeWidth: 2), // 5:30
                 HorizontalLine(
-                    y: 390, color: Colors.yellow, strokeWidth: 2), // 6:30
+                    y: 390, color: context.g.warning, strokeWidth: 2), // 6:30
                 HorizontalLine(
-                    y: 450, color: Colors.red, strokeWidth: 2), // 7:30
+                    y: 450, color: context.g.danger, strokeWidth: 2), // 7:30
               ]),
               alignment: BarChartAlignment.spaceAround,
               maxY: maxY,
@@ -728,18 +729,18 @@ class TempleEntryChart extends StatelessWidget {
           ),
         ),
 
-        const SizedBox(height: 12),
+        SizedBox(height: 12),
 
         // Legend Section
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: const [
+          children: [
             LegendItem(
-              color: Colors.green,
+              color: context.g.success,
               text: "5:30 AM",
             ),
-            LegendItem(color: Colors.yellow, text: "6:30 AM"),
-            LegendItem(color: Colors.red, text: "7:30 AM"),
+            LegendItem(color: context.g.warning, text: "6:30 AM"),
+            LegendItem(color: context.g.danger, text: "7:30 AM"),
           ],
         )
       ],
@@ -824,9 +825,9 @@ class MyLineChart extends StatelessWidget {
                       space: 5,
                       child: Text(
                         value.toInt().toString(),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Colors.grey,
+                          color: context.g.mutedText,
                         ),
                       ),
                     );
@@ -849,13 +850,13 @@ class MyLineChart extends StatelessWidget {
               LineChartBarData(
                 spots: spots,
                 isCurved: true,
-                color: Colors.blueAccent,
+                color: context.g.brass,
                 barWidth: 3,
                 belowBarData: BarAreaData(
                   show: true,
                   gradient: LinearGradient(
                     colors: [
-                      Colors.blueAccent.withOpacity(0.3),
+                      context.g.brass.withValues(alpha: 0.3),
                       Colors.transparent,
                     ],
                     begin: Alignment.topCenter,
@@ -871,7 +872,7 @@ class MyLineChart extends StatelessWidget {
                     return FlDotCirclePainter(
                       radius: 4,
                       color:
-                      isAutoZero ? Colors.red : Colors.blueAccent,
+                      isAutoZero ? context.g.danger : context.g.brass,
                       strokeWidth: 0,
                     );
                   },
@@ -898,8 +899,8 @@ BarTouchData get barTouchData => BarTouchData(
           ) {
         return BarTooltipItem(
             rod.toY.toString(),
-            const TextStyle(
-                color: Colors.cyan, fontWeight: FontWeight.bold));
+            TextStyle(
+                color: GuideColors.light.brass, fontWeight: FontWeight.bold));
       }),
 );
 
@@ -926,8 +927,8 @@ FlBorderData get borderData => FlBorderData(show: false);
 
 LinearGradient get _barGradient => LinearGradient(
   colors: [
-    Colors.lightBlueAccent,
-    Colors.blueAccent,
+    GuideColors.light.brass,
+    GuideColors.light.brass,
   ],
   begin: Alignment.bottomCenter,
   end: Alignment.topCenter,

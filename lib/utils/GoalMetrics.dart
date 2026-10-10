@@ -52,6 +52,8 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../theme/GuideTheme.dart';
+import '../theme/GuideColors.dart';
 
 /// How trustworthy a metric's figure is at the moment it is displayed.
 enum MetricCapability {
@@ -138,13 +140,13 @@ GoalMetric? goalMetricById(String id) {
 /// if they worded a capability differently the guide would learn two
 /// meanings for one thing. Keeping it beside the capability it describes is
 /// why this file imports material.
-(Color, String) capabilityBadge(MetricCapability c) {
+(Color, String) capabilityBadge(MetricCapability c, GuideColors g) {
   switch (c) {
     case MetricCapability.live:
-      return (Colors.green.shade700, 'Live');
+      return (g.success, 'Live');
     case MetricCapability.lifetimeTotal:
-      return (Colors.blue.shade700, 'Lifetime total');
+      return (g.brass, 'Lifetime total');
     case MetricCapability.weeklyOnly:
-      return (Colors.orange.shade800, 'Weekly — updates Mondays');
+      return (g.warning, 'Weekly — updates Mondays');
   }
 }

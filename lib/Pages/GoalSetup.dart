@@ -6,6 +6,8 @@ import '../utils/ColorProvider.dart';
 import '../utils/GoalCompoundQueries.dart';
 import '../utils/GoalMetrics.dart';
 import '../utils/Snackbar.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
 
 /// Compound target setup — "N students at value V" (chanting or books).
 ///
@@ -122,8 +124,7 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         final metricInfo = goalMetricById(_metric);
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             elevation: 0,
             backgroundColor: colorProvider.color,
@@ -151,16 +152,16 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
                 style: TextStyle(
                   fontSize: 12.5,
                   height: 1.4,
-                  color: colorProvider.secondColor.withOpacity(.75),
+                  color: colorProvider.secondColor.withValues(alpha: .75),
                 ),
               ),
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: context.g.surface,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.grey.shade200),
+                  border: Border.all(color: context.g.border),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -204,9 +205,9 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: context.g.surface,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.grey.shade200),
+                  border: Border.all(color: context.g.border),
                 ),
                 // Same fix as `AssistantScreen.dart`'s starter cards: a
                 // `ListTile` needs an ANCESTOR `Material` to paint its ink
@@ -226,7 +227,7 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
                           : DateFormat('dd MMM yyyy').format(_endDate!),
                       style: TextStyle(
                         fontSize: 12.5,
-                        color: _endDate == null ? Colors.grey : Colors.black87,
+                        color: _endDate == null ? context.g.mutedText : context.g.text,
                       ),
                     ),
                     trailing: const Icon(Icons.edit, size: 18),
@@ -240,11 +241,11 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
                 child: ElevatedButton.icon(
                   onPressed: _submitting ? null : _submit,
                   icon: _submitting
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
+                              strokeWidth: 2, color: context.g.onPrimary),
                         )
                       : const Icon(Icons.auto_awesome, size: 18),
                   label: Text(_submitting
@@ -252,7 +253,7 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
                       : "Generate phase plan"),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF00695C),
-                    foregroundColor: Colors.white,
+                    foregroundColor: context.g.onPrimary,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),

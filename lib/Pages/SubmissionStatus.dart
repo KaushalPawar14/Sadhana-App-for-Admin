@@ -10,6 +10,9 @@ import '../utils/ColorProvider.dart';
 import '../utils/SadhanaReportSource.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideSurface.dart';
+import '../theme/GuideColors.dart';
 
 /// One scoped student's own submission status for today — just enough to
 /// show them in either list and, if tapped, open their own
@@ -247,7 +250,7 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
       sent == total
           ? "Reminder sent to all $total"
           : "Sent to $sent of $total — the rest have no notification token",
-      sent == total ? Colors.green : Colors.orange,
+      sent == total ? context.g.success : context.g.warning,
       sent == total ? Icons.check_circle : Icons.info,
     );
   }
@@ -256,8 +259,7 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        return Scaffold(
-          backgroundColor: colorProvider.color,
+        return GuideScaffold(
           appBar: AppBar(
             backgroundColor: colorProvider.color,
             elevation: 0,
@@ -312,7 +314,7 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 0.5,
                                 color: colorProvider.secondColor
-                                    .withOpacity(0.6),
+                                    .withValues(alpha: 0.6),
                               ),
                             ),
                           ),
@@ -338,15 +340,15 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
         borderRadius: BorderRadius.circular(18),
         gradient: LinearGradient(
           colors: allSubmitted
-              ? [Colors.green.shade600, Colors.green.shade300]
-              : [Colors.orange.shade700, Colors.orange.shade300],
+              ? [context.g.success, context.g.success]
+              : [context.g.warning, context.g.warning],
         ),
       ),
       child: Row(
         children: [
           Icon(
             allSubmitted ? Icons.check_circle : Icons.pending_actions,
-            color: Colors.white,
+            color: context.g.surface,
             size: 34,
           ),
           const SizedBox(width: 16),
@@ -356,9 +358,9 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
               children: [
                 Text(
                   "${_notSubmitted.length} not submitted",
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 22,
-                    color: Colors.white,
+                    color: context.g.surface,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -367,14 +369,14 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
                   _inScope > 0
                       ? "out of $_inScope students · $today"
                       : today,
-                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  style: const TextStyle(color: GuideColors.heroMuted, fontSize: 13),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   _isHod
                       ? "All students (HOD view)"
                       : "Students assigned to ${_guide ?? 'you'}",
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  style: const TextStyle(color: GuideColors.heroMuted, fontSize: 12),
                 ),
               ],
             ),
@@ -390,7 +392,7 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
       return Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: context.g.surface,
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
@@ -422,8 +424,8 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
           "Remind all ${_notSubmitted.length}",
         ),
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.deepOrange,
-          foregroundColor: Colors.white,
+          backgroundColor: context.g.warning,
+          foregroundColor: context.g.onPrimary,
           padding: const EdgeInsets.symmetric(vertical: 12),
         ),
       ),
@@ -434,13 +436,13 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Center(
         child: Text(
           message,
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+          style: TextStyle(color: context.g.mutedText, fontSize: 14),
         ),
       ),
     );
@@ -457,7 +459,7 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.g.surface,
         borderRadius: BorderRadius.circular(14),
       ),
       clipBehavior: Clip.antiAlias,
@@ -481,13 +483,13 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: showRemind
-                      ? Colors.orange.shade100
-                      : Colors.green.shade100,
+                      ? context.g.warning.withValues(alpha: .14)
+                      : context.g.success.withValues(alpha: .14),
                 ),
                 child: Icon(
                   showRemind ? Icons.person_outline : Icons.check,
                   size: 18,
-                  color: showRemind ? Colors.deepOrange : Colors.green.shade700,
+                  color: showRemind ? context.g.warning : context.g.success,
                 ),
               ),
               const SizedBox(width: 12),
@@ -513,7 +515,7 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
                         label: const Text("Remind"),
                       )
               else
-                Icon(Icons.chevron_right, size: 18, color: Colors.grey.shade400),
+                Icon(Icons.chevron_right, size: 18, color: context.g.mutedText),
             ],
           ),
         ),
