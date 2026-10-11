@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/GuideColors.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
+import 'GuideEntry.dart';
 import 'PressScale.dart';
 
 /// The small icon square inside a pastel widget: 40 dp, radius 12, translucent white.
@@ -409,7 +410,7 @@ class GuideHeroCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(stats[i].value, style: t.heroNumber),
+                          GuideCountUp(stats[i].value, style: t.heroNumber),
                           const SizedBox(height: 7),
                           Text(stats[i].label,
                               maxLines: 2, overflow: TextOverflow.ellipsis, style: t.heroCaption),

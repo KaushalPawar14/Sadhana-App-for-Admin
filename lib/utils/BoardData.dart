@@ -7,6 +7,7 @@ import 'BookProgressData.dart';
 import 'BookProgressData.dart' as bp;
 import 'StudentScope.dart';
 import 'UnseenFeatureBadge.dart';
+import 'GuideDb.dart';
 
 /// Everything the FOLK Boys board reads or writes, behind one interface. The app
 /// always uses [FirestoreBoardData] (a thin pass-through to the functions in
@@ -116,7 +117,7 @@ class FirestoreBoardData implements BoardData {
   Stream<QuerySnapshot<Map<String, dynamic>>> booksRead(StudentRef student) =>
       StudentScope.current()
           .constrainForStudent(
-            FirebaseFirestore.instance
+            GuideDb.instance
                 .collection('booksRead')
                 .where('uid', isEqualTo: student.uid),
             student,
@@ -130,7 +131,7 @@ class FirestoreBoardData implements BoardData {
         subKey: studentUid,
         timestampField: 'createdAt',
         dotOffset: const Offset(10, 10),
-        latestQuery: (_) => FirebaseFirestore.instance
+        latestQuery: (_) => GuideDb.instance
             .collection('studentComments')
             .doc(studentUid)
             .collection('messages')

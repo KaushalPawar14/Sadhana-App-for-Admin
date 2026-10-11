@@ -10,6 +10,7 @@ import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
+import '../utils/GuideDb.dart';
 
 /// Chanting Challenges — a COLLECTIVE roster target.
 ///
@@ -50,7 +51,7 @@ class ChantingChallengeManagerPage extends StatefulWidget {
 
 class _ChantingChallengeManagerPageState
     extends State<ChantingChallengeManagerPage> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = GuideDb.instance;
 
   /// The signed-in admin's id (the creator id stamped on a challenge).
   String get _selectedGuide => AdminProfileProvider.require().id;

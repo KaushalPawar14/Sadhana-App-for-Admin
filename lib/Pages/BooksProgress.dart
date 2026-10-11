@@ -7,6 +7,7 @@ import '../utils/ColorProvider.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
+import '../utils/GuideDb.dart';
 
 /// Per-student book reading progress — Phase 4 of the Book Reading redesign
 /// (built 2026-08-23). Reached from the student action sheet's "Books" entry.
@@ -92,7 +93,7 @@ class BooksProgressPage extends StatefulWidget {
 }
 
 class _BooksProgressPageState extends State<BooksProgressPage> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = GuideDb.instance;
 
   late final Future<BooksConfig> _configFuture;
 

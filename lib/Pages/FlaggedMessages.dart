@@ -11,6 +11,7 @@ import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
+import '../utils/GuideDb.dart';
 
 /// Phase 7 — flagged student chat messages.
 ///
@@ -34,7 +35,7 @@ class FlaggedMessagesPage extends StatefulWidget {
 }
 
 class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = GuideDb.instance;
 
   String? _guide;
   bool get _isHod => AdminProfileProvider.viewerIsHod;
@@ -607,7 +608,7 @@ class StudentChatTranscriptPage extends StatelessWidget {
   Future<String?> _resolveSessionDate() async {
     if (messageId.isNotEmpty) {
       try {
-        final snap = await FirebaseFirestore.instance
+        final snap = await GuideDb.instance
             .collection('studentChats')
             .doc(studentUid)
             .collection('messages')
@@ -667,7 +668,7 @@ class StudentChatTranscriptPage extends StatelessWidget {
               }
 
               return StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
+                stream: GuideDb.instance
                     .collection('studentChats')
                     .doc(studentUid)
                     .collection('messages')

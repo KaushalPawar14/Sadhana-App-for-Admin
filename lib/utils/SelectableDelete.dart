@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 
 import 'Snackbar.dart';
 import '../theme/GuideTheme.dart';
+import 'GuideDb.dart';
 
 /// AppBar shown once 1+ items are selected — visual language matches
 /// `Dashboard._buildSelectionAppBar` (red bar, close icon, delete icon,
@@ -210,7 +211,7 @@ Future<Set<String>> confirmAndDeleteSelected({
 
   if (confirmed != true) return {};
 
-  final firestore = FirebaseFirestore.instance;
+  final firestore = GuideDb.instance;
   final deleted = <String>{};
   var deniedCount = 0;
   var failedCount = 0;

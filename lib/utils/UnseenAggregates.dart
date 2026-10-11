@@ -7,6 +7,7 @@ import 'CalendarQueries.dart' show kScopeMandatory;
 import 'GoalCompoundQueries.dart' show kGuideTargetsCollection;
 import 'SeenMarkers.dart';
 import 'StudentScope.dart';
+import 'GuideDb.dart';
 
 /// Shared, reusable "is this feature unseen for this guide" streams —
 /// Follow-up task, 2026-09-10, Part 2. Every one of these is used at
@@ -115,7 +116,7 @@ class UnseenAggregates {
     if (debugDisable) return Stream.value(false);
     return SeenMarkers.unseenFrom(
       _maxTimestamp(
-          FirebaseFirestore.instance
+          GuideDb.instance
               .collection('calendarEvents')
               .where('scope', isEqualTo: kScopeMandatory)
               .snapshots(),
@@ -150,7 +151,7 @@ class UnseenAggregates {
 
     controller = StreamController<bool>.broadcast(
       onListen: () {
-        subs.add(FirebaseFirestore.instance
+        subs.add(GuideDb.instance
             .collection(kGuideTargetsCollection)
             .doc(guide)
             .collection('targets')
@@ -258,7 +259,7 @@ class UnseenAggregates {
 
     final perStudent = uids.map((uid) {
       final latest = _maxTimestamp(
-          FirebaseFirestore.instance
+          GuideDb.instance
               .collection('studentComments')
               .doc(uid)
               .collection('messages')

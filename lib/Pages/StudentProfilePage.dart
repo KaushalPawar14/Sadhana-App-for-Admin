@@ -15,6 +15,7 @@ import 'LitAssessment.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../theme/GuideColors.dart';
+import '../utils/GuideDb.dart';
 
 /// The student profile page — Phase 3 of the FOLK Boys board redesign.
 /// Opened by the new fourth card icon on `Home/FolkBoysWorkspace.dart`'s
@@ -442,7 +443,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
     }
 
     try {
-      await FirebaseFirestore.instance
+      await GuideDb.instance
           .collection('users')
           .doc(widget.studentUid)
           .set({'role': selected}, SetOptions(merge: true));
@@ -467,7 +468,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
       builder: (context, colorProvider, child) {
         return GuideScaffold(
           body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance
+            stream: GuideDb.instance
                 .collection('users')
                 .doc(widget.studentUid)
                 .snapshots(),
@@ -690,7 +691,7 @@ class DobCard extends StatelessWidget {
     if (picked == null) return;
 
     try {
-      await FirebaseFirestore.instance.collection('users').doc(userId).set(
+      await GuideDb.instance.collection('users').doc(userId).set(
         {'dob': Timestamp.fromDate(picked)},
         SetOptions(merge: true),
       );

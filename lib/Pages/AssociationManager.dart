@@ -13,6 +13,7 @@ import '../utils/StudentScope.dart';
 import 'OverdueAssociations.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
+import '../utils/GuideDb.dart';
 
 /// Association — meeting requests raised by students.
 ///
@@ -33,7 +34,7 @@ class AssociationManagerPage extends StatefulWidget {
 
 class _AssociationManagerPageState extends State<AssociationManagerPage>
     with SingleTickerProviderStateMixin {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = GuideDb.instance;
 
   String? _selectedGuide;
 

@@ -104,6 +104,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'GoalMetrics.dart';
 import 'AdminProfile.dart';
 import 'StudentScope.dart';
+import 'GuideDb.dart';
 
 /// Same region every callable in this project's functions uses.
 const String kFunctionsRegion = 'asia-south1';
@@ -296,7 +297,7 @@ Future<Map<String, String>> resolveStudentNames(Set<String> uids) async {
   if (uids.isEmpty) return {};
 
   final snaps = await Future.wait(
-    uids.map((uid) => FirebaseFirestore.instance.collection('users').doc(uid).get()),
+    uids.map((uid) => GuideDb.instance.collection('users').doc(uid).get()),
   );
 
   final map = <String, String>{};
@@ -501,7 +502,7 @@ class CompoundPhase {
 // -----------------------------------------------------------------------------
 
 CollectionReference<Map<String, dynamic>> compoundTargetsRef(String guideId) =>
-    FirebaseFirestore.instance
+    GuideDb.instance
         .collection(kGuideTargetsCollection)
         .doc(guideId)
         .collection(kCompoundTargetsSubcollection);
@@ -767,7 +768,7 @@ Future<void> approveProposal({
   required String guideId,
   required String targetId,
 }) async {
-  final db = FirebaseFirestore.instance;
+  final db = GuideDb.instance;
   final targetRef = compoundTargetRef(guideId, targetId);
   final phasesRef = compoundPhasesRef(guideId, targetId);
 
@@ -871,7 +872,7 @@ Future<int> liveRosterCount(String guideId) async {
 /// student's current assignment).
 Future<QuerySnapshot<Map<String, dynamic>>> _booksReadFor(
     String uid, StudentRef ref) {
-  final q = FirebaseFirestore.instance
+  final q = GuideDb.instance
       .collection('booksRead')
       .where('uid', isEqualTo: uid);
   return StudentScope.current().constrainForStudent(q, ref).get();
@@ -954,7 +955,7 @@ Future<int> liveValueForStudent({
   required String metric,
   DocumentSnapshot<Map<String, dynamic>>? studentDoc,
 }) async {
-  final db = FirebaseFirestore.instance;
+  final db = GuideDb.instance;
   final snap = studentDoc ?? await db.collection('users').doc(uid).get();
   if (metric == kMetricChanting) {
     final v = snap.data()?['commitmentRounds'];

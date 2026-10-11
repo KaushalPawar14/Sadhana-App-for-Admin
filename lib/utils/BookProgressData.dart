@@ -24,6 +24,7 @@ library;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../theme/GuideColors.dart';
+import 'GuideDb.dart';
 
 /// The three levels, in the order the ladder is read. Was `_kLevels` in
 /// `BooksProgress.dart`.
@@ -77,7 +78,7 @@ int bookNumberSuffix(String key) {
 /// throwing, and a missing `_links` document simply means every book in that
 /// level has no file.
 Future<BooksConfig> loadBooksConfig() async {
-  final firestore = FirebaseFirestore.instance;
+  final firestore = GuideDb.instance;
   final byLevel = <String, List<BookConfigEntry>>{};
 
   for (final level in kBookLevels) {
@@ -158,7 +159,7 @@ BookStatus statusForBookEntry(Map<String, dynamic>? entry) {
 Future<int?> loadChantingCommitment(String uid) async {
   try {
     final snap =
-        await FirebaseFirestore.instance.collection('users').doc(uid).get();
+        await GuideDb.instance.collection('users').doc(uid).get();
     final raw = snap.data()?['commitmentRounds'];
     return raw is num && raw > 0 ? raw.toInt() : null;
   } catch (_) {

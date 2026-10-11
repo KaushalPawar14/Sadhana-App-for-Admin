@@ -60,6 +60,7 @@ library;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'StudentScope.dart';
+import 'GuideDb.dart';
 
 const String kStatusAssigned = 'assigned';
 const String kStatusInProgress = 'inProgress';
@@ -173,7 +174,7 @@ class ServiceAssignment {
 }
 
 CollectionReference<Map<String, dynamic>> _col() =>
-    FirebaseFirestore.instance.collection('serviceAssignments');
+    GuideDb.instance.collection('serviceAssignments');
 
 /// Hierarchy: `serviceAssignments` carry the server-stamped scope fields, so
 /// every read below goes through [StudentScope]'s history helpers (HOD: all;

@@ -8,6 +8,7 @@ import '../utils/Snackbar.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../widgets/GuideSurface.dart';
+import '../utils/GuideDb.dart';
 
 /// Podcast / audiobook link manager — FOLK-2/4/8/12/16.
 ///
@@ -110,7 +111,7 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
   void initState() {
     super.initState();
     _modulesStream =
-        FirebaseFirestore.instance.collection('podcastModules').snapshots();
+        GuideDb.instance.collection('podcastModules').snapshots();
   }
   /// The five fixed categories. Order is the display order, not a hierarchy —
   /// students browse all five freely (see the Student app's PodcastModulesScreen
@@ -360,7 +361,7 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
     final normalizedUrl = normalizeDropboxUrl(url);
 
     try {
-      final firestore = FirebaseFirestore.instance;
+      final firestore = GuideDb.instance;
       final batch = firestore.batch();
 
       // Both documents in one batch: an episode is never half-created.
@@ -432,7 +433,7 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
     if (confirmed != true) return;
 
     try {
-      final firestore = FirebaseFirestore.instance;
+      final firestore = GuideDb.instance;
       final batch = firestore.batch();
 
       batch.update(

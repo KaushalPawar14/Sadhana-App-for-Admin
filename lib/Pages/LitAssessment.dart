@@ -7,6 +7,7 @@ import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideColors.dart';
+import '../utils/GuideDb.dart';
 
 /// LIT assessment — private, guide-only (FOLK_HANDOFF.md Section 8).
 ///
@@ -100,7 +101,7 @@ class _LitEntrySheet extends StatefulWidget {
 }
 
 class _LitEntrySheetState extends State<_LitEntrySheet> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = GuideDb.instance;
   final TextEditingController _evidence = TextEditingController();
 
   /// Deliberately null until the guide picks. No axis is pre-filled, so an
@@ -479,13 +480,13 @@ class _LitHistorySectionState extends State<LitHistorySection> {
   /// This student's assessments. The student's `users` doc is read first so the
   /// query carries the scope filter the security rules can prove (hierarchy).
   Stream<QuerySnapshot<Map<String, dynamic>>> _assessmentsStream() async* {
-    final userDoc = await FirebaseFirestore.instance
+    final userDoc = await GuideDb.instance
         .collection('users')
         .doc(widget.studentUid)
         .get();
     yield* StudentScope.current()
         .constrainForStudent(
-          FirebaseFirestore.instance
+          GuideDb.instance
               .collection('litAssessments')
               .where('studentUid', isEqualTo: widget.studentUid),
           StudentRef.fromDoc(userDoc),

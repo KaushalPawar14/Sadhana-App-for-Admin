@@ -33,15 +33,9 @@ class GuidePrimaryButton extends StatelessWidget {
       mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        if (loading)
-          SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2, color: g.onPrimary),
-          )
-        else if (icon != null)
+        if (icon != null && !loading)
           Icon(icon, size: 20, color: g.onPrimary),
-        if (loading || icon != null) const SizedBox(width: 8),
+        if (icon != null && !loading) const SizedBox(width: 8),
         Flexible(
           child: Text(label,
               textAlign: TextAlign.center, style: t.button.copyWith(color: g.onPrimary)),

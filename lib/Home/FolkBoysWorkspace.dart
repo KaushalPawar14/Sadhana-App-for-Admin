@@ -21,6 +21,7 @@ import '../widgets/GuideChips.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
 import 'Calendar.dart';
+import '../utils/GuideDb.dart';
 
 /// FOLK Boys board workspace — the board CANVAS reached by tapping the one
 /// tile on `FolkBoysEntry.dart` (the middle "FOLK Boys" tab's own top-level
@@ -3495,7 +3496,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     final today = DateTime.now().toIso8601String().split('T')[0];
 
     try {
-      await FirebaseFirestore.instance
+      await GuideDb.instance
           .collection('booksRead')
           .doc('${boy.uid}_${book.level}_${book.key}')
           .set({
@@ -3698,10 +3699,10 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       // A transaction, so the doc is read at the moment of writing: a book
       // that is already completed (an end date, or marked finished by the
       // student or a guide) is never made the student's CURRENT book.
-      final bookRef = FirebaseFirestore.instance
+      final bookRef = GuideDb.instance
           .collection('booksRead')
           .doc('${boy.uid}_${book.level}_${book.key}');
-      final assigned = await FirebaseFirestore.instance
+      final assigned = await GuideDb.instance
           .runTransaction<bool>((tx) async {
         final latest = (await tx.get(bookRef)).data();
         final endDate = latest?['endDate'];

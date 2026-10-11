@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../widgets/GuideSurface.dart';
+import '../utils/GuideDb.dart';
 
 import '../utils/ColorProvider.dart';  // For formatting the date
 
@@ -32,7 +33,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
   Future<Map<String, dynamic>?> _fetchTodaysData() async {
     try {
       // Fetch the document from 'sadhana-reports' collection based on the username
-      final userDocSnapshot = await FirebaseFirestore.instance
+      final userDocSnapshot = await GuideDb.instance
           .collection('sadhana-reports')
           .doc(widget.username)  // Use the passed username
           .collection('dates')

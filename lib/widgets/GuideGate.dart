@@ -100,11 +100,7 @@ class GuideGoogleButton extends StatelessWidget {
             border: Border.all(color: g.border),
             boxShadow: g.cardShadow,
           ),
-          child: loading
-              ? const Center(
-                  child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
-                )
-              : Row(
+          child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const SizedBox(
@@ -124,8 +120,10 @@ class GuideGoogleButton extends StatelessWidget {
                     ),
                     const SizedBox(width: 12),
                     Flexible(
-                      child: Text('Sign in with Google',
-                          textAlign: TextAlign.center, style: t.bodyStrong.copyWith(fontSize: 15)),
+                      child: Text(loading ? 'Signing in' : 'Sign in with Google',
+                          textAlign: TextAlign.center,
+                          style: t.bodyStrong.copyWith(
+                              fontSize: 15, color: loading ? g.mutedText : null)),
                     ),
                   ],
                 ),

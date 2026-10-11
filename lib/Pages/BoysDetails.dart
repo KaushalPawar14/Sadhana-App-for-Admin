@@ -12,6 +12,7 @@ import '../utils/Snackbar.dart';
 import 'AdminManager.dart';
 import 'NotificationSettings.dart';
 import 'SubmissionStatus.dart';
+import '../utils/GuideDb.dart';
 // `AdminRegisterUserPage` is no longer imported here: its "Add Hostelers" tile
 // was removed on 2026-08-14. **The screen file was deliberately kept** — it
 // registers a student wholesale into `users/{uid}`, which is the only path in
@@ -192,7 +193,7 @@ class _AdminControlPageState extends State<AdminControlPage> {
                     _isHod ? assignedGuide : _selectedGuide;
 
                 final id = generateManualStudentId();
-                await FirebaseFirestore.instance
+                await GuideDb.instance
                     .collection('users')
                     .doc(id)
                     .set({
@@ -506,7 +507,7 @@ class _AdminControlPageState extends State<AdminControlPage> {
 //
 // Future<void> uploadForAllUsers() async {
 //
-//   final users = await FirebaseFirestore.instance.collection('users').get();
+//   final users = await GuideDb.instance.collection('users').get();
 //
 //   for (var user in users.docs) {
 //     await uploadQuestions(user.id);
@@ -517,7 +518,7 @@ class _AdminControlPageState extends State<AdminControlPage> {
 //
 // Future<void> uploadQuestions(String uid) async {
 //
-//   final ref = FirebaseFirestore.instance
+//   final ref = GuideDb.instance
 //       .collection('users')
 //       .doc(uid)
 //       .collection('questions');

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'AdminProfile.dart';
+import 'GuideDb.dart';
 
 /// Which students an admin may see, expressed as Firestore queries the
 /// security rules (Master 3) can PROVE — never an unfiltered list for a
@@ -30,7 +31,7 @@ class StudentScope {
 
   final AdminProfile profile;
 
-  static final _db = FirebaseFirestore.instance;
+  static final _db = GuideDb.instance;
 
   // -------------------------------------------------------------------------
   // students (`users`)

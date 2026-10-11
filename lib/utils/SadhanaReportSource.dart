@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'AdminProfile.dart';
 import 'StudentScope.dart';
+import 'GuideDb.dart';
 
 /// Reads a student's sadhana report HISTORY across both residence-scoped
 /// collections, merged by date — Master Task 2026-09-11, "Read reports from
@@ -81,7 +82,7 @@ CollectionReference<Map<String, dynamic>> _datesRef(
   String collection,
   String studentName,
 ) {
-  return FirebaseFirestore.instance
+  return GuideDb.instance
       .collection(collection)
       .doc(studentName)
       .collection('dates');

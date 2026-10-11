@@ -6,6 +6,7 @@ import '../utils/AdminProfile.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
+import '../utils/GuideDb.dart';
 
 /// Per-student comment thread — Phase 5 of the Book Reading redesign
 /// (built 2026-08-23). Opened by the chat icon on a student's row in All Boys
@@ -130,7 +131,7 @@ class _StudentCommentsDialog extends StatefulWidget {
 }
 
 class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = GuideDb.instance;
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 

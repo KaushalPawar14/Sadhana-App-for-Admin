@@ -7,6 +7,7 @@ import '../Services/UpdateFCM.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
+import '../utils/GuideDb.dart';
 
 /// Holistic "suggested next action" (Phase 5, item 1 — final piece).
 ///
@@ -45,7 +46,7 @@ class HolisticSuggestionSection extends StatefulWidget {
 }
 
 class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = GuideDb.instance;
 
   bool _working = false;
 

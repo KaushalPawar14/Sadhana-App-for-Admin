@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'GuideDb.dart';
 
 /// Force-update gate — follow-up task, 2026-09-10.
 ///
@@ -43,7 +44,7 @@ class ForceUpdateCheck {
 
   static Future<bool> isUpdateRequired() async {
     try {
-      final snap = await FirebaseFirestore.instance
+      final snap = await GuideDb.instance
           .collection('appConfig')
           .doc('versions')
           .get()

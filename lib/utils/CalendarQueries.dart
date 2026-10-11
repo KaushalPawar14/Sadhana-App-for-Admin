@@ -158,6 +158,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import 'AdminProfile.dart';
+import 'GuideDb.dart';
 
 /// Own local copy — matches `GoalCompoundQueries.dart`'s own
 /// `kFunctionsRegion` constant, not shared, per this project's established
@@ -445,7 +446,7 @@ List<CalendarEvent> eventsComingUp(List<CalendarEvent> events, {int days = 7}) {
 /// filter combined with a second field, so no composite index is ever
 /// needed (see this file's header).
 Future<List<CalendarEvent>> visibleEventsFor(String guideId) async {
-  final col = FirebaseFirestore.instance.collection('calendarEvents');
+  final col = GuideDb.instance.collection('calendarEvents');
   final results = await Future.wait([
     col.where('scope', isEqualTo: kScopeMandatory).get(),
     col
@@ -481,7 +482,7 @@ Future<List<CalendarEvent>> upcomingEventsFor(
 /// only the HOD can edit/delete it — Part 4 item 1), plus this guide's own
 /// personal blocks. Newest first.
 Future<List<CalendarTextBlock>> visibleTextBlocksFor(String guideId) async {
-  final col = FirebaseFirestore.instance.collection('calendarTextBlocks');
+  final col = GuideDb.instance.collection('calendarTextBlocks');
   final results = await Future.wait([
     col.where('scope', isEqualTo: kScopeMandatory).get(),
     col
@@ -605,7 +606,7 @@ Future<void> saveTextBlockWithEvents({
 }) async {
   _assertCanMutate(scope: scope, actingIsHod: submittedByIsHod);
 
-  final db = FirebaseFirestore.instance;
+  final db = GuideDb.instance;
   final blockRef = db.collection('calendarTextBlocks').doc();
   final batch = db.batch();
 
@@ -669,7 +670,7 @@ Future<void> updateTextBlockWithEvents({
   required bool actingIsHod,
   required List<ParsedCalendarEvent> parsedEvents,
 }) async {
-  final db = FirebaseFirestore.instance;
+  final db = GuideDb.instance;
   final blockRef = db.collection('calendarTextBlocks').doc(blockId);
   final blockSnap = await blockRef.get();
   if (!blockSnap.exists) {
@@ -752,7 +753,7 @@ Future<int> deleteTextBlockAndItsEvents({
   required String blockId,
   required bool actingIsHod,
 }) async {
-  final db = FirebaseFirestore.instance;
+  final db = GuideDb.instance;
   final blockRef = db.collection('calendarTextBlocks').doc(blockId);
   final blockSnap = await blockRef.get();
   if (!blockSnap.exists) return 0;
@@ -797,7 +798,7 @@ Future<void> editEvent({
 }) async {
   _assertValidRange(eventDate, endDate);
 
-  final db = FirebaseFirestore.instance;
+  final db = GuideDb.instance;
   final ref = db.collection('calendarEvents').doc(eventId);
   final snap = await ref.get();
   if (!snap.exists) return;
@@ -858,11 +859,11 @@ class CalendarEventTypeDescription {
 /// what's there.
 Future<void> ensureEventTypeDescriptionsSeeded() async {
   final col =
-      FirebaseFirestore.instance.collection('calendarEventTypeDescriptions');
+      GuideDb.instance.collection('calendarEventTypeDescriptions');
   final existing = await col.get();
   final existingIds = existing.docs.map((d) => d.id).toSet();
 
-  final batch = FirebaseFirestore.instance.batch();
+  final batch = GuideDb.instance.batch();
   var needsCommit = false;
   for (final type in kEventTypes) {
     if (existingIds.contains(type)) continue;
@@ -883,7 +884,7 @@ Future<void> ensureEventTypeDescriptionsSeeded() async {
 /// first just to get a sensible value.
 Future<Map<String, CalendarEventTypeDescription>>
     fetchEventTypeDescriptions() async {
-  final snap = await FirebaseFirestore.instance
+  final snap = await GuideDb.instance
       .collection('calendarEventTypeDescriptions')
       .get();
   final byType = <String, CalendarEventTypeDescription>{
@@ -913,7 +914,7 @@ Future<void> updateEventTypeDescription({
   if (!kEventTypes.contains(type)) {
     throw ArgumentError('Unknown event type: $type');
   }
-  await FirebaseFirestore.instance
+  await GuideDb.instance
       .collection('calendarEventTypeDescriptions')
       .doc(type)
       .set({

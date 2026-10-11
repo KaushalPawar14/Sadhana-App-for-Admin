@@ -10,6 +10,7 @@ import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
+import '../utils/GuideDb.dart';
 
 /// Expedition (pilgrimage / retreat) management.
 ///
@@ -25,7 +26,7 @@ class ExpeditionManagerPage extends StatefulWidget {
 
 class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
     with SingleTickerProviderStateMixin {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = GuideDb.instance;
 
   String? _selectedGuide;
 

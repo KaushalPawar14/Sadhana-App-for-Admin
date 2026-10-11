@@ -123,6 +123,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'AdminProfile.dart';
 import 'StudentScope.dart';
+import 'GuideDb.dart';
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -264,7 +265,7 @@ class BoardColumn {
 // -----------------------------------------------------------------------------
 
 CollectionReference<Map<String, dynamic>> _boards() =>
-    FirebaseFirestore.instance.collection(kBoardsCollection);
+    GuideDb.instance.collection(kBoardsCollection);
 
 CollectionReference<Map<String, dynamic>> columnsRef(String boardId) =>
     _boards().doc(boardId).collection(kColumnsSubcollection);
@@ -417,7 +418,7 @@ Future<String> createBoard({
     'sharedWith': <String>[],
   });
 
-  final batch = FirebaseFirestore.instance.batch();
+  final batch = GuideDb.instance.batch();
   var order = 0;
 
   if (withUnsorted) {
@@ -502,7 +503,7 @@ Future<void> deleteBoard(String boardId) async {
   final cols = await columnsRef(boardId).get();
   final places = await placementsRef(boardId).get();
 
-  final batch = FirebaseFirestore.instance.batch();
+  final batch = GuideDb.instance.batch();
   for (final d in cols.docs) {
     batch.delete(d.reference);
   }
@@ -542,7 +543,7 @@ Future<void> reorderColumns({
   required String boardId,
   required List<BoardColumn> inNewOrder,
 }) async {
-  final batch = FirebaseFirestore.instance.batch();
+  final batch = GuideDb.instance.batch();
   for (var i = 0; i < inNewOrder.length; i++) {
     final c = inNewOrder[i];
     // The permanent Unassigned column keeps its sentinel order so it stays
@@ -577,7 +578,7 @@ Future<void> deleteColumnMovingCardsToUnsorted({
       .where('columnId', isEqualTo: columnId)
       .get();
 
-  final batch = FirebaseFirestore.instance.batch();
+  final batch = GuideDb.instance.batch();
   for (final d in affected.docs) {
     batch.update(d.reference, {
       'columnId': unsortedColumnId,
@@ -610,7 +611,7 @@ Future<void> deleteColumnDeletingPlacements({
       .where('columnId', isEqualTo: columnId)
       .get();
 
-  final batch = FirebaseFirestore.instance.batch();
+  final batch = GuideDb.instance.batch();
   for (final d in affected.docs) {
     batch.delete(d.reference);
   }
@@ -653,7 +654,7 @@ Future<void> reconcileGuideColumns({
   final missing = roster.where((g) => !have.contains(g)).toList();
   if (missing.isEmpty) return;
 
-  final batch = FirebaseFirestore.instance.batch();
+  final batch = GuideDb.instance.batch();
   var order = existing
       .where((c) => c.kind != kColumnKindUnassigned)
       .fold<int>(-1, (max, c) => c.order > max ? c.order : max);

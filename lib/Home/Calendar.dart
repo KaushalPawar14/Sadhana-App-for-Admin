@@ -9,6 +9,7 @@ import '../utils/ScorecardPoints.dart';
 import '../Pages/AllGraph.dart' show GraphicalAnalysisSection;
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
+import '../utils/GuideDb.dart';
 
 class CalendarPage extends StatefulWidget {
   final String username;
@@ -340,7 +341,7 @@ class _CalendarPageState extends State<CalendarPage> {
     if (uid == null || uid.isEmpty) return _needsUid(colorProvider, "Badges");
 
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+      stream: GuideDb.instance.collection('users').doc(uid).snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Padding(
@@ -422,7 +423,7 @@ class _CalendarPageState extends State<CalendarPage> {
     if (name.isEmpty) return const SizedBox.shrink();
 
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
+      stream: GuideDb.instance
           .collection('scorecard')
           .doc(name)
           .snapshots(),
@@ -531,7 +532,7 @@ class _CalendarPageState extends State<CalendarPage> {
     if (name.isEmpty) return const SizedBox.shrink();
 
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
+      stream: GuideDb.instance
           .collection('competition')
           .doc(name)
           .snapshots(),
@@ -548,7 +549,7 @@ class _CalendarPageState extends State<CalendarPage> {
         final competition = CompetitionTotals.fromSnapshotData(competitionData);
 
         return StreamBuilder<DocumentSnapshot>(
-          stream: FirebaseFirestore.instance
+          stream: GuideDb.instance
               .collection('scorecard')
               .doc(name)
               .snapshots(),

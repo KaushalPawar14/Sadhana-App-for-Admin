@@ -9,6 +9,7 @@ import 'PodcastLinkManager.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../widgets/GuideSurface.dart';
+import '../utils/GuideDb.dart';
 
 /// Book Link Manager
 ///
@@ -194,7 +195,7 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
     final normalizedUrl = normalizeDropboxUrl(result);
 
     try {
-      await FirebaseFirestore.instance
+      await GuideDb.instance
           .collection('books')
           .doc(linksDocId(level, _language))
           .set({fieldKey: normalizedUrl}, SetOptions(merge: true));
@@ -447,7 +448,7 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
           ),
           body: StreamBuilder<QuerySnapshot>(
             stream:
-                FirebaseFirestore.instance.collection('books').snapshots(),
+                GuideDb.instance.collection('books').snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());

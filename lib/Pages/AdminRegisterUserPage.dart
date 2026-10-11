@@ -8,6 +8,7 @@ import '../utils/ColorProvider.dart';
 import '../utils/StudentNameGuard.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
+import '../utils/GuideDb.dart';
 
 class AdminRegisterUserPage extends StatefulWidget {
   const AdminRegisterUserPage({super.key});
@@ -71,7 +72,7 @@ class _AdminRegisterUserPageState extends State<AdminRegisterUserPage>
       // Do NOT add a way to edit it later — see StudentNameGuard.dart for
       // why every name-keyed collection depends on it never changing after
       // this point.
-      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+      await GuideDb.instance.collection('users').doc(uid).set({
         'uid': uid,
         'name': name,
         'email': emailController.text.trim(),

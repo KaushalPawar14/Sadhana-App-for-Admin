@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'GuideDb.dart';
 
 /// Per-viewer "have I seen this yet" markers — Master Task 2026-09-10,
 /// Part 6.
@@ -33,7 +34,7 @@ class SeenMarkers {
   @visibleForTesting
   static bool debugDisable = false;
 
-  static final _col = FirebaseFirestore.instance.collection('seenMarkers');
+  static final _col = GuideDb.instance.collection('seenMarkers');
 
   /// A flat, whole-feature cursor — `seenMarkers/{viewerId}.{featureKey}`.
   ///

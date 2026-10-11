@@ -13,6 +13,7 @@ import '../utils/StudentScope.dart';
 import 'LitAssessment.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
+import '../utils/GuideDb.dart';
 
 /// Phase 5, item 1 — interaction logging.
 ///
@@ -59,7 +60,7 @@ class InteractionLoggerPage extends StatefulWidget {
 }
 
 class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = GuideDb.instance;
 
   /// The signed-in admin's id (stamped on a new log as `guideId`).
   String get _selectedGuide => AdminProfileProvider.require().id;
@@ -875,7 +876,7 @@ class InteractionDetailPage extends StatefulWidget {
 }
 
 class _InteractionDetailPageState extends State<InteractionDetailPage> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = GuideDb.instance;
 
   /// One controller per free-text field. `interactionType` is handled by a
   /// dedicated dropdown below, not a text controller.

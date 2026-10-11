@@ -8,6 +8,7 @@ import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../theme/GuideColors.dart';
+import '../utils/GuideDb.dart';
 
 /// A full standalone page wrapping [GraphicalAnalysisSection] in its own
 /// `Scaffold`/`AppBar`. Kept for continuity, but its only caller
@@ -155,7 +156,7 @@ class _GraphicalAnalysisSectionState extends State<GraphicalAnalysisSection> {
   /// (the date docs carry server-stamped scope fields), so a non-HOD only ever
   /// gets documents the security rules let them see.
   Future<QuerySnapshot<Map<String, dynamic>>> _fetchDates() {
-    final datesCollection = FirebaseFirestore.instance
+    final datesCollection = GuideDb.instance
         .collection(getCollectionName())
         .doc(widget.username)
         .collection('dates');

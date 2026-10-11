@@ -8,6 +8,7 @@ import '../utils/AdminProfile.dart';
 import '../utils/StudentScope.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
+import '../utils/GuideDb.dart';
 
 class BookReadingScreen extends StatefulWidget {
   const BookReadingScreen({super.key});
@@ -131,7 +132,7 @@ class StudentDetailScreen extends StatelessWidget {
   StudentDetailScreen({required this.student});
 
   Stream<String?> _currentBookStream() {
-    return FirebaseFirestore.instance
+    return GuideDb.instance
         .collection('booksRead')
         .doc(student)
         .snapshots()
@@ -148,7 +149,7 @@ class StudentDetailScreen extends StatelessWidget {
 
       for (String level in levels) {
 
-        final snapshot = await FirebaseFirestore.instance
+        final snapshot = await GuideDb.instance
             .collection('booksRead')
             .doc(student)
             .collection(level)

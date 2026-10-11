@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../Services/HierarchyApi.dart';
+import 'GuideDb.dart';
 
 /// Manually-added ("offline roster") students — a guide can record a real
 /// student who chants but hasn't installed the app yet, so roadmap targets
@@ -50,7 +51,7 @@ import '../Services/HierarchyApi.dart';
 /// never equal a 28-character Auth uid, and is immediately recognisable in
 /// the Firestore console even without checking length.
 String generateManualStudentId() {
-  final autoId = FirebaseFirestore.instance.collection('users').doc().id;
+  final autoId = GuideDb.instance.collection('users').doc().id;
   return 'manual_$autoId';
 }
 

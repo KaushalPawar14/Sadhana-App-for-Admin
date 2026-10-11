@@ -7,6 +7,7 @@ import 'PlanningQueries.dart';
 import 'StudentScope.dart';
 import 'UnseenFeatureBadge.dart';
 import 'WeekSummary.dart';
+import 'GuideDb.dart';
 
 /// The data behind the Home dashboard. Each member is an existing source the app
 /// already reads elsewhere (see `Home/FolkBoysEntry.dart`'s header), scoped to the
@@ -62,7 +63,7 @@ class FirestoreHomeData implements HomeData {
   Widget calendarBadge({required Widget child}) => UnseenFeatureBadge(
         featureKey: 'calendarEvents',
         dotOffset: const Offset(10, 10),
-        latestQuery: (g) => FirebaseFirestore.instance
+        latestQuery: (g) => GuideDb.instance
             .collection('calendarEvents')
             .where('scope', isEqualTo: kScopeMandatory)
             .snapshots(),

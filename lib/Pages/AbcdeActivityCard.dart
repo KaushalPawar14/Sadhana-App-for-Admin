@@ -7,6 +7,7 @@ import '../utils/SadhanaReportSource.dart';
 import '../utils/ServiceAssignments.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
+import '../utils/GuideDb.dart';
 
 /// Phase 8 — the ABCDE activity card.
 ///
@@ -63,7 +64,7 @@ class AbcdeActivityCard extends StatefulWidget {
 }
 
 class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = GuideDb.instance;
 
   /// The student's current assignment, fetched once from their `users` doc
   /// (the caller only hands us a uid + name). Lets every history read below
