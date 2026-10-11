@@ -10,6 +10,9 @@ import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../widgets/GuideSurface.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideDialog.dart';
+import '../widgets/GuideWait.dart';
 
 /// Book Link Manager
 ///
@@ -133,9 +136,7 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setState) {
-          return AlertDialog(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          return GuideDialog(
             title: const Text("Dropbox Link"),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -429,9 +430,7 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         return GuideScaffold(
-          appBar: AppBar(
-            elevation: 0,
-            backgroundColor: colorProvider.color,
+          appBar: GuideAppBar(
             title: Text(
               // Renamed 2026-08-14 when podcast links were merged in below.
               "Books & Podcasts",
@@ -444,14 +443,13 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
             leading: IconButton(
               icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
               onPressed: () => Navigator.pop(context),
-            ),
-          ),
+            )),
           body: StreamBuilder<QuerySnapshot>(
             stream:
                 GuideDb.instance.collection('books').snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
+                return const GuideWait();
               }
 
               if (snapshot.hasError) {

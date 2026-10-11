@@ -6,6 +6,8 @@ import '../utils/GoalCompoundQueries.dart';
 import '../utils/GoalMetrics.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideWait.dart';
 
 /// Per-target progress page — Part 7 of the compound-target task, updated
 /// when chanting switched from a weekly-report aggregation to a self-set
@@ -82,9 +84,7 @@ class _CompoundGoalProgressPageState extends State<CompoundGoalProgressPage> {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         return GuideScaffold(
-          appBar: AppBar(
-            elevation: 0,
-            backgroundColor: colorProvider.color,
+          appBar: GuideAppBar(
             leading: IconButton(
               icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
               onPressed: () => Navigator.pop(context),
@@ -96,14 +96,13 @@ class _CompoundGoalProgressPageState extends State<CompoundGoalProgressPage> {
                 fontWeight: FontWeight.bold,
                 fontSize: 18,
               ),
-            ),
-          ),
+            )),
           body: StreamBuilder<CompoundTarget?>(
             stream: compoundTargetStream(guideId, targetId),
             builder: (context, targetSnap) {
               final target = targetSnap.data;
               if (target == null || target.totalPhases == 0) {
-                return const Center(child: CircularProgressIndicator());
+                return const GuideWait();
               }
               return StreamBuilder<List<CompoundPhase>>(
                 stream: compoundPhasesStream(guideId, targetId),
@@ -112,7 +111,7 @@ class _CompoundGoalProgressPageState extends State<CompoundGoalProgressPage> {
                   final currentPhase = phases.where(
                       (p) => p.phaseNumber == target.currentPhase);
                   if (currentPhase.isEmpty) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const GuideWait();
                   }
                   return _body(target, currentPhase.first);
                 },

@@ -8,6 +8,7 @@ import '../utils/ServiceAssignments.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideWait.dart';
 
 /// Phase 8 — the ABCDE activity card.
 ///
@@ -711,7 +712,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
       child: _loading
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 26),
-              child: Center(child: CircularProgressIndicator()),
+              child: const GuideWait(),
             )
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,

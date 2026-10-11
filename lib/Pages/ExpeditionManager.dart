@@ -11,6 +11,9 @@ import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideDialog.dart';
+import '../widgets/GuideWait.dart';
 
 /// Expedition (pilgrimage / retreat) management.
 ///
@@ -129,9 +132,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
-          return AlertDialog(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          return GuideDialog(
             title: const Text("New Expedition"),
             content: SingleChildScrollView(
               child: Column(
@@ -435,8 +436,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
   void _showReflection(Map<String, dynamic> data) {
     showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      builder: (dialogContext) => GuideDialog(
         title: Text((data['studentName'] ?? 'Reflection').toString()),
         content: SingleChildScrollView(
           child: Text(
@@ -468,7 +468,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
           .snapshots(),
       builder: (context, tripSnap) {
         if (tripSnap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const GuideWait();
         }
 
         final trips = tripSnap.data?.docs ?? [];
@@ -611,7 +611,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
       stream: _registrationsStream(),
       builder: (context, regSnap) {
         if (regSnap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const GuideWait();
         }
 
         final regs = regSnap.data?.docs ?? [];
@@ -719,9 +719,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
         final guide = _selectedGuide;
 
         return GuideScaffold(
-          appBar: AppBar(
-            elevation: 0,
-            backgroundColor: colorProvider.color,
+          appBar: GuideAppBar(
             leading: IconButton(
               icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
               onPressed: () => Navigator.pop(context),
@@ -743,10 +741,9 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                 Tab(text: "Manage Trips"),
                 Tab(text: "Reflections"),
               ],
-            ),
-          ),
+            )),
           body: guide == null
-              ? const Center(child: CircularProgressIndicator())
+              ? const GuideWait()
               : TabBarView(
                   controller: _tabController,
                   children: [

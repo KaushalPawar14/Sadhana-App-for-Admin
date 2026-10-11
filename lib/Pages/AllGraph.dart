@@ -9,6 +9,8 @@ import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../theme/GuideColors.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideWait.dart';
 
 /// A full standalone page wrapping [GraphicalAnalysisSection] in its own
 /// `Scaffold`/`AppBar`. Kept for continuity, but its only caller
@@ -33,15 +35,11 @@ class _ChantingGraphState extends State<AllGraph> {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(builder: (context, colorProvider, child) {
       return GuideScaffold(
-        appBar: AppBar(
+        appBar: GuideAppBar(
           title: Text(
             widget.username,
             style: TextStyle(color: colorProvider.secondColor),
-          ),
-          iconTheme: IconThemeData(
-            color: colorProvider.secondColor,
-          ),
-        ),
+          )),
         body: GraphicalAnalysisSection(
           username: widget.username,
           role: widget.role,
@@ -409,7 +407,7 @@ class _GraphicalAnalysisSectionState extends State<GraphicalAnalysisSection> {
                   height: 320,
                   width: 320,
                   child: loading
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const GuideWait()
                       : Column(children: [
                     Expanded(child: MyLineChart(
                       chantingRounds: chantingRounds,
@@ -454,7 +452,7 @@ class _GraphicalAnalysisSectionState extends State<GraphicalAnalysisSection> {
                   height: 320,
                   width: 320,
                   child: loading
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const GuideWait()
                       : Column(
                     children: [
                       Expanded(
@@ -496,7 +494,7 @@ class _GraphicalAnalysisSectionState extends State<GraphicalAnalysisSection> {
                   height: 320,
                   width: 320,
                   child: loading
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const GuideWait()
                       : TempleEntryChart(data: templeEntryData),
                 ),
                 const SizedBox(
@@ -523,7 +521,7 @@ class _GraphicalAnalysisSectionState extends State<GraphicalAnalysisSection> {
                   height: 320,
                   width: 320,
                   child: loading
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const GuideWait()
                       : FinishTimingChart(data: finishTimingData),
                 ),
                 const SizedBox(height: 20),

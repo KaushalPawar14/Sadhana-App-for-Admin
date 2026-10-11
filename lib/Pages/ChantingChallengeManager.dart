@@ -11,6 +11,9 @@ import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideDialog.dart';
+import '../widgets/GuideWait.dart';
 
 /// Chanting Challenges — a COLLECTIVE roster target.
 ///
@@ -128,9 +131,7 @@ class _ChantingChallengeManagerPageState
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
-          return AlertDialog(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          return GuideDialog(
             title: const Text("New Challenge"),
             content: SingleChildScrollView(
               child: Column(
@@ -441,7 +442,7 @@ class _ChantingChallengeManagerPageState
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => GuideDialog(
         title: const Text("Delete this challenge?"),
         content: Text(
           "\"${name.isEmpty ? '(untitled)' : name}\" and every student's "
@@ -767,9 +768,7 @@ class _ChantingChallengeManagerPageState
         final guide = _selectedGuide;
 
         return GuideScaffold(
-          appBar: AppBar(
-            elevation: 0,
-            backgroundColor: colorProvider.color,
+          appBar: GuideAppBar(
             leading: IconButton(
               icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
               onPressed: () => Navigator.pop(context),
@@ -781,8 +780,7 @@ class _ChantingChallengeManagerPageState
                 color: colorProvider.secondColor,
                 fontSize: 20,
               ),
-            ),
-          ),
+            )),
           floatingActionButton: FloatingActionButton.extended(
                   backgroundColor: context.g.brass,
                   onPressed: _sending ? null : _openCreateSheet,
@@ -790,8 +788,7 @@ class _ChantingChallengeManagerPageState
                       ? SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: context.g.onPrimary),
+                          child: const GuideBusyDot(),
                         )
                       : Icon(Icons.add, color: context.g.onPrimary),
                   label: Text(
@@ -817,7 +814,7 @@ class _ChantingChallengeManagerPageState
                       );
                     }
                     if (!snapshot.hasData) {
-                      return const Center(child: CircularProgressIndicator());
+                      return GuideWait(snapshot: snapshot);
                     }
 
                     final docs = snapshot.data!.docs.toList()
@@ -910,9 +907,7 @@ class ChallengeContributionsPage extends StatelessWidget {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         return GuideScaffold(
-          appBar: AppBar(
-            elevation: 0,
-            backgroundColor: colorProvider.color,
+          appBar: GuideAppBar(
             leading: IconButton(
               icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
               onPressed: () => Navigator.pop(context),
@@ -924,8 +919,7 @@ class ChallengeContributionsPage extends StatelessWidget {
                 color: colorProvider.secondColor,
                 fontSize: 18,
               ),
-            ),
-          ),
+            )),
           body: StreamBuilder<QuerySnapshot>(
             // challengeId equality + the viewer's student scope (HOD: all).
             stream: StudentScope.current().historyStream(
@@ -934,7 +928,7 @@ class ChallengeContributionsPage extends StatelessWidget {
             ),
             builder: (context, snapshot) {
               if (!snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
+                return GuideWait(snapshot: snapshot);
               }
 
               final docs = snapshot.data!.docs.toList()

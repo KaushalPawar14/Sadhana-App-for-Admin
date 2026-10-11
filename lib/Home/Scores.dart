@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../widgets/GuideSurface.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideWait.dart';
 
 import '../utils/ColorProvider.dart';  // For formatting the date
 
@@ -73,7 +74,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(builder: (context, colorProvider, child) {
       return GuideScaffold(
-        appBar: AppBar(
+        appBar: GuideAppBar(
           leading: IconButton(
             icon: Icon(
               Icons.arrow_back,
@@ -91,7 +92,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
           future: _fetchTodaysData(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return Center(child: CircularProgressIndicator());
+              return const GuideWait();
             }
             if (snapshot.hasError) {
               return Center(child: Text('Error: ${snapshot.error}',style: TextStyle(color: colorProvider.secondColor)));

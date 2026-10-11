@@ -6,6 +6,8 @@ import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideWait.dart';
 
 /// One "whose students notify me" switch.
 class StudentGroupSwitch {
@@ -143,11 +145,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     final colorProvider = Provider.of<ColorProvider>(context);
 
     return GuideScaffold(
-      appBar: AppBar(
-        title: const Text('Notifications'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
+      appBar: GuideAppBar(
+        title: const Text('Notifications')),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 96),
         children: [
@@ -186,7 +185,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
             ? const SizedBox(
                 width: 16,
                 height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2))
+                child: const GuideBusyDot())
             : const Icon(Icons.save_outlined),
         label: const Text('Save'),
       ),

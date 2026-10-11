@@ -259,7 +259,9 @@ class GuideGhostRow extends StatelessWidget {
   }
 }
 
-/// [rows] ghost rows with the page padding and the real gap between cards.
+/// [rows] ghost rows with the page padding and the real gap between cards. It
+/// shrink-wraps (a non-scrolling list), so it sizes itself in a bounded area and in an
+/// unbounded one alike and never overflows.
 class GuideGhostList extends StatelessWidget {
   const GuideGhostList({
     super.key,
@@ -282,16 +284,14 @@ class GuideGhostList extends StatelessWidget {
   Widget build(BuildContext context) {
     return GuideGhostArea(
       pulsing: pulsing,
-      child: Padding(
+      child: ListView.separated(
+        shrinkWrap: true,
+        primary: false,
+        physics: const NeverScrollableScrollPhysics(),
         padding: padding,
-        child: Column(
-          children: [
-            for (var i = 0; i < rows; i++) ...[
-              if (i > 0) SizedBox(height: gap),
-              GuideGhostRow(height: rowHeight, avatar: avatar),
-            ],
-          ],
-        ),
+        itemCount: rows,
+        separatorBuilder: (_, __) => SizedBox(height: gap),
+        itemBuilder: (_, __) => GuideGhostRow(height: rowHeight, avatar: avatar),
       ),
     );
   }

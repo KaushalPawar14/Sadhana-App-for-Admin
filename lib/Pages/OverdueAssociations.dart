@@ -11,6 +11,8 @@ import 'AssociationManager.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideWait.dart';
 
 /// Overdue associations dashboard (Phase 6, half 1, item 2).
 ///
@@ -53,17 +55,13 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         return GuideScaffold(
-          appBar: AppBar(
-            backgroundColor: colorProvider.color,
-            elevation: 0,
-            iconTheme: IconThemeData(color: colorProvider.secondColor),
-            title: Text("Overdue Associations"),
-          ),
+          appBar: GuideAppBar(
+            title: Text("Overdue Associations")),
           body: StreamBuilder<QuerySnapshot>(
                   stream: _associations,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
+                      return const GuideWait();
                     }
 
                     // Filtered in Dart, matching AssociationManager's approach.

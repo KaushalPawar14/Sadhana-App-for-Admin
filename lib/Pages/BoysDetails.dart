@@ -13,6 +13,8 @@ import 'AdminManager.dart';
 import 'NotificationSettings.dart';
 import 'SubmissionStatus.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideDialog.dart';
+import '../widgets/GuideWait.dart';
 // `AdminRegisterUserPage` is no longer imported here: its "Add Hostelers" tile
 // was removed on 2026-08-14. **The screen file was deliberately kept** — it
 // registers a student wholesale into `users/{uid}`, which is the only path in
@@ -225,7 +227,7 @@ class _AdminControlPageState extends State<AdminControlPage> {
               }
             }
 
-            return AlertDialog(
+            return GuideDialog(
               title: const Text("Add a student"),
               content: SingleChildScrollView(
                 child: Column(
@@ -338,7 +340,7 @@ class _AdminControlPageState extends State<AdminControlPage> {
                       ? const SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: const GuideBusyDot(),
                         )
                       : const Text("Add"),
                 ),

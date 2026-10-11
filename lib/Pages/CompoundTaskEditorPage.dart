@@ -7,6 +7,9 @@ import '../utils/GoalCompoundQueries.dart';
 import '../utils/Snackbar.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideDialog.dart';
+import '../widgets/GuideWait.dart';
 
 /// Manual task editor for the CURRENT phase only (restored manual-editing
 /// task) — sits ALONGSIDE the AI note-driven regenerate/suggest flow in
@@ -226,8 +229,7 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        builder: (dialogContext, setDialogState) => GuideDialog(
           title: const Text("Select students"),
           content: SizedBox(
             width: double.maxFinite,
@@ -374,9 +376,7 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         return GuideScaffold(
-          appBar: AppBar(
-            elevation: 0,
-            backgroundColor: colorProvider.color,
+          appBar: GuideAppBar(
             leading: IconButton(
               icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
               onPressed: () => Navigator.pop(context),
@@ -388,10 +388,9 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
                 fontWeight: FontWeight.bold,
                 fontSize: 16,
               ),
-            ),
-          ),
+            )),
           body: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const GuideWait()
               : _error != null
                   ? Center(
                       child: Padding(
@@ -455,7 +454,7 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
                 ? const SizedBox(
                     width: 16,
                     height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: const GuideBusyDot())
                 : Text(_isHod ? "Send proposal" : "Save"),
           ),
         ),

@@ -8,6 +8,7 @@ import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideColors.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideWait.dart';
 
 /// LIT assessment — private, guide-only (FOLK_HANDOFF.md Section 8).
 ///
@@ -308,7 +309,7 @@ class _LitEntrySheetState extends State<_LitEntrySheet> {
               ),
               const SizedBox(height: 22),
               if (_saving)
-                const Center(child: CircularProgressIndicator())
+                const GuideWait()
               else
                 Row(
                   children: [
@@ -548,7 +549,7 @@ class _LitHistorySectionState extends State<LitHistorySection> {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Padding(
                 padding: EdgeInsets.all(20),
-                child: Center(child: CircularProgressIndicator()),
+                child: const GuideWait(),
               );
             }
 

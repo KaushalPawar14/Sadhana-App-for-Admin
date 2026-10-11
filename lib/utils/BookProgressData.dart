@@ -21,7 +21,6 @@
 /// each symbol's own doc comment for what it was called before.
 library;
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../theme/GuideColors.dart';
 import 'GuideDb.dart';

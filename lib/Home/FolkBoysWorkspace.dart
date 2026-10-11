@@ -21,12 +21,12 @@ import '../widgets/GuideBoardMotion.dart';
 import '../widgets/GuideGhost.dart';
 import '../widgets/GuideReveal.dart';
 import '../widgets/GuideStates.dart';
-import '../widgets/GuideButtons.dart';
 import '../widgets/GuideChips.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
 import 'Calendar.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideDialog.dart';
 
 /// FOLK Boys board workspace — the board CANVAS reached by tapping the one
 /// tile on `FolkBoysEntry.dart` (the middle "FOLK Boys" tab's own top-level
@@ -779,7 +779,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
 
     return showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GuideDialog(
         title: Text(title),
         content: SingleChildScrollView(
           child: Column(
@@ -959,7 +959,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   Future<bool?> _confirmPermanentDelete(_Boy boy) {
     return showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GuideDialog(
         title: const Text("Delete this boy permanently?"),
         content: SingleChildScrollView(
           child: Column(
@@ -1012,7 +1012,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     if (result.refused) {
       return showDialog<void>(
         context: context,
-        builder: (ctx) => AlertDialog(
+        builder: (ctx) => GuideDialog(
           title: const Text("Deletion refused"),
           content: Text(result.refusalReason ??
               "Could not verify this deletion is safe to run."),
@@ -1036,7 +1036,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
 
     return showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GuideDialog(
         title: Text(
           failed.isEmpty && !authFailedSoftly
               ? "${boy.name} deleted"
@@ -1266,7 +1266,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     final controller = TextEditingController(text: initial);
     return showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GuideDialog(
         title: Text(title),
         content: TextField(
           controller: controller,
@@ -1516,7 +1516,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     final saved = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
+        builder: (ctx, setDialogState) => GuideDialog(
             title: const Text("Share this board"),
           content: SizedBox(
             width: double.maxFinite,
@@ -1607,7 +1607,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
 
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GuideDialog(
         title: const Text("Delete this board?"),
         content: Text(
           "\"${board.title.isEmpty ? '(untitled)' : board.title}\" and all "
@@ -1723,7 +1723,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   Future<void> _recolourCustomColumn(String boardId, BoardColumn column) async {
     final picked = await showDialog<int>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GuideDialog(
         title: const Text("Column colour"),
         content: Wrap(
           spacing: 12,
@@ -1792,7 +1792,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   }) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GuideDialog(
         title: const Text("Delete this list?"),
         content: Text(
           cardCount == 0
@@ -1845,7 +1845,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   }) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GuideDialog(
         title: Text("Remove ${boy.name} from this board?"),
         content: const Text(
           "This only removes him from THIS board's organisation. His "
@@ -3480,7 +3480,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => GuideDialog(
         title: const Text("Mark this book finished?"),
         content: Text(
           hasStarted
@@ -3592,7 +3592,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            return AlertDialog(
+            return GuideDialog(
               title: const Text("Assign this book"),
               content: Column(
                 mainAxisSize: MainAxisSize.min,

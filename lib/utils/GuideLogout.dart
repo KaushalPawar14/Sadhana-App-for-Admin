@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../Pages/GuideSignIn.dart';
 import 'GuideAuthGate.dart';
+import '../widgets/GuideDialog.dart';
 
 /// Asks "Are you sure you want to logout?" and, on yes, signs the admin out and
 /// returns to the sign-in screen. (Moved unchanged from the old bottom bar so the
@@ -10,7 +11,7 @@ import 'GuideAuthGate.dart';
 Future<void> confirmAndLogout(BuildContext context) async {
   final bool? confirm = await showDialog<bool>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
+    builder: (dialogContext) => GuideDialog(
       title: const Text("Confirm Logout"),
       content: const Text("Are you sure you want to logout?"),
       actions: [

@@ -7,6 +7,7 @@ import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideWait.dart';
 
 /// Per-student comment thread — Phase 5 of the Book Reading redesign
 /// (built 2026-08-23). Opened by the chat icon on a student's row in All Boys
@@ -316,7 +317,7 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
 
   Widget _body() {
     if (_loadingGuide) {
-      return const Center(child: CircularProgressIndicator());
+      return const GuideWait();
     }
 
     if (!_canAccess) {
@@ -355,7 +356,7 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
           );
         }
         if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
+          return GuideWait(snapshot: snapshot);
         }
 
         final docs = snapshot.data!.docs.toList()
@@ -506,7 +507,7 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
                   child: SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: const GuideBusyDot(),
                   ),
                 )
               : IconButton(

@@ -8,6 +8,7 @@ import 'CompoundGoalRoadmapPage.dart';
 import 'CompoundTaskEditorPage.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
+import '../widgets/GuideAppBar.dart';
 
 /// HOD-facing: browse any guide's compound targets and either open the
 /// note-driven AI roadmap/suggestion view or manually edit the current
@@ -54,9 +55,7 @@ class _CompoundGoalHodReviewState extends State<CompoundGoalHodReview> {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         return GuideScaffold(
-          appBar: AppBar(
-            elevation: 0,
-            backgroundColor: colorProvider.color,
+          appBar: GuideAppBar(
             leading: IconButton(
               icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
               onPressed: () => Navigator.pop(context),
@@ -68,8 +67,7 @@ class _CompoundGoalHodReviewState extends State<CompoundGoalHodReview> {
                 fontWeight: FontWeight.bold,
                 fontSize: 18,
               ),
-            ),
-          ),
+            )),
           body: Column(
             children: [
               Padding(

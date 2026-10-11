@@ -8,6 +8,7 @@ import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideWait.dart';
 
 /// Holistic "suggested next action" (Phase 5, item 1 — final piece).
 ///
@@ -445,7 +446,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
                 child: _working
                     ? const Padding(
                         padding: EdgeInsets.symmetric(vertical: 10),
-                        child: Center(child: CircularProgressIndicator()),
+                        child: const GuideWait(),
                       )
                     : OutlinedButton.icon(
                         onPressed: _generate,

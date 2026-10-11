@@ -7,6 +7,8 @@ import '../utils/GoalCompoundQueries.dart';
 import '../utils/Snackbar.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideWait.dart';
 
 /// Full roadmap view — Part 2 (all phases, read-only) + Part 3 (free-text
 /// suggestion box), reachable from BOTH the guide's own weekly page and the
@@ -113,9 +115,7 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         return GuideScaffold(
-          appBar: AppBar(
-            elevation: 0,
-            backgroundColor: colorProvider.color,
+          appBar: GuideAppBar(
             leading: IconButton(
               icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
               onPressed: () => Navigator.pop(context),
@@ -127,14 +127,13 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
                 fontWeight: FontWeight.bold,
                 fontSize: 18,
               ),
-            ),
-          ),
+            )),
           body: StreamBuilder<CompoundTarget?>(
             stream: compoundTargetStream(widget.guideId, widget.targetId),
             builder: (context, targetSnap) {
               final target = targetSnap.data;
               if (target == null) {
-                return const Center(child: CircularProgressIndicator());
+                return const GuideWait();
               }
               return StreamBuilder<List<CompoundPhase>>(
                 stream: compoundPhasesStream(widget.guideId, widget.targetId),
@@ -335,8 +334,7 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
                   ? SizedBox(
                       width: 14,
                       height: 14,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: context.g.onPrimary))
+                      child: const GuideBusyDot())
                   : const Icon(Icons.auto_awesome, size: 16),
               label: Text(_submitting
                   ? "Regenerating with AI…"

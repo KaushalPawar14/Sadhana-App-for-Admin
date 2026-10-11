@@ -12,6 +12,9 @@ import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideDialog.dart';
+import '../widgets/GuideWait.dart';
 
 /// Service Bank — replaces `Pages/DevotionalServiceManager.dart` entirely
 /// (Phase: Service Bank, Part 4). Reached from the same "D" tile on
@@ -185,8 +188,7 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
                           ? SizedBox(
                               width: 20,
                               height: 20,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: context.g.onPrimary),
+                              child: const GuideBusyDot(),
                             )
                           : Text("Assign",
                               style: TextStyle(color: context.g.onPrimary, fontWeight: FontWeight.w600)),
@@ -329,9 +331,7 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
         return DefaultTabController(
           length: 2,
           child: GuideScaffold(
-            appBar: AppBar(
-              elevation: 0,
-              backgroundColor: colorProvider.color,
+            appBar: GuideAppBar(
               leading: IconButton(
                 icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
                 onPressed: () => Navigator.pop(context),
@@ -346,8 +346,7 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
                 unselectedLabelColor: context.g.mutedText,
                 indicatorColor: context.g.brass,
                 tabs: [Tab(text: "Services"), Tab(text: "Assigned")],
-              ),
-            ),
+              )),
             body: TabBarView(children: [_buildServicesTab(), _buildAssignedTab()]),
           ),
         );
@@ -393,7 +392,7 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
       stream: allAssignmentsStream(),
       builder: (context, assignSnap) {
         if (!assignSnap.hasData) {
-          return const Center(child: CircularProgressIndicator());
+          return GuideWait(snapshot: assignSnap);
         }
 
         return FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -402,7 +401,7 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
           future: StudentScope.current().studentsGet(),
           builder: (context, usersSnap) {
             if (!usersSnap.hasData) {
-              return const Center(child: CircularProgressIndicator());
+              return GuideWait(snapshot: usersSnap);
             }
 
             final names = <String, String>{};
@@ -653,7 +652,7 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
             Future<void> unassign() async {
               final confirmed = await showDialog<bool>(
                 context: sheetContext,
-                builder: (dc) => AlertDialog(
+                builder: (dc) => GuideDialog(
                   title: const Text("Unassign this service?"),
                   content: Text(
                       "This marks the assignment withdrawn for $label. The record — including any competence already assessed — is kept, not deleted."),
@@ -790,7 +789,7 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
                             ? SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: context.g.onPrimary))
+                                child: const GuideBusyDot())
                             : Text("Save assessment", style: TextStyle(color: context.g.onPrimary)),
                       ),
                     ),

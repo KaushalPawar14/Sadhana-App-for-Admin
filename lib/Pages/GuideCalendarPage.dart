@@ -17,6 +17,9 @@ import '../widgets/GuideEntry.dart';
 import '../widgets/GuideGhost.dart';
 import '../widgets/GuideStates.dart';
 import '../widgets/GuideSurface.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideDialog.dart';
+import '../widgets/GuideWait.dart';
 
 /// Guide Calendar — text-to-dates, mandatory + personal layers (Part 5,
 /// management UI). GUIDE APP ONLY; the Student app has no read path to
@@ -175,7 +178,7 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             final isRange = endDate != null;
-            return AlertDialog(
+            return GuideDialog(
               title: const Text("Edit event"),
               content: SingleChildScrollView(
                 child: Column(
@@ -832,7 +835,7 @@ class _CalendarTextEntryPageState extends State<_CalendarTextEntryPage> {
               const Center(
                   child: Padding(
                 padding: EdgeInsets.symmetric(vertical: 8),
-                child: CircularProgressIndicator(),
+                child: const GuideBusyDot(),
               ))
             else
               GuidePrimaryButton(
@@ -1089,11 +1092,10 @@ class _CalendarTextEntryPageState extends State<_CalendarTextEntryPage> {
   @override
   Widget build(BuildContext context) {
     return GuideScaffold(
-      appBar: AppBar(
+      appBar: GuideAppBar(
         title: Text(_stage == _Stage.compose
             ? (_isEditing ? "Edit calendar text" : "Add calendar text")
-            : (_isEditing ? "Confirm updated events" : "Confirm parsed events")),
-      ),
+            : (_isEditing ? "Confirm updated events" : "Confirm parsed events"))),
       body: _stage == _Stage.compose
           ? _buildComposeStage()
           : _buildPreviewStage(),
@@ -1141,7 +1143,7 @@ class _TextBlockHistoryPage extends StatelessWidget {
     final count = _eventCountFor(b.id);
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => GuideDialog(
         title: const Text("Delete this text block?"),
         content: Text(
           count == 0
@@ -1186,7 +1188,7 @@ class _TextBlockHistoryPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GuideScaffold(
-      appBar: AppBar(title: const Text("Text history")),
+      appBar: GuideAppBar(title: const Text("Text history")),
       body: textBlocks.isEmpty
           ? const Center(
               child: Padding(

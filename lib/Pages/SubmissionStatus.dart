@@ -13,6 +13,9 @@ import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideDialog.dart';
+import '../widgets/GuideWait.dart';
 
 /// One scoped student's own submission status for today — just enough to
 /// show them in either list and, if tapped, open their own
@@ -199,7 +202,7 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => GuideDialog(
         title: const Text("Remind everyone?"),
         content: Text(
           "Send today's sadhana reminder to all ${targets.length} "
@@ -260,10 +263,7 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         return GuideScaffold(
-          appBar: AppBar(
-            backgroundColor: colorProvider.color,
-            elevation: 0,
-            iconTheme: IconThemeData(color: colorProvider.secondColor),
+          appBar: GuideAppBar(
             title: Text("Submission Status"),
             actions: [
               IconButton(
@@ -271,10 +271,9 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
                 icon: Icon(Icons.refresh, color: colorProvider.secondColor),
                 onPressed: _loading ? null : _load,
               ),
-            ],
-          ),
+            ]),
           body: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const GuideWait()
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(
@@ -354,7 +353,7 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
             const SizedBox(
               width: 18,
               height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: const GuideBusyDot(),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -461,7 +460,7 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: const GuideBusyDot(),
                       )
                     : TextButton.icon(
                         onPressed: () => _remind(student),

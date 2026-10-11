@@ -6,6 +6,8 @@ import '../utils/GuideRoster.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../widgets/GuideSurface.dart';
+import '../widgets/GuideDialog.dart';
+import '../widgets/GuideWait.dart';
 
 /// "Add Admin" / admin list — hierarchy version.
 ///
@@ -74,7 +76,7 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
                   return Center(child: Text('Could not load admins.', style: t.body));
                 }
                 if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
+                  return GuideWait(snapshot: snapshot);
                 }
                 final admins = snapshot.data!;
                 if (admins.isEmpty) {
@@ -241,7 +243,7 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
               }
             }
 
-            return AlertDialog(
+            return GuideDialog(
               title: const Text('Add an admin'),
               content: SingleChildScrollView(
                 child: Column(
@@ -349,7 +351,7 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
                       ? const SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: const GuideBusyDot(),
                         )
                       : const Text('Add'),
                 ),
@@ -438,7 +440,7 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
               }
             }
 
-            return AlertDialog(
+            return GuideDialog(
               title: Text('${a.displayName} — edit'),
               content: SingleChildScrollView(
                 child: Column(
@@ -523,7 +525,7 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
                       ? const SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: const GuideBusyDot(),
                         )
                       : const Text('Save'),
                 ),
@@ -563,7 +565,7 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
     final teamless = preview.teamlessEnablers.length;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => GuideDialog(
         title: Text('Remove ${a.displayName}?'),
         content: Text(
           'Are you sure? $n ${n == 1 ? 'student' : 'students'} will become '

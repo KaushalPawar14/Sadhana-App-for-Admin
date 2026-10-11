@@ -10,6 +10,8 @@ import '../Pages/AllGraph.dart' show GraphicalAnalysisSection;
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideWait.dart';
 
 class CalendarPage extends StatefulWidget {
   final String username;
@@ -346,7 +348,7 @@ class _CalendarPageState extends State<CalendarPage> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Padding(
             padding: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            child: const GuideWait(compact: true),
           );
         }
 
@@ -431,7 +433,7 @@ class _CalendarPageState extends State<CalendarPage> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Padding(
             padding: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            child: const GuideWait(compact: true),
           );
         }
 
@@ -540,7 +542,7 @@ class _CalendarPageState extends State<CalendarPage> {
         if (competitionSnap.connectionState == ConnectionState.waiting) {
           return const Padding(
             padding: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            child: const GuideWait(compact: true),
           );
         }
 
@@ -558,7 +560,7 @@ class _CalendarPageState extends State<CalendarPage> {
               return const Padding(
                 padding: EdgeInsets.all(16),
                 child:
-                    Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                    const GuideWait(compact: true),
               );
             }
 
@@ -721,7 +723,7 @@ class _CalendarPageState extends State<CalendarPage> {
       );
     }
 
-    if (_loadingDayData) return Center(child: CircularProgressIndicator());
+    if (_loadingDayData) return const GuideWait();
 
     if (_selectedDayData == null || _selectedDayData!.isEmpty) {
       return Center(
@@ -814,16 +816,13 @@ class _CalendarPageState extends State<CalendarPage> {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         return GuideScaffold(
-          appBar: AppBar(
-            backgroundColor: colorProvider.color,
-            elevation: 0,
+          appBar: GuideAppBar(
             leading: IconButton(
               icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
               onPressed: () => Navigator.pop(context),
             ),
             title: Text(widget.username,
-                style: TextStyle(color: colorProvider.secondColor)),
-          ),
+                style: TextStyle(color: colorProvider.secondColor))),
           // Four equal sections, one at a time. The tab row stays put; only
           // what sits under it swaps. No navigation — every tab is a widget
           // swap inside this one screen.

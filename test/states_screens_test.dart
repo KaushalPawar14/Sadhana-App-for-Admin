@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/Pages/GoalHomePage.dart';
 import 'package:folk_guide_app/Pages/WeeklyPlanning.dart';
 import 'package:folk_guide_app/utils/AdminProfile.dart';
-import 'package:folk_guide_app/utils/CalendarQueries.dart';
 import 'package:folk_guide_app/utils/GoalCompoundQueries.dart';
 import 'package:folk_guide_app/utils/GoalData.dart';
 import 'package:folk_guide_app/utils/WeekData.dart';

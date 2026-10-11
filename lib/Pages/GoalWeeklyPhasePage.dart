@@ -11,6 +11,9 @@ import 'CompoundGoalRoadmapPage.dart';
 import 'CompoundTaskEditorPage.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideDialog.dart';
+import '../widgets/GuideWait.dart';
 
 /// The compound target's weekly page — Part 5, this continuation task.
 ///
@@ -101,9 +104,7 @@ class _GoalWeeklyPhasePageState extends State<GoalWeeklyPhasePage> {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         return GuideScaffold(
-          appBar: AppBar(
-            elevation: 0,
-            backgroundColor: colorProvider.color,
+          appBar: GuideAppBar(
             leading: IconButton(
               icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
               onPressed: () => Navigator.pop(context),
@@ -115,14 +116,13 @@ class _GoalWeeklyPhasePageState extends State<GoalWeeklyPhasePage> {
                 fontWeight: FontWeight.bold,
                 fontSize: 18,
               ),
-            ),
-          ),
+            )),
           body: StreamBuilder<CompoundTarget?>(
             stream: compoundTargetStream(guideId, targetId),
             builder: (context, targetSnap) {
               final target = targetSnap.data;
               if (target == null) {
-                return const Center(child: CircularProgressIndicator());
+                return const GuideWait();
               }
               if (target.totalPhases == 0) {
                 return const Center(
@@ -136,7 +136,7 @@ class _GoalWeeklyPhasePageState extends State<GoalWeeklyPhasePage> {
                   final currentPhase = phases.where(
                       (p) => p.phaseNumber == target.currentPhase);
                   if (currentPhase.isEmpty) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const GuideWait();
                   }
                   return _body(context, target, currentPhase.first);
                 },
@@ -366,12 +366,12 @@ class _GoalWeeklyPhasePageState extends State<GoalWeeklyPhasePage> {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const AlertDialog(
+      builder: (_) => const GuideDialog(
         content: Row(
           children: [
             SizedBox(
               width: 20, height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: const GuideBusyDot(),
             ),
             SizedBox(width: 16),
             Expanded(

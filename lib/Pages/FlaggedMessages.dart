@@ -12,6 +12,8 @@ import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideWait.dart';
 
 /// Phase 7 — flagged student chat messages.
 ///
@@ -168,19 +170,15 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
                   onCancel: _cancelSelectionMode,
                   onDelete: _selectedIds.isEmpty ? null : _deleteSelected,
                 )
-              : AppBar(
-                  backgroundColor: colorProvider.color,
-                  elevation: 0,
-                  iconTheme: IconThemeData(color: colorProvider.secondColor),
-                  title: Text("Flagged Messages"),
-                ),
+              : GuideAppBar(
+                  title: Text("Flagged Messages")),
           body: _loading ?
-              const Center(child: CircularProgressIndicator()) :
+              const GuideWait() :
               StreamBuilder<QuerySnapshot>(
                 stream: _stream(_guide ?? ''),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const GuideWait();
                   }
 
                   final docs = (snapshot.data?.docs ?? []).toList()
@@ -633,23 +631,19 @@ class StudentChatTranscriptPage extends StatelessWidget {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         return GuideScaffold(
-          appBar: AppBar(
-            backgroundColor: colorProvider.color,
-            elevation: 0,
-            iconTheme: IconThemeData(color: colorProvider.secondColor),
+          appBar: GuideAppBar(
             title: Text(
               studentName,
               style: TextStyle(
                 color: colorProvider.secondColor,
                 fontWeight: FontWeight.bold,
               ),
-            ),
-          ),
+            )),
           body: FutureBuilder<String?>(
             future: _resolveSessionDate(),
             builder: (context, sessionSnap) {
               if (sessionSnap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
+                return const GuideWait();
               }
 
               final sessionDate = sessionSnap.data;
@@ -676,7 +670,7 @@ class StudentChatTranscriptPage extends StatelessWidget {
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const GuideWait();
                   }
 
                   final docs = (snapshot.data?.docs ?? []).toList()

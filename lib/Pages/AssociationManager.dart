@@ -14,6 +14,9 @@ import 'OverdueAssociations.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideDialog.dart';
+import '../widgets/GuideWait.dart';
 
 /// Association — meeting requests raised by students.
 ///
@@ -250,9 +253,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
-          return AlertDialog(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          return GuideDialog(
             title: const Text("Complete Meeting"),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -557,10 +558,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                             ? SizedBox(
                                 width: 20,
                                 height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: context.g.surface,
-                                ),
+                                child: const GuideBusyDot(),
                               )
                             : Text(
                                 "Send Request",
@@ -1087,7 +1085,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
       stream: _guideStream(guide),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const GuideWait();
         }
 
         final docs = (snapshot.data?.docs ?? [])
@@ -1115,7 +1113,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
       stream: _guideStream(guide),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const GuideWait();
         }
 
         final all = snapshot.data?.docs ?? [];
@@ -1197,9 +1195,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                   onDelete: _selectedIds.isEmpty ? null : _deleteSelected,
                   bottom: tabBar,
                 )
-              : AppBar(
-            elevation: 0,
-            backgroundColor: colorProvider.color,
+              : GuideAppBar(
             leading: IconButton(
               icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
               onPressed: () => Navigator.pop(context),
@@ -1245,10 +1241,9 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                 ),
               ),
             ],
-            bottom: tabBar,
-          ),
+            bottom: tabBar),
           body: guide == null
-              ? const Center(child: CircularProgressIndicator())
+              ? const GuideWait()
               : TabBarView(
                   controller: _tabController,
                   children: [

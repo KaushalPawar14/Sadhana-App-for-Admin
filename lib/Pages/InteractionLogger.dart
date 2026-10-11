@@ -14,6 +14,9 @@ import 'LitAssessment.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideDialog.dart';
+import '../widgets/GuideWait.dart';
 
 /// Phase 5, item 1 — interaction logging.
 ///
@@ -477,7 +480,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                                 width: 18,
                                 height: 18,
                                 child:
-                                    CircularProgressIndicator(strokeWidth: 2),
+                                    const GuideBusyDot(),
                               ),
                               SizedBox(width: 12),
                               Expanded(
@@ -546,12 +549,8 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                   onCancel: _cancelSelectionMode,
                   onDelete: _selectedIds.isEmpty ? null : _deleteSelected,
                 )
-              : AppBar(
-            backgroundColor: colorProvider.color,
-            elevation: 0,
-            iconTheme: IconThemeData(color: colorProvider.secondColor),
-            title: Text("Interactions"),
-          ),
+              : GuideAppBar(
+            title: Text("Interactions")),
           floatingActionButton: FloatingActionButton.extended(
             backgroundColor: context.g.brass,
             onPressed: _openEntrySheet,
@@ -562,7 +561,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
             ),
           ),
           body: _studentRef == null && !_studentRefFailed
-              ? const Center(child: CircularProgressIndicator())
+              ? const GuideWait()
               : StreamBuilder<QuerySnapshot>(
             // studentUid plus the scope filter that proves the viewer may read
             // this student's logs; sorted in Dart so no composite index is
@@ -579,7 +578,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting &&
                   _studentRef != null) {
-                return const Center(child: CircularProgressIndicator());
+                return const GuideWait();
               }
 
               final docs = snapshot.data?.docs.toList() ?? [];
@@ -818,7 +817,7 @@ Future<void> _offerLitAssessment({
 }) async {
   final wants = await showDialog<bool>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
+    builder: (dialogContext) => GuideDialog(
       title: const Text("Add LIT assessment?"),
       content: const Text(
         "Optional. A private, guide-only reading of receptivity, interest "
@@ -1100,14 +1099,10 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         return GuideScaffold(
-          appBar: AppBar(
-            backgroundColor: colorProvider.color,
-            elevation: 0,
-            iconTheme: IconThemeData(color: colorProvider.secondColor),
-            title: Text("Interaction — ${widget.studentName}"),
-          ),
+          appBar: GuideAppBar(
+            title: Text("Interaction — ${widget.studentName}")),
           body: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const GuideWait()
               : SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
                   child: Column(
@@ -1276,7 +1271,7 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(12),
-          child: CircularProgressIndicator(),
+          child: const GuideBusyDot(),
         ),
       );
     }

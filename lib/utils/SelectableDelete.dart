@@ -17,18 +17,19 @@
 /// have selected.
 library;
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'Snackbar.dart';
 import '../theme/GuideTheme.dart';
 import 'GuideDb.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideDialog.dart';
 
 /// AppBar shown once 1+ items are selected — visual language matches
 /// `Dashboard._buildSelectionAppBar` (red bar, close icon, delete icon,
 /// "$n selected" title) so this feels like the same mechanism, not a
 /// different one bolted on per screen.
-AppBar selectionAppBar({
+PreferredSizeWidget selectionAppBar({
   required BuildContext context,
   required int count,
   required VoidCallback onCancel,
@@ -39,18 +40,18 @@ AppBar selectionAppBar({
   // shared id set, not per-tab).
   PreferredSizeWidget? bottom,
 }) {
-  return AppBar(
-    elevation: 0,
-    backgroundColor: context.g.danger,
+  return GuideAppBar(
+    danger: true,
     leading: IconButton(
-      icon: Icon(Icons.close, color: context.g.onPrimary),
+      icon: const Icon(Icons.close),
+      tooltip: 'Cancel selection',
       onPressed: onCancel,
     ),
-    title: Text('$count selected', style: TextStyle(color: context.g.onPrimary)),
-    centerTitle: true,
+    title: Text('$count selected'),
     actions: [
       IconButton(
-        icon: Icon(Icons.delete, color: context.g.onPrimary),
+        icon: const Icon(Icons.delete_outline),
+        tooltip: 'Delete selected',
         onPressed: onDelete,
       ),
     ],
@@ -149,8 +150,7 @@ Future<Set<String>> confirmAndDeleteSelected({
 
   final confirmed = await showDialog<bool>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    builder: (dialogContext) => GuideDialog(
       title: Text("Delete $count $noun?"),
       content: Column(
         mainAxisSize: MainAxisSize.min,

@@ -9,6 +9,9 @@ import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../widgets/GuideSurface.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideDialog.dart';
+import '../widgets/GuideWait.dart';
 
 /// Podcast / audiobook link manager — FOLK-2/4/8/12/16.
 ///
@@ -47,9 +50,7 @@ class PodcastLinkManagerPage extends StatelessWidget {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         return GuideScaffold(
-          appBar: AppBar(
-            elevation: 0,
-            backgroundColor: colorProvider.color,
+          appBar: GuideAppBar(
             title: Text(
               "Podcast Links",
               style: TextStyle(
@@ -61,8 +62,7 @@ class PodcastLinkManagerPage extends StatelessWidget {
             leading: IconButton(
               icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
               onPressed: () => Navigator.pop(context),
-            ),
-          ),
+            )),
           body: const PodcastLinkSections(scrollable: true),
         );
       },
@@ -237,9 +237,7 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
-          return AlertDialog(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          return GuideDialog(
             title: Text(isNew ? "Add Episode" : "Episode $number"),
             content: SingleChildScrollView(
               child: Column(
@@ -408,8 +406,7 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
   }) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      builder: (dialogContext) => GuideDialog(
         title: const Text("Remove episode?"),
         content: Text(
           '"$title" will be removed from ${levelTitles[level] ?? level}. '
@@ -767,7 +764,7 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
           return const Center(
             child: Padding(
               padding: EdgeInsets.all(24),
-              child: CircularProgressIndicator(),
+              child: const GuideBusyDot(),
             ),
           );
         }

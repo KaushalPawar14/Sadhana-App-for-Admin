@@ -8,6 +8,8 @@ import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideWait.dart';
 
 /// Per-student book reading progress — Phase 4 of the Book Reading redesign
 /// (built 2026-08-23). Reached from the student action sheet's "Books" entry.
@@ -138,9 +140,7 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         return GuideScaffold(
-          appBar: AppBar(
-            elevation: 0,
-            backgroundColor: colorProvider.color,
+          appBar: GuideAppBar(
             leading: IconButton(
               icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
               onPressed: () => Navigator.pop(context),
@@ -154,8 +154,7 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
                 fontWeight: FontWeight.bold,
                 fontSize: 18,
               ),
-            ),
-          ),
+            )),
           body: Column(
             children: [
               _commitmentBanner(colorProvider),
@@ -168,7 +167,7 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
                     colorProvider, "Could not load the book list.");
               }
               if (!configSnap.hasData) {
-                return const Center(child: CircularProgressIndicator());
+                return GuideWait(snapshot: configSnap);
               }
 
               final config = configSnap.data!;
@@ -179,7 +178,7 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
                 stream: _progressStream,
                 builder: (context, progressSnap) {
                   if (!progressSnap.hasData) {
-                    return const Center(child: CircularProgressIndicator());
+                    return GuideWait(snapshot: progressSnap);
                   }
 
                   // Keyed "{level}_{bookKey}" — matches on the document's own

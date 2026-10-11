@@ -11,6 +11,8 @@ import 'StudentProfilePage.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideWait.dart';
 
 /// Priority students (Phase 6, half 1, item 4).
 ///
@@ -301,10 +303,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         return GuideScaffold(
-          appBar: AppBar(
-            backgroundColor: colorProvider.color,
-            elevation: 0,
-            iconTheme: IconThemeData(color: colorProvider.secondColor),
+          appBar: GuideAppBar(
             title: Text("Priority Students"),
             actions: [
               IconButton(
@@ -312,10 +311,9 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
                 icon: Icon(Icons.refresh, color: colorProvider.secondColor),
                 onPressed: _loading ? null : _load,
               ),
-            ],
-          ),
+            ]),
           body: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const GuideWait()
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(

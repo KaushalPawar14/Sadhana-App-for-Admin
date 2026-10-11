@@ -9,6 +9,8 @@ import '../utils/StudentNameGuard.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideWait.dart';
 
 class AdminRegisterUserPage extends StatefulWidget {
   const AdminRegisterUserPage({super.key});
@@ -114,8 +116,7 @@ class _AdminRegisterUserPageState extends State<AdminRegisterUserPage>
 
     return Consumer<ColorProvider>(builder: (context, colorProvider, child) {
       return GuideScaffold(
-        appBar: AppBar(
-          backgroundColor: colorProvider.color,
+        appBar: GuideAppBar(
           title: AnimatedDefaultTextStyle(
             duration: Duration(milliseconds: 400),
             style: TextStyle(
@@ -123,8 +124,7 @@ class _AdminRegisterUserPageState extends State<AdminRegisterUserPage>
                 fontWeight: FontWeight.bold,
                 fontSize: 22),
             child: Text("Register New User"),
-          ),
-        ),
+          )),
         body: AnimatedOpacity(
           duration: Duration(milliseconds: 600),
           opacity: _opacity,
@@ -237,7 +237,7 @@ class _AdminRegisterUserPageState extends State<AdminRegisterUserPage>
                       duration: Duration(milliseconds: 250),
                       curve: Curves.easeInOut,
                       child: isLoading
-                          ? CircularProgressIndicator(color: context.g.warning)
+                          ? const GuideBusyDot()
                           : ElevatedButton(
                         onPressed: registerUser,
                         style: ElevatedButton.styleFrom(

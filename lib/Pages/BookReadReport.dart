@@ -9,6 +9,7 @@ import '../utils/StudentScope.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideWait.dart';
 
 class BookReadingScreen extends StatefulWidget {
   const BookReadingScreen({super.key});
@@ -43,7 +44,7 @@ class _CheckSadhanaScreenState extends State<BookReadingScreen> {
               stream: StudentScope.current().historyStream('booksRead'),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const GuideWait();
                 }
 
                 if (snapshot.hasError) {
@@ -239,7 +240,7 @@ class StudentDetailScreen extends StatelessWidget {
                     builder: (context, snapshot) {
 
                       if (!snapshot.hasData) {
-                        return const Center(child: CircularProgressIndicator());
+                        return GuideWait(snapshot: snapshot);
                       }
 
                       final booksByLevel = snapshot.data!;

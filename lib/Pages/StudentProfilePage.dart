@@ -16,6 +16,8 @@ import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../theme/GuideColors.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideDialog.dart';
+import '../widgets/GuideWait.dart';
 
 /// The student profile page — Phase 3 of the FOLK Boys board redesign.
 /// Opened by the new fourth card icon on `Home/FolkBoysWorkspace.dart`'s
@@ -419,7 +421,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
       if (!context.mounted) return;
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => GuideDialog(
           title: const Text('Change residence?'),
           content: const Text(
             "Reports submitted from now on will be filed under the new "
@@ -474,7 +476,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                 .snapshots(),
             builder: (context, snapshot) {
               if (!snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
+                return GuideWait(snapshot: snapshot);
               }
 
               final data = snapshot.data!.data() ?? <String, dynamic>{};

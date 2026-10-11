@@ -8,6 +8,8 @@ import '../utils/GoalMetrics.dart';
 import '../utils/Snackbar.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
+import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideWait.dart';
 
 /// Compound target setup — "N students at value V" (chanting or books).
 ///
@@ -125,9 +127,7 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
       builder: (context, colorProvider, child) {
         final metricInfo = goalMetricById(_metric);
         return GuideScaffold(
-          appBar: AppBar(
-            elevation: 0,
-            backgroundColor: colorProvider.color,
+          appBar: GuideAppBar(
             leading: IconButton(
               icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
               onPressed: () => Navigator.pop(context),
@@ -139,8 +139,7 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
                 fontWeight: FontWeight.bold,
                 fontSize: 18,
               ),
-            ),
-          ),
+            )),
           body: ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
             children: [
@@ -244,8 +243,7 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
                       ? SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: context.g.onPrimary),
+                          child: const GuideBusyDot(),
                         )
                       : const Icon(Icons.auto_awesome, size: 18),
                   label: Text(_submitting
