@@ -13,6 +13,9 @@ import '../utils/Snackbar.dart';
 import '../widgets/GuideBoard.dart';
 import '../widgets/GuideButtons.dart';
 import '../widgets/GuideCalendar.dart';
+import '../widgets/GuideEntry.dart';
+import '../widgets/GuideGhost.dart';
+import '../widgets/GuideStates.dart';
 import '../widgets/GuideSurface.dart';
 
 /// Guide Calendar — text-to-dates, mandatory + personal layers (Part 5,
@@ -45,6 +48,7 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
   bool get _isHod => AdminProfileProvider.viewerIsHod;
 
   bool _loading = true;
+  bool _loadFailed = false;
   List<CalendarEvent> _events = [];
   List<CalendarTextBlock> _textBlocks = [];
 
@@ -62,7 +66,10 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
   }
 
   Future<void> _loadAll() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _loadFailed = false;
+    });
     try {
       final events = await CalendarData.instance.events(widget.selectedGuide);
       final blocks = await CalendarData.instance.textBlocks(widget.selectedGuide);
@@ -74,7 +81,10 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _loadFailed = true;
+      });
       showSnackbar(
           context, "Could not load the calendar", Colors.red, Icons.error);
     }
@@ -331,6 +341,73 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
     final cellWidth = (width - 2 * GuideSpace.pagePadding - 20) / 7;
     final rowHeight = guideCalendarRowHeight(context, cellWidth);
 
+    // The month card. It is also the placeholder of the ghost: laid out with no events
+    // it has exactly the size the loaded one will have, at any text scale.
+    Widget monthCard() =>
+                      GuideCard(
+                        padding: const EdgeInsets.fromLTRB(10, 12, 10, 6),
+                        child: TableCalendar<CalendarEvent>(
+                          firstDay: DateTime.now().subtract(const Duration(days: 365)),
+                          lastDay: DateTime.now().add(const Duration(days: 365)),
+                          focusedDay: _focusedDay,
+                          selectedDayPredicate: (day) =>
+                              _selectedDay != null && isSameDay(day, _selectedDay),
+                          onDaySelected: (selectedDay, focusedDay) {
+                            setState(() {
+                              _selectedDay = selectedDay;
+                              _focusedDay = focusedDay;
+                            });
+                          },
+                          onPageChanged: (focusedDay) {
+                            _focusedDay = focusedDay;
+                          },
+                          rowHeight: rowHeight,
+                          daysOfWeekHeight: 12 * scale + 16,
+                          headerStyle: HeaderStyle(
+                            titleCentered: true,
+                            formatButtonVisible: false,
+                            leftChevronIcon:
+                                Icon(Icons.chevron_left_rounded, color: g.mutedText),
+                            rightChevronIcon:
+                                Icon(Icons.chevron_right_rounded, color: g.mutedText),
+                            titleTextStyle: t.sectionTitle,
+                            headerPadding: const EdgeInsets.only(bottom: 10),
+                          ),
+                          calendarStyle: const CalendarStyle(cellMargin: EdgeInsets.zero),
+                          pageAnimationEnabled: !GuideMotion.reduced(context),
+                          pageAnimationDuration: const Duration(milliseconds: 250),
+                          pageAnimationCurve: GuideMotion.standard,
+                          calendarBuilders: CalendarBuilders(
+                            dowBuilder: (context, day) => Center(
+                              child: ExcludeSemantics(
+                                child: Text(
+                                  DateFormat.E().format(day),
+                                  style: t.small.copyWith(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ),
+                            defaultBuilder: (context, day, focusedDay) => GuideDayCell(
+                                day: day, events: _eventsOn(day), cellWidth: cellWidth),
+                            todayBuilder: (context, day, focusedDay) => GuideDayCell(
+                                day: day,
+                                events: _eventsOn(day),
+                                cellWidth: cellWidth,
+                                isToday: true),
+                            selectedBuilder: (context, day, focusedDay) => GuideDayCell(
+                                day: day,
+                                events: _eventsOn(day),
+                                cellWidth: cellWidth,
+                                selected: true,
+                                isToday: isSameDay(day, DateTime.now())),
+                            outsideBuilder: (context, day, focusedDay) => GuideDayCell(
+                                day: day,
+                                events: _eventsOn(day),
+                                cellWidth: cellWidth,
+                                outside: true),
+                          ),
+                        ),
+                      );
+
     return GuideScaffold(
       floatingActionButton: GuideFab(
         label: "Add text",
@@ -364,9 +441,15 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
             ],
           ),
           Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : ListView(
+            child: GuideCrossFade(
+              child: _loading || _loadFailed
+                ? KeyedSubtree(
+                    key: ValueKey(_loadFailed ? 'ghost-error' : 'ghost-loading'),
+                    child: _calendarWait(monthCard(), _todayGhost()),
+                  )
+                : KeyedSubtree(
+                    key: const ValueKey('calendar'),
+                    child: ListView(
                     padding: const EdgeInsets.fromLTRB(
                         GuideSpace.pagePadding, 8, GuideSpace.pagePadding, 110),
                     children: [
@@ -386,73 +469,85 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
                         child: GuideCalendarLegend(),
                       ),
                       const SizedBox(height: 12),
-                      GuideCard(
-                        padding: const EdgeInsets.fromLTRB(10, 12, 10, 6),
-                        child: TableCalendar<CalendarEvent>(
-                          firstDay: DateTime.now().subtract(const Duration(days: 365)),
-                          lastDay: DateTime.now().add(const Duration(days: 365)),
-                          focusedDay: _focusedDay,
-                          selectedDayPredicate: (day) =>
-                              _selectedDay != null && isSameDay(day, _selectedDay),
-                          onDaySelected: (selectedDay, focusedDay) {
-                            setState(() {
-                              _selectedDay = selectedDay;
-                              _focusedDay = focusedDay;
-                            });
-                          },
-                          onPageChanged: (focusedDay) {
-                            _focusedDay = focusedDay;
-                          },
-                          rowHeight: rowHeight,
-                          daysOfWeekHeight: 12 * scale + 16,
-                          headerStyle: HeaderStyle(
-                            titleCentered: true,
-                            formatButtonVisible: false,
-                            leftChevronIcon:
-                                Icon(Icons.chevron_left_rounded, color: g.mutedText),
-                            rightChevronIcon:
-                                Icon(Icons.chevron_right_rounded, color: g.mutedText),
-                            titleTextStyle: t.sectionTitle,
-                            headerPadding: const EdgeInsets.only(bottom: 10),
-                          ),
-                          calendarStyle: const CalendarStyle(cellMargin: EdgeInsets.zero),
-                          calendarBuilders: CalendarBuilders(
-                            dowBuilder: (context, day) => Center(
-                              child: ExcludeSemantics(
-                                child: Text(
-                                  DateFormat.E().format(day),
-                                  style: t.small.copyWith(fontWeight: FontWeight.w600),
-                                ),
-                              ),
-                            ),
-                            defaultBuilder: (context, day, focusedDay) => GuideDayCell(
-                                day: day, events: _eventsOn(day), cellWidth: cellWidth),
-                            todayBuilder: (context, day, focusedDay) => GuideDayCell(
-                                day: day,
-                                events: _eventsOn(day),
-                                cellWidth: cellWidth,
-                                isToday: true),
-                            selectedBuilder: (context, day, focusedDay) => GuideDayCell(
-                                day: day,
-                                events: _eventsOn(day),
-                                cellWidth: cellWidth,
-                                selected: true,
-                                isToday: isSameDay(day, DateTime.now())),
-                            outsideBuilder: (context, day, focusedDay) => GuideDayCell(
-                                day: day,
-                                events: _eventsOn(day),
-                                cellWidth: cellWidth,
-                                outside: true),
-                          ),
-                        ),
-                      ),
+                      monthCard(),
                       const SizedBox(height: 16),
                       _todayPanel(),
                     ],
                   ),
+                  ),
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  /// While the month loads (or if it failed): the legend stays real; the month card and
+  /// the event list are ghosts of themselves; a failure freezes them and offers Retry.
+  Widget _calendarWait(Widget monthCard, Widget todayGhost) {
+    final t = context.gText;
+    final ghost = ListView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 8, GuideSpace.pagePadding, 110),
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: GuideCalendarLegend(),
+        ),
+        const SizedBox(height: 12),
+        GuideGhostOf(placeholder: monthCard),
+        const SizedBox(height: 16),
+        todayGhost,
+      ],
+    );
+    if (_loadFailed) {
+      return Stack(
+        children: [
+          GuideGhostArea(pulsing: false, child: ghost),
+          Positioned(
+            left: GuideSpace.pagePadding,
+            right: GuideSpace.pagePadding,
+            bottom: 130,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Could not load the calendar. Check your connection and try again.',
+                  textAlign: TextAlign.center,
+                  style: t.body.copyWith(color: context.g.mutedText, height: 1.5),
+                ),
+                const SizedBox(height: 12),
+                GuideSecondaryButton(label: 'Retry', icon: Icons.refresh_rounded, onPressed: _loadAll),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+    return GuideGhostArea(child: ghost);
+  }
+
+  /// The ghost of the selected day's list: a heading and three event rows.
+  Widget _todayGhost() {
+    final t = context.gText;
+    final sample = CalendarEvent(
+      id: 'ghost',
+      eventDate: DateTime.now(),
+      endDate: null,
+      type: kEventTypeOther,
+      title: 'Sample event',
+      note: '',
+      sourceTextBlockId: '',
+      scope: kScopePersonal,
+      ownerGuideId: null,
+      notifyOffsets: const [],
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Today', style: t.sectionTitle),
+        for (var i = 0; i < 3; i++) GuideGhostOf(placeholder: GuideEventRow(event: sample)),
+      ],
     );
   }
 
@@ -501,10 +596,15 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
             ),
           )
         else
-          for (final e in events)
-            GuideEventRow(
-              event: e,
-              onTap: _canMutate(e) ? () => _openEditEventDialog(e) : null,
+          for (var i = 0; i < events.length; i++)
+            GuideEntry(
+              // A new day replays the rise: the key carries the day.
+              key: ValueKey('${DateFormat('yyyyMMdd').format(day)}-${events[i].id}'),
+              index: i,
+              child: GuideEventRow(
+                event: events[i],
+                onTap: _canMutate(events[i]) ? () => _openEditEventDialog(events[i]) : null,
+              ),
             ),
       ],
     );

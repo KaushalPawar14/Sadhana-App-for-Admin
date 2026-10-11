@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../theme/GuideColors.dart';
 import '../theme/GuideTheme.dart';
 import '../utils/CalendarQueries.dart';
+import '../theme/GuideTokens.dart';
 import 'GuideSurface.dart';
 
 /// The calendar category of an event, for its colour: an exam, festival or
@@ -127,19 +128,22 @@ class GuideDayCell extends StatelessWidget {
             ),
           Positioned(
             top: (zone - circle) / 2,
-            child: Container(
-              width: circle,
-              height: circle,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: selected ? g.primaryGradient : null,
-                border: isToday && !selected ? Border.all(color: g.brass, width: 1.5) : null,
-                boxShadow: selected
-                    ? [BoxShadow(color: g.brassGlow, blurRadius: 14, offset: const Offset(0, 6))]
-                    : null,
+            child: GuideSelectPop(
+              selected: selected,
+              child: Container(
+                width: circle,
+                height: circle,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: selected ? g.primaryGradient : null,
+                  border: isToday && !selected ? Border.all(color: g.brass, width: 1.5) : null,
+                  boxShadow: selected
+                      ? [BoxShadow(color: g.brassGlow, blurRadius: 14, offset: const Offset(0, 6))]
+                      : null,
+                ),
+                child: Text('${day.day}', style: dayStyle),
               ),
-              child: Text('${day.day}', style: dayStyle),
             ),
           ),
           if (dots.isNotEmpty)
@@ -181,14 +185,132 @@ class GuideDayCell extends StatelessWidget {
     final isStart = isSameCalendarDay(day, e.eventDate);
     final isEnd = isSameCalendarDay(day, e.effectiveEndDate);
     final cap = Radius.circular(height / 2);
-    return Container(
-      margin: EdgeInsetsDirectional.only(start: isStart ? 2 : 0, end: isEnd ? 2 : 0),
-      decoration: BoxDecoration(
-        color: g.eventBand(guideEventTypeOf(e)),
-        borderRadius: BorderRadius.horizontal(
-          left: isStart ? cap : Radius.zero,
-          right: isEnd ? cap : Radius.zero,
+    // How many days into the event this cell is: later days start growing later,
+    // so the band reads as growing from its first day.
+    final offset = day.difference(DateTime(e.eventDate.year, e.eventDate.month, e.eventDate.day)).inDays;
+    return GuideBandGrow(
+      order: offset.clamp(0, 6),
+      child: Container(
+        margin: EdgeInsetsDirectional.only(start: isStart ? 2 : 0, end: isEnd ? 2 : 0),
+        decoration: BoxDecoration(
+          color: g.eventBand(guideEventTypeOf(e)),
+          borderRadius: BorderRadius.horizontal(
+            left: isStart ? cap : Radius.zero,
+            right: isEnd ? cap : Radius.zero,
+          ),
         ),
+      ),
+    );
+  }
+}
+
+/// A date that becomes selected scales in from 0.6 to 1 (150 ms). The circle is
+/// always laid out at full size; only the paint scales.
+class GuideSelectPop extends StatefulWidget {
+  const GuideSelectPop({super.key, required this.selected, required this.child});
+
+  final bool selected;
+  final Widget child;
+
+  @override
+  State<GuideSelectPop> createState() => _GuideSelectPopState();
+}
+
+class _GuideSelectPopState extends State<GuideSelectPop> with SingleTickerProviderStateMixin {
+  AnimationController? _controller;
+  bool _playing = false;
+
+  void _play() {
+    if (GuideMotion.reduced(context)) return;
+    final c = _controller ??=
+        AnimationController(vsync: this, duration: const Duration(milliseconds: 150));
+    _playing = true;
+    c.forward(from: 0).whenComplete(() {
+      if (mounted) setState(() => _playing = false);
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (widget.selected && _controller == null) _play();
+  }
+
+  @override
+  void didUpdateWidget(GuideSelectPop old) {
+    super.didUpdateWidget(old);
+    if (widget.selected && !old.selected) _play();
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _controller;
+    if (c == null || !_playing || !widget.selected) return widget.child;
+    return ScaleTransition(
+      scale: Tween<double>(begin: 0.6, end: 1).animate(CurvedAnimation(parent: c, curve: GuideMotion.out)),
+      child: widget.child,
+    );
+  }
+}
+
+/// A multi-day band grows from its left edge in 200 ms; the later the day within the
+/// event, the later it starts (20 ms a day, at most six days). Plays once per cell.
+class GuideBandGrow extends StatefulWidget {
+  const GuideBandGrow({super.key, required this.order, required this.child});
+
+  final int order;
+  final Widget child;
+
+  @override
+  State<GuideBandGrow> createState() => _GuideBandGrowState();
+}
+
+class _GuideBandGrowState extends State<GuideBandGrow> with SingleTickerProviderStateMixin {
+  AnimationController? _controller;
+  late Animation<double> _curve;
+  bool _decided = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_decided) return;
+    _decided = true;
+    if (GuideMotion.reduced(context)) return;
+    final delay = Duration(milliseconds: 20 * widget.order);
+    final total = const Duration(milliseconds: 200) + delay;
+    final c = AnimationController(vsync: this, duration: total);
+    _curve = CurvedAnimation(
+      parent: c,
+      curve: Interval(delay.inMicroseconds / total.inMicroseconds, 1, curve: GuideMotion.out),
+    );
+    _controller = c
+      ..forward().whenComplete(() {
+        if (mounted) setState(() {});
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _controller;
+    if (c == null || c.isCompleted) return widget.child;
+    return AnimatedBuilder(
+      animation: _curve,
+      child: widget.child,
+      builder: (context, child) => Align(
+        alignment: Alignment.centerLeft,
+        child: FractionallySizedBox(widthFactor: _curve.value.clamp(0.0, 1.0), child: child),
       ),
     );
   }
