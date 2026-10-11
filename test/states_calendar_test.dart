@@ -139,7 +139,10 @@ void main() {
     expect(growing, isNotEmpty);
     await tester.pumpAndSettle();
     expect(tester.binding.transientCallbackCount, 0);
-    expect(find.descendant(of: find.byType(GuideBandGrow), matching: find.byType(FractionallySizedBox)), findsNothing);
+    for (final f in tester.widgetList<FractionallySizedBox>(
+        find.descendant(of: find.byType(GuideBandGrow), matching: find.byType(FractionallySizedBox)))) {
+      expect(f.widthFactor, 1.0, reason: 'fully grown');
+    }
 
     // select another day: the circle pops
     await tester.tap(find.byWidgetPredicate((w) => w is GuideDayCell && w.day.day == d(20).day && !w.outside).first);

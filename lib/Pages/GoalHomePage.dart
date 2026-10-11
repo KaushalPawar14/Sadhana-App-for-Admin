@@ -9,6 +9,9 @@ import '../utils/GoalMetrics.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/Snackbar.dart';
 import '../widgets/GuideButtons.dart';
+import '../widgets/GuideEntry.dart';
+import '../widgets/GuideGhost.dart';
+import '../widgets/GuideStates.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
 import 'CompoundGoalHodReview.dart';
@@ -28,17 +31,39 @@ import 'GoalWeeklyPhasePage.dart';
 /// `GoalWeeklyPhasePage`/`CompoundGoalProgressPage`), offers "+ New target"
 /// (`CompoundGoalSetupPage`), and — only for the HOD — a way to reach
 /// `CompoundGoalHodReview` to propose changes on any guide's targets.
-class GoalHomePage extends StatelessWidget {
+class GoalHomePage extends StatefulWidget {
   final String guideId;
 
   const GoalHomePage({super.key, required this.guideId});
 
+  @override
+  State<GoalHomePage> createState() => _GoalHomePageState();
+}
+
+class _GoalHomePageState extends State<GoalHomePage> {
+  String get guideId => widget.guideId;
+
   // Role check (several HODs may exist; no id is special).
   bool get _isHod => AdminProfileProvider.viewerIsHod;
 
+  /// The ghost of one target card: the real card laid out invisibly, then a soft fill.
+  Widget _cardGhost() {
+    final sample = CompoundTarget.from(guideId, 'ghost', {
+      'metric': kMetricChanting,
+      'studentCountGoal': 20,
+      'perStudentValueGoal': 16,
+      'status': 'active',
+      'currentPhase': 1,
+      'totalPhases': 8,
+    });
+    return GuideGhostOf(
+      inset: const EdgeInsets.only(bottom: 12),
+      placeholder: _CompoundTargetCard(guideId: guideId, target: sample),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final t = context.gText;
     return GuideScaffold(
       body: Column(
         children: [
@@ -65,28 +90,39 @@ class GoalHomePage extends StatelessWidget {
                 final targets = (snap.data ?? const <CompoundTarget>[])
                     .where((t) => t.isActive)
                     .toList();
+                final state = snap.hasError
+                    ? GuideLoad.error
+                    : !snap.hasData
+                        ? GuideLoad.loading
+                        : targets.isEmpty
+                            ? GuideLoad.empty
+                            : GuideLoad.content;
 
                 return ListView(
                   // Room for the pinned "New target" button.
-                  padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 12,
-                      GuideSpace.pagePadding, 24),
+                  padding: const EdgeInsets.fromLTRB(
+                      GuideSpace.pagePadding, 12, GuideSpace.pagePadding, 24),
                   children: [
-                    if (targets.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 24),
-                        child: Text(
-                          "No active targets yet. Create a compound target — "
+                    GuideStateView(
+                      state: state,
+                      ghost: Column(children: [_cardGhost(), _cardGhost()]),
+                      content: Column(
+                        children: [
+                          for (var i = 0; i < targets.length; i++)
+                            GuideEntry(
+                              index: i,
+                              child: _CompoundTargetCard(guideId: guideId, target: targets[i]),
+                            ),
+                        ],
+                      ),
+                      emptyMessage: "No active targets yet. Create a compound target — "
                           "\"N students each at a value\" — and get a real, "
                           "AI-generated phase plan from your group's actual "
                           "current numbers.",
-                          style: t.small.copyWith(height: 1.4),
-                        ),
-                      )
-                    else
-                      ...targets.map((t) => _CompoundTargetCard(
-                            guideId: guideId,
-                            target: t,
-                          )),
+                      errorMessage:
+                          'Could not load your targets. Check your connection and try again.',
+                      onRetry: () => setState(() {}),
+                    ),
                   ],
                 );
               },

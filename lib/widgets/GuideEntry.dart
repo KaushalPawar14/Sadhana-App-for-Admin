@@ -36,10 +36,7 @@ class _GuideEntryState extends State<GuideEntry> with SingleTickerProviderStateM
       parent: c,
       curve: Interval(delay.inMicroseconds / total.inMicroseconds, 1, curve: GuideMotion.out),
     );
-    _controller = c
-      ..forward().whenComplete(() {
-        if (mounted) setState(() {});
-      });
+    _controller = c..forward();
   }
 
   @override
@@ -48,10 +45,12 @@ class _GuideEntryState extends State<GuideEntry> with SingleTickerProviderStateM
     super.dispose();
   }
 
+  // The child keeps the same place in the tree for its whole life (a finished
+  // animation is simply "fully visible, no offset"): swapping the wrapper away when
+  // it ends would remount the child, and re-subscribe every stream inside it.
   @override
   Widget build(BuildContext context) {
-    final c = _controller;
-    if (c == null || c.isCompleted) return widget.child;
+    if (_controller == null) return widget.child;
     return AnimatedBuilder(
       animation: _curve,
       child: widget.child,

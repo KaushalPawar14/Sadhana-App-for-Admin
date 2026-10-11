@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/theme/GuideTokens.dart';
+import 'package:folk_guide_app/widgets/GuideBoardMotion.dart';
+import 'package:folk_guide_app/widgets/GuideCalendar.dart';
 import 'package:folk_guide_app/widgets/GuideEntry.dart';
+import 'package:folk_guide_app/widgets/GuideReveal.dart';
 import 'package:folk_guide_app/widgets/GuideGhost.dart';
 import 'package:folk_guide_app/widgets/GuideStates.dart';
 import 'package:folk_guide_app/widgets/GuideTiles.dart';
@@ -10,6 +13,26 @@ import 'package:folk_guide_app/widgets/GuideTiles.dart';
 import 'support/guide_test_support.dart';
 
 Widget sized(double h, {Key? key}) => SizedBox(key: key, height: h, width: double.infinity);
+
+/// Counts how many times its State was created: a wrapper that remounts its child
+/// (and so re-subscribes every stream inside it) makes this go above 1.
+class _Probe extends StatefulWidget {
+  const _Probe(this.counter);
+  final List<int> counter;
+  @override
+  State<_Probe> createState() => _ProbeState();
+}
+
+class _ProbeState extends State<_Probe> {
+  @override
+  void initState() {
+    super.initState();
+    widget.counter.add(1);
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox(height: 20, width: 20);
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -199,6 +222,26 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('12/30'), findsOneWidget);
     });
+  });
+
+  group('animation wrappers never remount their child', () {
+    Future<void> check(WidgetTester tester, Widget Function(Widget child) wrap) async {
+      phone(tester, 1.0);
+      final created = <int>[];
+      await tester.pumpWidget(guideHost(Scaffold(body: wrap(_Probe(created))), reduce: false));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 1));
+      expect(created.length, 1, reason: 'the child was mounted ${created.length} times');
+    }
+
+    testWidgets('GuideEntry', (t) => check(t, (c) => GuideEntry(child: c)));
+    testWidgets('GuideReveal', (t) => check(t, (c) => SizedBox(height: 100, child: GuideReveal(ghost: const SizedBox(), child: c))));
+    testWidgets('GuideSettle', (t) => check(t, (c) => GuideSettle(active: true, child: c)));
+    testWidgets('GuideFadeIn', (t) => check(t, (c) => GuideFadeIn(child: c)));
+    testWidgets('GuideBandGrow', (t) => check(t, (c) => GuideBandGrow(order: 2, child: c)));
+    testWidgets('GuideStateView content', (t) => check(t, (c) => GuideStateView(state: GuideLoad.content, ghost: const SizedBox(), content: c)));
   });
 
   testWidgets('the hero card counts its numbers up on first appearance', (tester) async {

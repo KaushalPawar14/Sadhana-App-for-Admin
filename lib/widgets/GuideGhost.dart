@@ -314,10 +314,19 @@ class GuideGhostBlock extends StatelessWidget {
 /// scale, and a soft rounded fill is drawn over that rectangle. Nothing in it is
 /// tappable or announced. This is what makes the ghost -> content cross-fade jump-free.
 class GuideGhostOf extends StatelessWidget {
-  const GuideGhostOf({super.key, required this.placeholder, this.radius = GuideShape.cardRadius});
+  const GuideGhostOf({
+    super.key,
+    required this.placeholder,
+    this.radius = GuideShape.cardRadius,
+    this.inset = EdgeInsets.zero,
+  });
 
   final Widget placeholder;
   final double radius;
+
+  /// Where the fill sits inside the placeholder's box (when the placeholder carries
+  /// its own outer padding, the fill must not cover it).
+  final EdgeInsets inset;
 
   @override
   Widget build(BuildContext context) {
@@ -330,7 +339,7 @@ class GuideGhostOf extends StatelessWidget {
           maintainState: true,
           child: placeholder,
         ),
-        Positioned.fill(child: GuideGhost(radius: radius)),
+        Positioned.fill(child: Padding(padding: inset, child: GuideGhost(radius: radius))),
       ],
     );
   }

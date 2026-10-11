@@ -48,22 +48,27 @@ class _GuideRevealState extends State<GuideReveal> with SingleTickerProviderStat
     super.dispose();
   }
 
+  // Two fixed slots: the ghost (an empty box once it is gone) and the content. The
+  // content never changes place in the tree, so it is never remounted when the
+  // ghost leaves.
   @override
   Widget build(BuildContext context) {
     final c = _controller;
-    if (_done || c == null) return widget.child;
+    if (c == null) return widget.child;
     final curve = CurvedAnimation(parent: c, curve: GuideMotion.standard);
     return Stack(
       fit: StackFit.passthrough,
       children: [
-        Positioned.fill(
-          child: IgnorePointer(
-            child: FadeTransition(
-              opacity: ReverseAnimation(curve),
-              child: GuideGhostArea(child: widget.ghost),
-            ),
-          ),
-        ),
+        _done
+            ? const SizedBox.shrink()
+            : Positioned.fill(
+                child: IgnorePointer(
+                  child: FadeTransition(
+                    opacity: ReverseAnimation(curve),
+                    child: GuideGhostArea(child: widget.ghost),
+                  ),
+                ),
+              ),
         FadeTransition(opacity: curve, child: widget.child),
       ],
     );

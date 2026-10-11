@@ -289,10 +289,7 @@ class _GuideBandGrowState extends State<GuideBandGrow> with SingleTickerProvider
       parent: c,
       curve: Interval(delay.inMicroseconds / total.inMicroseconds, 1, curve: GuideMotion.out),
     );
-    _controller = c
-      ..forward().whenComplete(() {
-        if (mounted) setState(() {});
-      });
+    _controller = c..forward();
   }
 
   @override
@@ -303,8 +300,7 @@ class _GuideBandGrowState extends State<GuideBandGrow> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
-    final c = _controller;
-    if (c == null || c.isCompleted) return widget.child;
+    if (_controller == null) return widget.child;
     return AnimatedBuilder(
       animation: _curve,
       child: widget.child,

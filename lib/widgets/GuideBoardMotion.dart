@@ -109,11 +109,7 @@ class _GuideSettleState extends State<GuideSettle> with SingleTickerProviderStat
       return;
     }
     final c = AnimationController(vsync: this, duration: const Duration(milliseconds: 150));
-    _controller = c
-      ..forward().whenComplete(() {
-        widget.onSettled?.call();
-        if (mounted) setState(() {});
-      });
+    _controller = c..forward().whenComplete(() => widget.onSettled?.call());
   }
 
   @override
@@ -125,7 +121,7 @@ class _GuideSettleState extends State<GuideSettle> with SingleTickerProviderStat
   @override
   Widget build(BuildContext context) {
     final c = _controller;
-    if (c == null || c.isCompleted) return widget.child;
+    if (c == null) return widget.child;
     return ScaleTransition(
       scale: Tween<double>(begin: 1.02, end: 1).animate(CurvedAnimation(parent: c, curve: GuideMotion.out)),
       child: widget.child,
@@ -153,10 +149,7 @@ class _GuideFadeInState extends State<GuideFadeIn> with SingleTickerProviderStat
     if (_decided) return;
     _decided = true;
     if (GuideMotion.reduced(context)) return;
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 200))
-      ..forward().whenComplete(() {
-        if (mounted) setState(() {});
-      });
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 200))..forward();
   }
 
   @override
@@ -168,7 +161,7 @@ class _GuideFadeInState extends State<GuideFadeIn> with SingleTickerProviderStat
   @override
   Widget build(BuildContext context) {
     final c = _controller;
-    if (c == null || c.isCompleted) return widget.child;
+    if (c == null) return widget.child;
     return FadeTransition(opacity: CurvedAnimation(parent: c, curve: GuideMotion.out), child: widget.child);
   }
 }

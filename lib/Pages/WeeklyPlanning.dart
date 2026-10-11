@@ -13,7 +13,10 @@ import '../utils/WeekData.dart';
 import '../utils/WeekSummary.dart';
 import '../widgets/GuideButtons.dart';
 import '../widgets/GuideCalendar.dart';
+import '../widgets/GuideEntry.dart';
 import '../widgets/GuideExpandable.dart';
+import '../widgets/GuideGhost.dart';
+import '../widgets/GuideStates.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
 import 'GoalWeeklyPhasePage.dart';
@@ -128,7 +131,19 @@ class _WeeklyPlanningPageState extends State<WeeklyPlanningPage> {
           const GuideTopBar(title: "This Week"),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? GuideGhostArea(
+                    child: ListView(
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(
+                          GuideSpace.pagePadding, 16, GuideSpace.pagePadding, 32),
+                      children: [
+                        GuideGhostOf(radius: GuideShape.heroRadius, placeholder: _weekHeader(week)),
+                        _sectionGhost(Icons.flag_outlined, GuidePastel.sage, "Your targets this week"),
+                        _sectionGhost(Icons.event_repeat_outlined, GuidePastel.mauve, "Follow-ups due"),
+                        _sectionGhost(Icons.event_busy_outlined, GuidePastel.clay, "Overdue meetings"),
+                      ],
+                    ),
+                  )
                 : RefreshIndicator(
                     onRefresh: _load,
                     child: ListView(
@@ -136,13 +151,13 @@ class _WeeklyPlanningPageState extends State<WeeklyPlanningPage> {
                           GuideSpace.pagePadding, 16, GuideSpace.pagePadding, 32),
                       physics: const AlwaysScrollableScrollPhysics(),
                       children: [
-                        _weekHeader(week),
+                        GuideEntry(index: 0, child: _weekHeader(week)),
                         // Calendar context at the very top: renders NOTHING
                         // when there is nothing current or upcoming.
-                        _calendarContextSection(),
-                        _goalSection(),
-                        _followUpSection(week),
-                        _overdueSection(),
+                        GuideEntry(index: 1, child: _calendarContextSection()),
+                        GuideEntry(index: 2, child: _goalSection()),
+                        GuideEntry(index: 3, child: _followUpSection(week)),
+                        GuideEntry(index: 4, child: _overdueSection()),
                       ],
                     ),
                   ),
@@ -203,14 +218,11 @@ class _WeeklyPlanningPageState extends State<WeeklyPlanningPage> {
       stream: WeekData.instance.interactionLogs(),
       builder: (context, snapshot) {
         final t = context.gText;
+        if (snapshot.hasError) {
+          return _sectionError(Icons.event_repeat_outlined, GuidePastel.mauve, "Follow-ups due");
+        }
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return _sectionShell(
-            icon: Icons.event_repeat_outlined,
-            pastel: GuidePastel.mauve,
-            title: "Follow-ups due",
-            count: null,
-            child: const _SectionSpinner(),
-          );
+          return _sectionGhost(Icons.event_repeat_outlined, GuidePastel.mauve, "Follow-ups due");
         }
 
         // status and the date range are matched in Dart — a compound query
@@ -271,26 +283,28 @@ class _WeeklyPlanningPageState extends State<WeeklyPlanningPage> {
       stream: WeekData.instance.associations(),
       builder: (context, snapshot) {
         final t = context.gText;
+        if (snapshot.hasError) {
+          return _sectionError(Icons.event_busy_outlined, GuidePastel.clay, "Overdue meetings");
+        }
         final waiting = snapshot.connectionState == ConnectionState.waiting;
-        final overdue = waiting
-            ? const <OverdueItem>[]
-            : overdueAssociations(snapshot.data?.docs ?? const []);
+        if (waiting) {
+          return _sectionGhost(Icons.event_busy_outlined, GuidePastel.clay, "Overdue meetings");
+        }
+        final overdue = overdueAssociations(snapshot.data?.docs ?? const []);
 
         return _sectionShell(
           icon: Icons.event_busy_outlined,
           pastel: GuidePastel.clay,
           title: "Overdue meetings",
-          count: waiting ? null : overdue.length,
+          count: overdue.length,
           onOpen: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const OverdueAssociationsPage()),
           ),
           openLabel: "Open Overdue Associations",
-          child: waiting
-              ? const _SectionSpinner()
-              : overdue.isEmpty
-                  ? _emptyLine("Nothing overdue")
-                  : Column(
+          child: overdue.isEmpty
+              ? _emptyLine("Nothing overdue")
+              : Column(
                       children: overdue.take(5).map((item) {
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 10),
@@ -327,7 +341,10 @@ class _WeeklyPlanningPageState extends State<WeeklyPlanningPage> {
       // `GuideCalendarPage` itself reads; no new query shape.
       future: WeekData.instance.events(_guide ?? ''),
       builder: (context, snap) {
-        if (!snap.hasData) return const SizedBox.shrink();
+        if (snap.hasError) return const SizedBox.shrink();
+        if (!snap.hasData) {
+          return _sectionGhost(Icons.campaign_outlined, GuidePastel.slate, "Calendar");
+        }
 
         final happeningNow = eventsHappeningNow(snap.data!);
         final comingUp = eventsComingUp(snap.data!);
@@ -426,6 +443,10 @@ class _WeeklyPlanningPageState extends State<WeeklyPlanningPage> {
     return StreamBuilder<List<CompoundTarget>>(
       stream: WeekData.instance.targets(_guide ?? ''),
       builder: (context, snap) {
+        if (snap.hasError) return const SizedBox.shrink();
+        if (!snap.hasData) {
+          return _sectionGhost(Icons.flag_outlined, GuidePastel.sage, "Your targets this week");
+        }
         // `totalPhases > 0` — a target whose plan is still generating has no
         // current phase to summarize yet; nothing to show for it here.
         final targets = (snap.data ?? const <CompoundTarget>[])
@@ -535,20 +556,49 @@ class _WeeklyPlanningPageState extends State<WeeklyPlanningPage> {
     );
   }
 
+  /// The ghost of a (collapsed) section card: the real card laid out invisibly, then a
+  /// soft fill. All of them breathe on the one clock.
+  Widget _sectionGhost(IconData icon, GuidePastel pastel, String title) {
+    return GuideGhostArea(
+      child: GuideGhostOf(
+        inset: const EdgeInsets.only(top: 12),
+        placeholder: _sectionShell(
+          icon: icon,
+          pastel: pastel,
+          title: title,
+          count: 0,
+          child: const SizedBox.shrink(),
+        ),
+      ),
+    );
+  }
+
+  /// A section that failed: the ghost frozen, a short message and Retry. (`setState`
+  /// re-subscribes: every stream here is built in `build`.)
+  Widget _sectionError(IconData icon, GuidePastel pastel, String title) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: GuideStateView(
+        state: GuideLoad.error,
+        ghost: GuideGhostOf(
+          placeholder: _sectionShell(
+            icon: icon,
+            pastel: pastel,
+            title: title,
+            count: 0,
+            child: const SizedBox.shrink(),
+          ),
+        ),
+        content: const SizedBox.shrink(),
+        errorMessage: 'Could not load this. Check your connection and try again.',
+        onRetry: () => setState(() {}),
+      ),
+    );
+  }
+
   Widget _emptyLine(String text) {
     return Text(text, style: context.gText.small);
   }
-}
-
-/// A small spinner for a section that is still loading.
-class _SectionSpinner extends StatelessWidget {
-  const _SectionSpinner();
-
-  @override
-  Widget build(BuildContext context) => const Padding(
-        padding: EdgeInsets.symmetric(vertical: 10),
-        child: Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))),
-      );
 }
 
 /// One target of "Your targets this week": a sage pastel box with the metric, the
