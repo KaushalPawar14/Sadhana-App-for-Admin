@@ -1,3 +1,4 @@
+import 'GuideBoardMotion.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/GuideColors.dart';
@@ -172,6 +173,8 @@ class GuideBoardColumnHeader extends StatelessWidget {
     required this.count,
     this.subtitle,
     this.actions = const [],
+    this.scroll,
+    this.columnWidth = GuideBoardTokens.columnWidth,
   });
 
   final String title;
@@ -180,10 +183,17 @@ class GuideBoardColumnHeader extends StatelessWidget {
   final String? subtitle;
   final List<Widget> actions;
 
+  /// The row's scroll controller: the header drifts slightly while it scrolls.
+  final ScrollController? scroll;
+  final double columnWidth;
+
   @override
   Widget build(BuildContext context) {
     final t = context.gText;
-    return Padding(
+    return GuideHeaderParallax(
+      scroll: scroll,
+      columnWidth: columnWidth,
+      child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -217,6 +227,7 @@ class GuideBoardColumnHeader extends StatelessWidget {
           for (final a in actions) a,
         ],
       ),
+    ),
     );
   }
 }

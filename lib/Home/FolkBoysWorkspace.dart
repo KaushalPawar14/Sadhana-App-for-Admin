@@ -16,6 +16,11 @@ import '../utils/Snackbar.dart';
 import '../utils/StudentDeletion.dart';
 import '../utils/StudentScope.dart';
 import '../widgets/GuideBoard.dart';
+import '../widgets/GuideBoardGhost.dart';
+import '../widgets/GuideBoardMotion.dart';
+import '../widgets/GuideGhost.dart';
+import '../widgets/GuideReveal.dart';
+import '../widgets/GuideStates.dart';
 import '../widgets/GuideButtons.dart';
 import '../widgets/GuideChips.dart';
 import '../widgets/GuideSurface.dart';
@@ -622,6 +627,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     required _LaneColumn target,
     required int orderInTarget,
   }) async {
+    _markSettle(boy.uid);
     final p = AdminProfileProvider.require();
     final oldGuide = boy.guideId.trim();
     final newGuide = target.targetGuideId;
@@ -932,7 +938,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
+      builder: (_) => const GuideBusyDialog(message: 'Removing the student'),
     );
 
     // guideId/isHod no longer passed (Master Task, 2026-09-14) — the
@@ -941,7 +947,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     final result = await deleteStudentEverywhere(uid: boy.uid, name: boy.name);
 
     if (!mounted) return;
-    Navigator.of(context, rootNavigator: true).pop(); // close the spinner
+    Navigator.of(context, rootNavigator: true).pop(); // close the working dialog
     await _showDeletionResult(boy: boy, result: result);
   }
 
@@ -1352,9 +1358,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             return StreamBuilder<List<BoardDoc>>(
               stream: BoardData.instance.boards(),
               builder: (context, snap) {
-                if (!snap.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+                if (!snap.hasData) return _sheetWait(snap);
                 // ⚠️ The mandatory board's own tile is found directly from the
                 // UNFILTERED list, not from `visibleBoards()` — that function's
                 // `isGuideAssignment` branch is HOD-only by design, which is
@@ -1910,9 +1914,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                 return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                   stream: _studentsStream(),
                   builder: (context, userSnap) {
-                    if (!userSnap.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
+                    if (!userSnap.hasData) return _sheetWait(userSnap);
                     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                       stream: BoardData.instance.placements(boardId),
                       builder: (context, placeSnap) {
@@ -2076,13 +2078,50 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     }
   }
 
+  /// The board's ghost (two columns) while data loads, or frozen with Retry on a
+  /// failed stream. `setState` re-subscribes: every stream here is built in `build`.
+  Widget _boardWait(AsyncSnapshot<Object?> snap) {
+    final ghost = GuideBoardGhost(columnWidth: _colW);
+    if (snap.hasError) {
+      return GuideErrorOverGhost(
+        ghost: ghost,
+        message: 'Could not load the board. Check your connection and try again.',
+        onRetry: () => setState(() {}),
+      );
+    }
+    return GuideGhostArea(child: ghost);
+  }
+
+  /// The loaded board, cross-faded in over the ghost it replaces.
+  Widget _boardReveal(Widget content) =>
+      GuideReveal(ghost: GuideBoardGhost(columnWidth: _colW), child: content);
+
+  /// A bottom sheet's list while it loads: ghost rows (or Retry if it failed).
+  Widget _sheetWait(AsyncSnapshot<Object?> snap) {
+    if (snap.hasError) {
+      return GuideStateView(
+        state: GuideLoad.error,
+        ghost: const GuideGhostList(rows: 5, rowHeight: 56, pulsing: false),
+        content: const SizedBox.shrink(),
+        onRetry: () => setState(() {}),
+      );
+    }
+    return const GuideGhostList(rows: 5, rowHeight: 56);
+  }
+
+  /// A book-progress line while it loads.
+  Widget _bookGhost() => const GuideGhostArea(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 10),
+          child: GuideGhostBar(height: 14),
+        ),
+      );
+
   Widget _board(String guide) {
     return StreamBuilder<List<BoardDoc>>(
       stream: BoardData.instance.boards(),
       builder: (context, boardsSnap) {
-        if (!boardsSnap.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
+        if (!boardsSnap.hasData) return _boardWait(boardsSnap);
         final all = boardsSnap.data!;
         _ensureBoard(all, guide);
 
@@ -2093,17 +2132,13 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             break;
           }
         }
-        if (board == null) {
-          return const Center(child: CircularProgressIndicator());
-        }
+        if (board == null) return _boardWait(boardsSnap);
         final boardId = board.id;
 
         return StreamBuilder<List<BoardColumn>>(
           stream: BoardData.instance.columns(boardId),
           builder: (context, colSnap) {
-            if (!colSnap.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
+            if (!colSnap.hasData) return _boardWait(colSnap);
             final columns = colSnap.data!;
 
             return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -2114,9 +2149,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
               // [_studentsStream].
               stream: _studentsStream(),
               builder: (context, userSnap) {
-                if (!userSnap.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+                if (!userSnap.hasData) return _boardWait(userSnap);
 
                 final boys = <_Boy>[];
                 for (final doc in userSnap.data!.docs) {
@@ -2147,7 +2180,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                 // Role-based columns in gender lanes — see [_visibleColumns].
                 final visibleColumns = _visibleColumns(columns);
 
-                return Column(
+                return _boardReveal(Column(
                   children: [
                     // FOLK / Hostel / Localite legend under the top bar.
                     const GuideGroupLegend(),
@@ -2174,7 +2207,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                       ),
                     ),
                   ],
-                );
+                ));
               },
             );
           },
@@ -2237,6 +2270,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     required String guide,
   }) async {
     if (!canEdit) return;
+    _markSettle(boy.uid);
     try {
       await BoardData.instance.movePlacement(
         boardId: boardId,
@@ -2258,9 +2292,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     return StreamBuilder<List<BoardDoc>>(
       stream: BoardData.instance.boards(),
       builder: (context, boardsSnap) {
-        if (!boardsSnap.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
+        if (!boardsSnap.hasData) return _boardWait(boardsSnap);
         BoardDoc? board;
         for (final b in boardsSnap.data!) {
           if (b.id == boardId) {
@@ -2268,17 +2300,13 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             break;
           }
         }
-        if (board == null) {
-          return const Center(child: CircularProgressIndicator());
-        }
+        if (board == null) return _boardWait(boardsSnap);
         final canEdit = canEditBoard(board: board, guide: guide, isHod: _isHod);
 
         return StreamBuilder<List<BoardColumn>>(
           stream: BoardData.instance.columns(boardId),
           builder: (context, colSnap) {
-            if (!colSnap.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
+            if (!colSnap.hasData) return _boardWait(colSnap);
             final columns = colSnap.data!;
 
             // ⚠️ **No Unsorted fallback any more (this task, Part 2).** A
@@ -2306,7 +2334,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                 if (placementColumnByUid.isEmpty) {
                   // Nobody has ever been placed here — skip the `users`
                   // read entirely, matching the blank-board empty state.
-                  return _customCanvas(
+                  return _boardReveal(_customCanvas(
                     boardId: boardId,
                     guide: guide,
                     canEdit: canEdit,
@@ -2315,7 +2343,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                     columnBoys: (_) => const [],
                     columnCardCount: (column) =>
                         cardsInColumn(placeSnap.data, column.id),
-                  );
+                  ));
                 }
 
                 return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -2324,9 +2352,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                   // is simply not rendered; see [_studentsStream].
                   stream: _studentsStream(),
                   builder: (context, userSnap) {
-                    if (!userSnap.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
+                    if (!userSnap.hasData) return _boardWait(userSnap);
 
                     final boys = <_Boy>[];
                     for (final doc in userSnap.data!.docs) {
@@ -2339,7 +2365,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                     boys.sort((a, b) =>
                         a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
-                    return _customCanvas(
+                    return _boardReveal(_customCanvas(
                       boardId: boardId,
                       guide: guide,
                       canEdit: canEdit,
@@ -2357,7 +2383,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                           .toList(),
                       columnCardCount: (column) =>
                           cardsInColumn(placeSnap.data, column.id),
-                    );
+                    ));
                   },
                 );
               },
@@ -2384,35 +2410,14 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     required int Function(BoardColumn) columnCardCount,
   }) {
     if (columns.isEmpty) {
-      final g = context.g;
-      final t = context.gText;
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.view_column_outlined, size: 46, color: g.mutedText),
-              const SizedBox(height: 14),
-              Text("This board is empty", style: t.cardTitle),
-              const SizedBox(height: 6),
-              Text(
-                "Add a list to start organising students.",
-                textAlign: TextAlign.center,
-                style: t.small,
-              ),
-              if (canEdit) ...[
-                const SizedBox(height: 16),
-                GuidePrimaryButton(
-                  label: "Add a list",
-                  icon: Icons.add_rounded,
-                  expand: false,
-                  onPressed: () => _addCustomColumn(boardId, columns),
-                ),
-              ],
-            ],
-          ),
-        ),
+      return GuideEmptyOverGhost(
+        ghost: GuideBoardGhost(columnWidth: _colW),
+        title: "This board is empty",
+        message: "Add a list to start organising students.",
+        action: canEdit
+            ? GuideEmptyAction("Add a list", () => _addCustomColumn(boardId, columns),
+                icon: Icons.add_rounded)
+            : null,
       );
     }
 
@@ -2540,17 +2545,19 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
               : ListView.builder(
                   physics: _scrollLocked ? const NeverScrollableScrollPhysics() : null,
                   padding: const EdgeInsets.only(top: 4, bottom: 6),
-                  itemCount: boys.length,
+                  itemCount: boys.length + 1,
                   // Part 3.5 — remove one student from this board: a button on
                   // the card's own top row (custom boards only; the mandatory
                   // board never shows it).
-                  itemBuilder: (context, i) => _studentCard(
-                    boy: boys[i],
-                    colour: colour,
-                    onRemove: canEdit
-                        ? () => _confirmRemoveFromBoard(boardId: boardId, boy: boys[i])
-                        : null,
-                  ),
+                  itemBuilder: (context, i) => i == boys.length
+                      ? GuideDropGap(open: hovering)
+                      : _studentCard(
+                          boy: boys[i],
+                          colour: colour,
+                          onRemove: canEdit
+                              ? () => _confirmRemoveFromBoard(boardId: boardId, boy: boys[i])
+                              : null,
+                        ),
                 ),
         );
       },
@@ -2579,6 +2586,8 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       title: column.title,
       accent: colour,
       count: count,
+      scroll: _hController,
+      columnWidth: _colW,
       actions: [
         if (canEdit)
           GuideCardIconButton(
@@ -2790,6 +2799,8 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             accent: colour,
             count: boys.length,
             subtitle: headerExtra,
+            scroll: _hController,
+            columnWidth: _colW,
           ),
           body: boys.isEmpty
               ? Center(
@@ -2804,8 +2815,10 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                   // `LongPressDraggable` and competes in the exact same way.
                   physics: _scrollLocked ? const NeverScrollableScrollPhysics() : null,
                   padding: const EdgeInsets.only(top: 4, bottom: 6),
-                  itemCount: boys.length,
-                  itemBuilder: (context, i) => _studentCard(boy: boys[i], colour: colour),
+                  itemCount: boys.length + 1,
+                  itemBuilder: (context, i) => i == boys.length
+                      ? GuideDropGap(open: hovering)
+                      : _studentCard(boy: boys[i], colour: colour),
                 ),
         );
       },
@@ -2878,10 +2891,28 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
         ),
         // The gap the card leaves behind while it travels.
         childWhenDragging: Opacity(opacity: .35, child: cardBody),
-        child: cardBody,
+        child: GuideSettle(
+          active: _settling(boy.uid),
+          onSettled: () => _settleUid = null,
+          child: cardBody,
+        ),
       ),
     );
   }
+
+  /// The card that was just dropped: it settles (1.02 -> 1.0) where it lands.
+  String? _settleUid;
+
+  DateTime _settleAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Marks [uid] as just dropped; it only counts for 3 s (a refused move never lands).
+  void _markSettle(String uid) {
+    _settleUid = uid;
+    _settleAt = DateTime.now();
+  }
+
+  bool _settling(String uid) =>
+      _settleUid == uid && DateTime.now().difference(_settleAt) < const Duration(seconds: 3);
 
   Widget _cardBody({
     required _Boy boy,
@@ -3023,7 +3054,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Divider(height: 14, color: g.border),
-                            _expandedDetail(boy: boy),
+                            GuideFadeIn(child: _expandedDetail(boy: boy)),
                           ],
                         ),
                       )
@@ -3089,16 +3120,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
               );
             }
             if (!configSnap.hasData) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 10),
-                child: Center(
-                  child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              );
+              return _bookGhost();
             }
             final config = configSnap.data!;
 
@@ -3113,16 +3135,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
               stream: BoardData.instance.booksRead(boy.ref),
               builder: (context, progressSnap) {
                 if (!progressSnap.hasData) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 10),
-                    child: Center(
-                      child: SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ),
-                  );
+                  return _bookGhost();
                 }
 
                 // Keyed "{level}_{bookKey}" — same shape as

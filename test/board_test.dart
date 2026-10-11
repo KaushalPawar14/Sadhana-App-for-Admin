@@ -154,21 +154,23 @@ Future<FakeBoardData> openBoard(
   Size size = const Size(360, 800),
   double scale = 1.0,
   bool dark = false,
+  bool reduce = true,
+  FakeBoardData? data,
   List<List<Object?>>? api,
 }) async {
   phone(tester, scale, size: size);
   AdminProfileProvider.instance.debugSet(me ?? profile('G', 'GUIDE', admins: everyone));
-  final data = FakeBoardData(users: students ?? roster, books: books);
-  BoardData.instance = data;
+  final fake = data ?? FakeBoardData(users: students ?? roster, books: books);
+  BoardData.instance = fake;
   HierarchyApi.useForTests((name, args) async {
     api?.add([name, args]);
     return {};
   });
-  await tester.pumpWidget(guideHost(const FolkBoysWorkspace(selectedGuide: 'G'), dark: dark));
+  await tester.pumpWidget(guideHost(const FolkBoysWorkspace(selectedGuide: 'G'), dark: dark, reduce: reduce));
   for (var i = 0; i < 6; i++) {
     await tester.pump(const Duration(milliseconds: 20));
   }
-  return data;
+  return fake;
 }
 
 /// A long-press drag of the card showing [name] onto the column titled [column].
