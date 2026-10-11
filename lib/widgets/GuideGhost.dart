@@ -308,3 +308,30 @@ class GuideGhostBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) => GuideGhost(width: width, height: height, radius: radius);
 }
+
+/// The ghost OF a real widget: [placeholder] (the real widget built with dashes or
+/// empty data) is laid out invisibly so the ghost has exactly its size at any text
+/// scale, and a soft rounded fill is drawn over that rectangle. Nothing in it is
+/// tappable or announced. This is what makes the ghost -> content cross-fade jump-free.
+class GuideGhostOf extends StatelessWidget {
+  const GuideGhostOf({super.key, required this.placeholder, this.radius = GuideShape.cardRadius});
+
+  final Widget placeholder;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Visibility(
+          visible: false,
+          maintainSize: true,
+          maintainAnimation: true,
+          maintainState: true,
+          child: placeholder,
+        ),
+        Positioned.fill(child: GuideGhost(radius: radius)),
+      ],
+    );
+  }
+}

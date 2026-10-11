@@ -23,6 +23,9 @@ import '../utils/PlanningQueries.dart';
 import '../utils/UnseenAggregates.dart';
 import '../utils/UnseenDot.dart';
 import '../widgets/GuideAppearanceSheet.dart';
+import '../widgets/GuideEntry.dart';
+import '../widgets/GuideGhost.dart';
+import '../widgets/GuideStates.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
 import 'FolkBoysWorkspace.dart';
@@ -74,6 +77,13 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
   List<CalendarEvent>? _events;
   final List<StreamSubscription<Object?>> _subs = [];
 
+  /// A source that failed (shown as a frozen ghost with Retry, never a blank).
+  bool _targetsFailed = false;
+  bool _followUpsFailed = false;
+  bool _overdueFailed = false;
+  bool _countFailed = false;
+  bool _eventsFailed = false;
+
   @override
   void initState() {
     super.initState();
@@ -115,19 +125,43 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     final data = HomeData.instance;
     _subs.add(data.targets(guide).listen((t) {
       if (mounted) setState(() => _targets = t);
-    }, onError: (_) {}));
+    }, onError: (_) {
+      if (mounted) setState(() => _targetsFailed = true);
+    }));
     _subs.add(data.followUps(week).listen((f) {
       if (mounted) setState(() => _followUps = f);
-    }, onError: (_) {}));
+    }, onError: (_) {
+      if (mounted) setState(() => _followUpsFailed = true);
+    }));
     _subs.add(data.overdue().listen((o) {
       if (mounted) setState(() => _overdue = o);
-    }, onError: (_) {}));
+    }, onError: (_) {
+      if (mounted) setState(() => _overdueFailed = true);
+    }));
     _subs.add(data.studentCount().listen((n) {
       if (mounted) setState(() => _studentCount = n);
-    }, onError: (_) {}));
+    }, onError: (_) {
+      if (mounted) setState(() => _countFailed = true);
+    }));
     data.events(guide).then((e) {
       if (mounted) setState(() => _events = e);
-    }).catchError((_) {});
+    }).catchError((_) {
+      if (mounted) setState(() => _eventsFailed = true);
+    });
+  }
+
+  /// Retry after a failed source: the same listeners, started again.
+  void _retry() {
+    final guide = _guide;
+    if (guide == null || guide.isEmpty) return;
+    for (final sub in _subs) {
+      sub.cancel();
+    }
+    _subs.clear();
+    setState(() {
+      _targetsFailed = _followUpsFailed = _overdueFailed = _countFailed = _eventsFailed = false;
+    });
+    _listen(guide);
   }
 
   Future<void> _updateTokenForGuide() async {
@@ -180,49 +214,86 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
         _ => GuidePastel.mauve,
       };
 
-  Widget _targetCard(CompoundTarget t) {
-    final metric = t.metricInfo;
+  /// A target card: two single-line rows (name + phase, then the goal) and the
+  /// progress bar, so its height is the same for every target (and for its ghost).
+  Widget _targetBox({
+    required GuidePastel pastel,
+    required String title,
+    required String goal,
+    required String phase,
+    required double fraction,
+  }) {
     final text = context.gText;
+    return GuidePastelBox(
+      pastel: pastel,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.onPastelBody.copyWith(fontSize: 14)),
+              ),
+              const SizedBox(width: 10),
+              Text(phase, style: text.onPastelSmall),
+            ],
+          ),
+          const SizedBox(height: 3),
+          Text(goal, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.onPastelSmall),
+          const SizedBox(height: 10),
+          GuideProgressBar(value: fraction, onPastel: true),
+        ],
+      ),
+    );
+  }
+
+  Widget _targetCard(CompoundTarget t, int index) {
+    final metric = t.metricInfo;
     final fraction = t.totalPhases == 0 ? 0.0 : t.currentPhase / t.totalPhases;
     final guide = _guide ?? '';
     return Padding(
       padding: const EdgeInsets.only(top: 10),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => GoalHomePage(guideId: guide)),
-        ),
-        child: GuidePastelBox(
-          pastel: _pastelFor(t),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Text(
-                      "${metric?.label ?? t.metric} · ${t.studentCountGoal} "
-                      "students at ${t.perStudentValueGoal} ${metric?.unit ?? ''}"
-                          .trim(),
-                      style: text.onPastelBody.copyWith(fontSize: 14),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text("Phase ${t.currentPhase} of ${t.totalPhases}",
-                      style: text.onPastelSmall),
-                ],
-              ),
-              const SizedBox(height: 10),
-              GuideProgressBar(value: fraction, onPastel: true),
-            ],
+      child: GuideEntry(
+        index: 3 + index,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => GoalHomePage(guideId: guide)),
+          ),
+          child: _targetBox(
+            pastel: _pastelFor(t),
+            title: metric?.label ?? t.metric,
+            goal: "${t.studentCountGoal} students at ${t.perStudentValueGoal} "
+                    "${metric?.unit ?? ''}"
+                .trim(),
+            phase: "Phase ${t.currentPhase} of ${t.totalPhases}",
+            fraction: fraction,
           ),
         ),
       ),
     );
   }
+
+  /// The ghost of one target card: the real card laid out invisibly, then a soft fill.
+  Widget _targetGhost() => Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: GuideGhostOf(
+          radius: GuideShape.tileRadius,
+          placeholder: _targetBox(
+            pastel: GuidePastel.sand,
+            title: 'Chanting rounds',
+            goal: '20 students at 16 rounds',
+            phase: 'Phase 1 of 4',
+            fraction: 0,
+          ),
+        ),
+      );
 
   String _boardSubtitle() {
     final n = _studentCount;
@@ -249,13 +320,102 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     return 'Nothing due today';
   }
 
+  // The three areas of Home that wait for data.
+  GuideLoad get _heroState {
+    if (_targetsFailed || _followUpsFailed || _overdueFailed) return GuideLoad.error;
+    if (_targets == null || _followUps == null || _overdue == null) return GuideLoad.loading;
+    return GuideLoad.content;
+  }
+
+  GuideLoad get _targetsState {
+    if (_targetsFailed) return GuideLoad.error;
+    if (_targets == null) return GuideLoad.loading;
+    return _activeTargets.isEmpty ? GuideLoad.empty : GuideLoad.content;
+  }
+
+  /// The two tiles: ghosts until the board count and the calendar load. If a source
+  /// fails the tiles still appear (without a subtitle): they are the way into the
+  /// Board and the Calendar and must not be lost to a failed count.
+  bool get _tilesReady =>
+      _guide != null && ((_studentCount != null || _countFailed) && (_events != null || _eventsFailed));
+
+  Widget _heroCard(List<CompoundTarget> active, {bool placeholder = false}) {
+    const dash = '–';
+    return GuideHeroCard(
+      label: 'This week',
+      trailing: _weekLabel,
+      onTap: placeholder
+          ? null
+          : () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const WeeklyPlanningPage()),
+              ),
+      stats: [
+        GuideHeroStat(placeholder ? dash : '${active.length}', 'Targets'),
+        GuideHeroStat(placeholder ? dash : '${_followUps!.length}', 'Follow-ups'),
+        GuideHeroStat(placeholder ? dash : '${_overdue!.length}', 'Overdue'),
+      ],
+    );
+  }
+
+  Widget _tile(String guide, {required bool board, bool placeholder = false}) {
+    if (board) {
+      final tile = GuideGradientTile(
+        pastel: GuidePastel.slate,
+        icon: Icons.groups_2_outlined,
+        title: 'FOLK Boys Board',
+        subtitle: placeholder ? '0 students' : _boardSubtitle(),
+        onTap: placeholder
+            ? null
+            : () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => FolkBoysWorkspace(selectedGuide: guide)),
+                ),
+      );
+      if (placeholder) return tile;
+      // "Any of my roster has an unseen student comment or book commitment"
+      // (see `_boardUnseen`).
+      return StreamBuilder<bool>(
+        stream: _boardUnseen,
+        builder: (context, snap) => UnseenBadge(
+          show: snap.data ?? false,
+          offset: const Offset(10, 10),
+          child: tile,
+        ),
+      );
+    }
+    final tile = GuideGradientTile(
+      pastel: GuidePastel.mauve,
+      icon: Icons.calendar_month_outlined,
+      title: 'Calendar',
+      subtitle: placeholder ? 'Nothing due today' : _calendarSubtitle(),
+      onTap: placeholder
+          ? null
+          : () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => GuideCalendarPage(selectedGuide: guide)),
+              ),
+    );
+    // A mandatory event only the HOD can post: every other guide should notice one
+    // landed since they last opened their calendar (`calendarEvents` only).
+    return placeholder ? tile : HomeData.instance.calendarBadge(child: tile);
+  }
+
+  Widget _tilesRow(String guide, {bool placeholder = false}) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: _tile(guide, board: true, placeholder: placeholder)),
+          const SizedBox(width: GuideSpace.cardGap),
+          Expanded(child: _tile(guide, board: false, placeholder: placeholder)),
+        ],
+      );
+
   @override
   Widget build(BuildContext context) {
     final t = context.gText;
     final guide = _guide;
     final profile = AdminProfileProvider.current;
     final active = _activeTargets;
-    final dash = '–';
 
     return ListView(
       padding: EdgeInsets.only(bottom: GuideSpace.navClearanceOf(context)),
@@ -276,131 +436,110 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
             ),
           ],
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 16, GuideSpace.pagePadding, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Hare Krishna,', style: t.small.copyWith(fontSize: 15)),
-              const SizedBox(height: 2),
-              Text(
-                (profile?.displayName.isNotEmpty ?? false)
-                    ? profile!.displayName
-                    : 'FOLK Guide',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: t.greeting,
-              ),
-              if (profile != null) ...[
-                const SizedBox(height: 4),
-                Text(profile.role.label, style: t.small),
+        GuideEntry(
+          index: 0,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 16, GuideSpace.pagePadding, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Hare Krishna,', style: t.small.copyWith(fontSize: 15)),
+                const SizedBox(height: 2),
+                Text(
+                  (profile?.displayName.isNotEmpty ?? false) ? profile!.displayName : 'FOLK Guide',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.greeting,
+                ),
+                if (profile != null) ...[
+                  const SizedBox(height: 4),
+                  Text(profile.role.label, style: t.small),
+                ],
               ],
-            ],
+            ),
           ),
         ),
         const SizedBox(height: 20),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: GuideSpace.pagePadding),
-          child: GuideHeroCard(
-            label: 'This week',
-            trailing: _weekLabel,
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const WeeklyPlanningPage()),
+        GuideEntry(
+          index: 1,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: GuideSpace.pagePadding),
+            child: GuideStateView(
+              state: _heroState,
+              ghost: GuideGhostOf(
+                radius: GuideShape.heroRadius,
+                placeholder: _heroCard(const [], placeholder: true),
+              ),
+              content: _heroState == GuideLoad.content ? _heroCard(active) : const SizedBox.shrink(),
+              errorMessage: 'Could not load this week. Check your connection and try again.',
+              onRetry: _retry,
             ),
-            stats: [
-              GuideHeroStat(_targets == null ? dash : '${active.length}', 'Targets'),
-              GuideHeroStat(_followUps == null ? dash : '${_followUps!.length}', 'Follow-ups'),
-              GuideHeroStat(_overdue == null ? dash : '${_overdue!.length}', 'Overdue'),
-            ],
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(GuideSpace.pagePadding, 22, GuideSpace.pagePadding, 0),
-          child: GuideSectionTitle('Targets'),
+        const GuideEntry(
+          index: 2,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(GuideSpace.pagePadding, 22, GuideSpace.pagePadding, 0),
+            child: GuideSectionTitle('Targets'),
+          ),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: GuideSpace.pagePadding),
-          child: Column(
-            children: [
-              for (final target in active) _targetCard(target),
-              if (_targets != null && active.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: guide == null
-                        ? null
-                        : () => Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => GoalHomePage(guideId: guide)),
-                            ),
-                    child: GuideCard(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Expanded(
-                              child: Text('No active targets yet. Open Targets to create one.',
-                                  style: t.small)),
-                          Icon(Icons.chevron_right_rounded, color: context.g.mutedText),
-                        ],
-                      ),
+          child: GuideStateView(
+            state: _targetsState,
+            ghost: Column(children: [_targetGhost(), _targetGhost()]),
+            content: Column(
+              children: [
+                for (var i = 0; i < active.length; i++) _targetCard(active[i], i),
+              ],
+            ),
+            emptyMessage: 'No active targets yet. Create your first target to see it here.',
+            emptyAction: guide == null
+                ? null
+                : GuideEmptyAction(
+                    'Open targets',
+                    () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => GoalHomePage(guideId: guide)),
                     ),
+                    icon: Icons.track_changes_outlined,
                   ),
-                ),
-            ],
+            errorMessage: 'Could not load your targets. Check your connection and try again.',
+            onRetry: _retry,
           ),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 12, GuideSpace.pagePadding, 0),
-          child: guide == null
-              ? const SizedBox(height: 116)
-              : Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      // "Any of my roster has an unseen student comment or book
-                      // commitment" (see `_boardUnseen`).
-                      child: StreamBuilder<bool>(
-                        stream: _boardUnseen,
-                        builder: (context, snap) => UnseenBadge(
-                          show: snap.data ?? false,
-                          offset: const Offset(10, 10),
-                          child: GuideGradientTile(
-                            pastel: GuidePastel.slate,
-                            icon: Icons.groups_2_outlined,
-                            title: 'FOLK Boys Board',
-                            subtitle: _boardSubtitle(),
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => FolkBoysWorkspace(selectedGuide: guide)),
+          child: GuideEntry(
+            index: 4,
+            child: GuideCrossFade(
+              child: _tilesReady
+                  ? KeyedSubtree(key: const ValueKey('tiles'), child: _tilesRow(guide!))
+                  : KeyedSubtree(
+                      key: const ValueKey('tiles-ghost'),
+                      child: GuideGhostArea(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: GuideGhostOf(
+                                radius: GuideShape.tileRadius,
+                                placeholder: _tile('', board: true, placeholder: true),
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: GuideSpace.cardGap),
+                            Expanded(
+                              child: GuideGhostOf(
+                                radius: GuideShape.tileRadius,
+                                placeholder: _tile('', board: false, placeholder: true),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                    const SizedBox(width: GuideSpace.cardGap),
-                    Expanded(
-                      // A mandatory event only the HOD can post: every other
-                      // guide should notice one landed since they last opened
-                      // their calendar (`calendarEvents` only).
-                      child: HomeData.instance.calendarBadge(
-                        child: GuideGradientTile(
-                          pastel: GuidePastel.mauve,
-                          icon: Icons.calendar_month_outlined,
-                          title: 'Calendar',
-                          subtitle: _calendarSubtitle(),
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => GuideCalendarPage(selectedGuide: guide)),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+            ),
+          ),
         ),
       ],
     );
