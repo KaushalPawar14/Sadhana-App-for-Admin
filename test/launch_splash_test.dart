@@ -129,6 +129,23 @@ void main() {
     });
   });
 
+  group('the default minimum is 4 seconds', () {
+    testWidgets('a splash with no explicit time stays up for 4 s, then goes on', (tester) async {
+      phone(tester, 1.0);
+      await tester.pumpWidget(app(LaunchSplash(
+        start: () async => shell(),
+        pageFor: (o) => Scaffold(body: Text('PAGE:${o.target.name}:${o.guideId}')),
+      )));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 3900));
+      expect(splash, findsOneWidget);
+      expect(page('shell:G'), findsNothing);
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+      expect(page('shell:G'), findsOneWidget);
+    });
+  });
+
   group('routing is exactly the decision\'s (every target)', () {
     for (final t in StartupTarget.values) {
       testWidgets('${t.name}: the page for that decision, after the hooks in order', (tester) async {
@@ -204,7 +221,7 @@ void main() {
           expect(scaffold.backgroundColor ?? bg, isNot(const Color(0xFFFFFFFF)));
           expect(find.text("Now it's easy to check Sadhana daily"), findsOneWidget);
           // the ghost phase too
-          await tester.pump(const Duration(milliseconds: 4000));
+          await tester.pump(const Duration(milliseconds: 2000));
           await tester.pump(const Duration(milliseconds: 400));
           expect(ghost, findsOneWidget);
           expectNoOverflow(tester);
@@ -228,7 +245,7 @@ void main() {
     test('the splash is the LaunchSplash with the 2 s minimum; the work is the same StartupGate', () {
       expect(main, contains('LaunchSplash('));
       expect(main, contains('StartupGate.run('));
-      expect(File('lib/Pages/LaunchSplash.dart').readAsStringSync(), contains('Duration(seconds: 2)'));
+      expect(File('lib/Pages/LaunchSplash.dart').readAsStringSync(), contains('this.minDuration = const Duration(seconds: 4)'));
     });
 
     test('routing in main.dart is unchanged: one page per decision', () {

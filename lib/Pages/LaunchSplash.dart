@@ -28,7 +28,7 @@ class LaunchSplash extends StatefulWidget {
     required this.pageFor,
     this.beforeNavigate,
     this.afterNavigate,
-    this.minDuration = const Duration(seconds: 2),
+    this.minDuration = const Duration(seconds: 4),
   });
 
   /// The startup work; started the moment the splash is on screen.

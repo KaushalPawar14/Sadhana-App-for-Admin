@@ -148,8 +148,8 @@ class SplashScreen extends StatefulWidget {
   _SplashScreenState createState() => _SplashScreenState();
 }
 
-/// The launch screen: the splash (see `Pages/LaunchSplash.dart`) for a minimum of 2 seconds, with
-/// the startup work below running in parallel during those 2 seconds — it never adds waiting.
+/// The launch screen: the splash (see `Pages/LaunchSplash.dart`) for a minimum of 4 seconds, with
+/// the startup work below running in parallel during those 4 seconds — it never adds waiting.
 /// The decisions and their order are what this screen always made (see `StartupGate`): the
 /// force-update read (capped at 1.5 s) and the install check start together, the FCM token is
 /// not registered here (the shell does it after its first frame), and a signed-in admin with a
