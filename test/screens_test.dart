@@ -167,7 +167,7 @@ void main() {
   });
 
   // ------------------------------------------------------------- Analysis tab
-  group('Analysis: four full-width rectangular cards', () {
+  group('Analysis: five full-width rectangular cards', () {
     for (final dark in [false, true]) {
       for (final scale in kScales) {
         testWidgets('${dark ? 'dark' : 'light'}, text scale $scale on 360 dp', (tester) async {
@@ -176,10 +176,10 @@ void main() {
           await settle(tester);
           expect(tester.takeException(), isNull);
           final cards = find.byType(GuideNavCard);
-          expect(cards, findsNWidgets(4));
+          expect(cards, findsNWidgets(5));
           expect(find.byType(GuideGradientTile), findsNothing, reason: 'no square grid any more');
           Rect r(int i) => tester.getRect(cards.at(i));
-          for (var i = 0; i < 4; i++) {
+          for (var i = 0; i < 5; i++) {
             expect(r(i).width, 360 - 40, reason: 'full width inside the page padding');
             expect(r(i).height, greaterThanOrEqualTo(92), reason: 'comfortable height');
             expect(r(i).height, lessThan(r(i).width), reason: 'rectangular');
@@ -194,14 +194,15 @@ void main() {
       await tester.pumpWidget(guideHost(Scaffold(body: CompetitionPage())));
       await settle(tester);
       final titles = tester.widgetList<GuideNavCard>(find.byType(GuideNavCard)).map((c) => c.title).toList();
-      expect(titles, ['ABCDE', 'Week planning', 'Priority students', 'Guide targets']);
+      expect(titles, ['ABCDE', 'Week planning', 'Priority students', 'Guide targets', 'Leaderboard']);
+      expect(find.text('FOLK and Hostel & Localite rankings'), findsOneWidget);
       expect(find.text('Five limbs of practice'), findsOneWidget);
       expect(find.text('Plan the week ahead'), findsOneWidget);
       expect(find.text('Who needs attention'), findsOneWidget);
       expect(find.text('Group targets and phases'), findsOneWidget);
       final style = tester.widget<Text>(find.text('Guide targets')).style!;
       expect(style.fontFamily, 'Fraunces');
-      expect(find.byIcon(Icons.chevron_right_rounded), findsNWidgets(4));
+      expect(find.byIcon(Icons.chevron_right_rounded), findsNWidgets(5));
       expect(find.text('INSIGHTS'), findsOneWidget);
     });
 

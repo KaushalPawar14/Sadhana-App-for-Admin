@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:folk_guide_app/Pages/AbcdeHub.dart';
 import 'package:folk_guide_app/Pages/GoalHomePage.dart';
+import 'package:folk_guide_app/Pages/Leaderboard.dart';
 import 'package:folk_guide_app/Pages/PriorityHub.dart';
 import 'package:folk_guide_app/Pages/WeeklyPlanning.dart';
 import '../Services/UpdateFCM.dart';
@@ -15,8 +16,8 @@ import '../widgets/GuideSurface.dart';
 import '../widgets/GuideEntry.dart';
 import '../widgets/GuideTiles.dart';
 
-/// The Analysis tab ("Folk analysis"): four tiles — ABCDE, Week planning,
-/// Priority students, Guide targets. Each opens the same screen as before.
+/// The Analysis tab ("Folk analysis"): five tiles — ABCDE, Week planning,
+/// Priority students, Guide targets, Leaderboard. Each opens the same screen as before.
 ///
 /// (The old floating "bob" animation on the tiles — an always-running ticker per
 /// tile — is gone; press feedback is the only motion.)
@@ -186,6 +187,16 @@ class _CompetitionPageState extends State<CompetitionPage> {
                 subtitle: 'Group targets and phases',
                 onTap: _openTargets,
                 unseen: _guideTargetsUnseen,
+              ),
+              _card(
+                index: 4,
+                pastel: GuidePastel.sage,
+                icon: Icons.emoji_events_outlined,
+                title: 'Leaderboard',
+                subtitle: 'FOLK and Hostel & Localite rankings',
+                // One ranking at a time: category (FOLK / Hostel & Localite), period,
+                // and (HOD only) Boys or Girls; always inside the admin's own scope.
+                onTap: () => _open(const LeaderboardPage()),
               ),
             ],
           ),
