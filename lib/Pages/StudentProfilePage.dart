@@ -18,6 +18,7 @@ import '../theme/GuideColors.dart';
 import '../utils/GuideDb.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
+import '../widgets/GuideSheet.dart';
 
 /// The student profile page — Phase 3 of the FOLK Boys board redesign.
 /// Opened by the new fourth card icon on `Home/FolkBoysWorkspace.dart`'s
@@ -368,25 +369,26 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
       context: context,
       builder: (sheetContext) {
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('Change residence',
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              ),
-              for (final option in _residenceOptions)
-                ListTile(
-                  title: Text(option),
-                  trailing: option == currentRole
-                      ? Icon(Icons.check, color: context.g.success)
-                      : null,
-                  onTap: () => Navigator.pop(sheetContext, option),
-                ),
-              const SizedBox(height: 8),
-            ],
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const GuideSheetHeader(title: 'Change residence'),
+                const SizedBox(height: 8),
+                for (final option in _residenceOptions)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    minTileHeight: 52,
+                    title: Text(option),
+                    trailing: option == currentRole
+                        ? Icon(Icons.check_rounded, color: context.g.success)
+                        : null,
+                    onTap: () => Navigator.pop(sheetContext, option),
+                  ),
+              ],
+            ),
           ),
         );
       },

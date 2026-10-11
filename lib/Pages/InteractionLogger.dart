@@ -17,6 +17,7 @@ import '../utils/GuideDb.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
+import '../widgets/GuideSheet.dart';
 
 /// Phase 5, item 1 — interaction logging.
 ///
@@ -340,24 +341,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Center(
-                        child: Container(
-                          width: 42,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: context.g.chipBackground,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        "Log interaction — ${widget.studentName}",
-                        style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      GuideSheetHeader(title: "Log interaction — ${widget.studentName}"),
                       const SizedBox(height: 4),
                       Text(
                         "Type what was discussed. AI fills in the details "

@@ -16,6 +16,7 @@ import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
 import '../widgets/GuideMeta.dart';
+import '../widgets/GuideSheet.dart';
 
 /// Service Bank — replaces `Pages/DevotionalServiceManager.dart` entirely
 /// (Phase: Service Bank, Part 4). Reached from the same "D" tile on
@@ -120,21 +121,7 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Center(
-                    child: Container(
-                      width: 42,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: context.g.chipBackground,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    "Assign: ${service.title}",
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
+                  GuideSheetHeader(title: "Assign: ${service.title}"),
                   const SizedBox(height: 4),
                   Text(
                     "Select students",
@@ -683,14 +670,7 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Center(
-                      child: Container(
-                        width: 42,
-                        height: 4,
-                        decoration: BoxDecoration(
-                            color: context.g.border, borderRadius: BorderRadius.circular(4)),
-                      ),
-                    ),
+                    const Padding(padding: EdgeInsets.only(bottom: 14), child: GuideSheetHandle()),
                     const SizedBox(height: 18),
                     Text(label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                     Text("${service.number}. ${service.title}",

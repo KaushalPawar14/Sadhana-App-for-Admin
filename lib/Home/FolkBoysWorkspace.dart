@@ -20,6 +20,7 @@ import '../widgets/GuideBoardGhost.dart';
 import '../widgets/GuideBoardMotion.dart';
 import '../widgets/GuideGhost.dart';
 import '../widgets/GuideReveal.dart';
+import '../widgets/GuideSheet.dart';
 import '../widgets/GuideStates.dart';
 import '../widgets/GuideChips.dart';
 import '../widgets/GuideSurface.dart';
@@ -1419,17 +1420,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                   controller: scrollController,
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                   children: [
-                    Center(
-                      child: Container(
-                        width: 42,
-                        height: 4,
-                        margin: const EdgeInsets.only(bottom: 14),
-                        decoration: BoxDecoration(
-                          color: g.border,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    ),
+                    const Padding(padding: EdgeInsets.only(bottom: 14), child: GuideSheetHandle()),
                     Text("Boards", style: t.sectionTitle),
                     const SizedBox(height: 12),
                     ...mandatory.map((b) => row(
@@ -1939,17 +1930,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Center(
-                                    child: Container(
-                                      width: 42,
-                                      height: 4,
-                                      margin: const EdgeInsets.only(bottom: 14),
-                                      decoration: BoxDecoration(
-                                        color: context.g.border,
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                    ),
-                                  ),
+                                  const Padding(padding: EdgeInsets.only(bottom: 14), child: GuideSheetHandle()),
                                   Text(
                                     "Add students to \"${column.title}\"",
                                     style: context.gText.sectionTitle,

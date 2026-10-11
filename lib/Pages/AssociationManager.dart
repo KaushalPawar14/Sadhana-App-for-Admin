@@ -17,6 +17,7 @@ import '../utils/GuideDb.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
+import '../widgets/GuideSheet.dart';
 
 /// Association — meeting requests raised by students.
 ///
@@ -442,22 +443,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Center(
-                      child: Container(
-                        width: 42,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: context.g.chipBackground,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    const Text(
-                      "Request a Meeting",
-                      style:
-                          TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                    ),
+                    GuideSheetHeader(title: "Request a Meeting"),
                     const SizedBox(height: 20),
 
                     DropdownButtonFormField<String>(

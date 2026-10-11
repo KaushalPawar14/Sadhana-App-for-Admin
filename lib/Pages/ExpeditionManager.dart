@@ -14,6 +14,7 @@ import '../utils/GuideDb.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
+import '../widgets/GuideSheet.dart';
 
 /// Expedition (pilgrimage / retreat) management.
 ///
@@ -343,16 +344,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(
-                child: Container(
-                  width: 42,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: context.g.chipBackground,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ),
+              const GuideSheetHandle(),
               const SizedBox(height: 18),
               Text(
                 tripTitle,

@@ -10,6 +10,7 @@ import '../theme/GuideColors.dart';
 import '../utils/GuideDb.dart';
 import '../widgets/GuideWait.dart';
 import '../widgets/GuideMeta.dart';
+import '../widgets/GuideSheet.dart';
 
 /// LIT assessment — private, guide-only (FOLK_HANDOFF.md Section 8).
 ///
@@ -217,24 +218,7 @@ class _LitEntrySheetState extends State<_LitEntrySheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(
-                child: Container(
-                  width: 42,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: context.g.chipBackground,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                "LIT assessment — ${widget.studentName}",
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              GuideSheetHeader(title: "LIT assessment — ${widget.studentName}"),
               const SizedBox(height: 4),
               Text(
                 "Private to guides. Three independent judgements — they are "
