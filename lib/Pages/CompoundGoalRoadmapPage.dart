@@ -133,7 +133,9 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
             builder: (context, targetSnap) {
               final target = targetSnap.data;
               if (target == null) {
-                return const GuideWait();
+                return targetSnap.connectionState == ConnectionState.waiting
+                    ? GuideWait(snapshot: targetSnap)
+                    : const GuideNotAvailable('This target is no longer available.');
               }
               return StreamBuilder<List<CompoundPhase>>(
                 stream: compoundPhasesStream(widget.guideId, widget.targetId),
@@ -321,7 +323,6 @@ class _CompoundGoalRoadmapPageState extends State<CompoundGoalRoadmapPage> {
             decoration: const InputDecoration(
               hintText: "e.g. \"Two of my strongest students just left "
                   "FOLK — please slow the roster growth down\"",
-              border: OutlineInputBorder(),
               isDense: true,
             ),
           ),

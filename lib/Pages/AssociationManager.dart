@@ -271,9 +271,6 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                   decoration: InputDecoration(
                     labelText: "Notes from the meeting",
                     alignLabelWithHint: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
                   ),
                 ),
               ],
@@ -468,9 +465,6 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                       isExpanded: true,
                       decoration: InputDecoration(
                         labelText: "Student",
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
                       ),
                       items: students.map((doc) {
                         final name =
@@ -534,9 +528,6 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                       decoration: InputDecoration(
                         labelText: "Message (optional)",
                         alignLabelWithHint: true,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
                       ),
                     ),
 

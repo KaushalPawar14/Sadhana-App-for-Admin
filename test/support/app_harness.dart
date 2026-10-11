@@ -8,6 +8,7 @@ import 'package:folk_guide_app/utils/data_range_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:folk_guide_app/Services/HierarchyApi.dart';
 import 'package:folk_guide_app/utils/AdminProfile.dart';
+import 'package:folk_guide_app/utils/GoalCompoundQueries.dart';
 import 'package:folk_guide_app/utils/GuideDb.dart';
 import 'package:folk_guide_app/utils/SeenMarkers.dart';
 import 'package:folk_guide_app/utils/UnseenAggregates.dart';
@@ -181,6 +182,26 @@ Future<FakeFirebaseFirestore> seededDb() async {
     'confidence': 'medium',
     'evidence': 'Regular japa and class attendance',
   });
+  final target = db.collection(kGuideTargetsCollection).doc('G').collection(kCompoundTargetsSubcollection).doc('t1');
+  await target.set({
+    'metric': 'chanting',
+    'studentCountGoal': 10,
+    'perStudentValueGoal': 16,
+    'status': 'active',
+    'currentPhase': 2,
+    'totalPhases': 4,
+    'createdAt': Timestamp.fromDate(now),
+  });
+  for (var n = 1; n <= 4; n++) {
+    await target.collection(kCompoundPhasesSubcollection).doc('$n').set({
+      'phaseNumber': n,
+      'status': n == 2 ? 'active' : (n < 2 ? 'done' : 'upcoming'),
+      'tasks': [
+        {'type': 'roster', 'fromCount': 4 + n, 'toCount': 5 + n},
+        {'type': 'value', 'fromLevel': n, 'toLevel': n + 2, 'studentUids': ['s1', 's2']},
+      ],
+    });
+  }
   await db.collection('flaggedChatMessages').add({
     'studentUid': 's1',
     'studentName': 'Arjun Kumar',

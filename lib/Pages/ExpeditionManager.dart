@@ -144,9 +144,6 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                     onChanged: (v) => title = v,
                     decoration: InputDecoration(
                       labelText: "Title",
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -156,9 +153,6 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                     decoration: InputDecoration(
                       labelText: "Description",
                       alignLabelWithHint: true,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -166,9 +160,6 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                     onChanged: (v) => location = v,
                     decoration: InputDecoration(
                       labelText: "Location",
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -177,9 +168,6 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                     keyboardType: TextInputType.number,
                     decoration: InputDecoration(
                       labelText: "Max participants (optional)",
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
                     ),
                   ),
                   const SizedBox(height: 6),

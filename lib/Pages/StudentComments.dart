@@ -493,9 +493,6 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
                 isDense: true,
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(22),
-                ),
               ),
               onSubmitted: (_) => _send(),
             ),

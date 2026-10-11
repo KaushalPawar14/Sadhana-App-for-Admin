@@ -181,7 +181,6 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
                       decoration: const InputDecoration(
                         labelText: "How many students",
                         isDense: true,
-                        border: OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -192,7 +191,6 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
                         labelText: "At what value, each",
                         suffixText: metricInfo?.unit,
                         isDense: true,
-                        border: const OutlineInputBorder(),
                       ),
                     ),
                   ],

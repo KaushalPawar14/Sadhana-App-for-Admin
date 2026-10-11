@@ -146,8 +146,6 @@ class _ChantingChallengeManagerPageState
                     decoration: InputDecoration(
                       labelText: "Challenge name",
                       hintText: "e.g. Ekadashi together",
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12)),
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 12),
                     ),
@@ -159,8 +157,6 @@ class _ChantingChallengeManagerPageState
                     decoration: InputDecoration(
                       labelText: "Target rounds (whole roster)",
                       hintText: "500",
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12)),
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 12),
                     ),
@@ -183,8 +179,6 @@ class _ChantingChallengeManagerPageState
                     child: InputDecorator(
                       decoration: InputDecoration(
                         labelText: "Target date",
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12)),
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 14, vertical: 14),
                       ),

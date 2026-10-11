@@ -31,6 +31,8 @@ import 'package:folk_guide_app/Pages/ServiceBank.dart';
 import 'package:folk_guide_app/Pages/StudentProfilePage.dart';
 import 'package:folk_guide_app/Pages/SubmissionStatus.dart';
 
+import 'package:folk_guide_app/widgets/GuideGhost.dart';
+
 import 'support/app_harness.dart';
 import 'support/guide_test_support.dart';
 
@@ -93,6 +95,9 @@ void main() {
           await tester.pump(const Duration(seconds: 6));
           await tester.pump(const Duration(seconds: 1));
           expect(tester.takeException(), isNull, reason: 'settled');
+          // nothing is still loading: no breathing ghost and no running ticker
+          expect(GhostClock.instance.running, isFalse, reason: 'a ghost is still breathing after the data arrived');
+          expect(tester.binding.transientCallbackCount, 0, reason: 'a ticker is still running');
           if (scale == 1.0) await shot(tester, 'screens/${e.key}_${dark ? 'dark' : 'light'}');
           // leave: let any polling timer of the screen run out
           await tester.pumpWidget(const SizedBox());

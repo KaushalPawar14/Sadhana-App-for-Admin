@@ -745,7 +745,6 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
                       maxLines: 2,
                       decoration: const InputDecoration(
                         labelText: "Note (optional)",
-                        border: OutlineInputBorder(),
                       ),
                     ),
                     if (assignment.competence != null) ...[

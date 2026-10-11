@@ -101,8 +101,13 @@ class _CompoundGoalProgressPageState extends State<CompoundGoalProgressPage> {
             stream: compoundTargetStream(guideId, targetId),
             builder: (context, targetSnap) {
               final target = targetSnap.data;
-              if (target == null || target.totalPhases == 0) {
-                return const GuideWait();
+              if (target == null) {
+                return targetSnap.connectionState == ConnectionState.waiting
+                    ? GuideWait(snapshot: targetSnap)
+                    : const GuideNotAvailable('This target is no longer available.');
+              }
+              if (target.totalPhases == 0) {
+                return const GuideNotAvailable('The phase plan is still being generated.');
               }
               return StreamBuilder<List<CompoundPhase>>(
                 stream: compoundPhasesStream(guideId, targetId),
@@ -111,7 +116,9 @@ class _CompoundGoalProgressPageState extends State<CompoundGoalProgressPage> {
                   final currentPhase = phases.where(
                       (p) => p.phaseNumber == target.currentPhase);
                   if (currentPhase.isEmpty) {
-                    return const GuideWait();
+                    return phasesSnap.hasData
+                        ? const GuideNotAvailable('The plan for this phase is not available yet.')
+                        : GuideWait(snapshot: phasesSnap);
                   }
                   return _body(target, currentPhase.first);
                 },

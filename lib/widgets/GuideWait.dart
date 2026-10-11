@@ -69,3 +69,21 @@ class GuideBusyDot extends StatelessWidget {
     );
   }
 }
+
+/// Something that loaded fine but is not there (a deleted target, a plan not generated
+/// yet): the ghost at rest with one friendly line, not a ghost that breathes for ever.
+class GuideNotAvailable extends StatelessWidget {
+  const GuideNotAvailable(this.message, {super.key});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return GuideStateView(
+      state: GuideLoad.empty,
+      ghost: const GuideGhostList(rows: 3, pulsing: false),
+      content: const SizedBox.shrink(),
+      emptyMessage: message,
+    );
+  }
+}

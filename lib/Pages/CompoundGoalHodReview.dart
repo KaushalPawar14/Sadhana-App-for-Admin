@@ -82,7 +82,6 @@ class _CompoundGoalHodReviewState extends State<CompoundGoalHodReview> {
                       decoration: const InputDecoration(
                         labelText: "Guide",
                         isDense: true,
-                        border: OutlineInputBorder(),
                       ),
                       items: admins
                           .map((a) => DropdownMenuItem(

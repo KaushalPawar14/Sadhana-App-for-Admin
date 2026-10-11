@@ -249,9 +249,6 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
                     decoration: InputDecoration(
                       labelText: "Episode title",
                       hintText: "e.g. Why we chant",
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 14,
                         vertical: 12,
@@ -272,9 +269,6 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
                       labelText: "Duration (mm:ss)",
                       hintText: "12:34",
                       errorText: durationError,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 14,
                         vertical: 12,
@@ -289,9 +283,6 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
                     decoration: InputDecoration(
                       labelText: "Dropbox link",
                       hintText: "https://www.dropbox.com/...",
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 14,
                         vertical: 12,

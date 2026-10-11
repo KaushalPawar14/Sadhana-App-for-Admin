@@ -260,7 +260,6 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
                       decoration: const InputDecoration(
                         labelText: 'Name',
                         hintText: 'e.g. NKD',
-                        border: OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -271,7 +270,6 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
                       decoration: const InputDecoration(
                         labelText: 'Email',
                         hintText: 'their.email@gmail.com',
-                        border: OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -284,7 +282,6 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
                         value: role,
                         decoration: const InputDecoration(
                           labelText: 'Role',
-                          border: OutlineInputBorder(),
                         ),
                         items: [
                           for (final r in roles)
@@ -301,7 +298,6 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
                         value: teamGuide,
                         decoration: const InputDecoration(
                           labelText: 'Team Guide',
-                          border: OutlineInputBorder(),
                         ),
                         items: [
                           const DropdownMenuItem(
@@ -454,7 +450,6 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
                       enabled: !saving,
                       decoration: const InputDecoration(
                         labelText: 'Name (shown to students)',
-                        border: OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -464,7 +459,6 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
                       keyboardType: TextInputType.emailAddress,
                       decoration: const InputDecoration(
                         labelText: 'Email',
-                        border: OutlineInputBorder(),
                       ),
                     ),
                     if (!isSelf) ...[
@@ -474,7 +468,6 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
                         value: role,
                         decoration: const InputDecoration(
                           labelText: 'Role',
-                          border: OutlineInputBorder(),
                         ),
                         items: [
                           for (final r in AdminRole.values)
@@ -494,7 +487,6 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
                             : '',
                         decoration: const InputDecoration(
                           labelText: 'Team Guide',
-                          border: OutlineInputBorder(),
                         ),
                         items: [
                           const DropdownMenuItem(

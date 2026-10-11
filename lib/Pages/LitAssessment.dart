@@ -275,9 +275,6 @@ class _LitEntrySheetState extends State<_LitEntrySheet> {
                 textCapitalization: TextCapitalization.sentences,
                 decoration: InputDecoration(
                   hintText: "What did you actually observe?",
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
                 ),
               ),
               const SizedBox(height: 18),

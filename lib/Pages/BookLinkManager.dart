@@ -158,9 +158,6 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
                   onChanged: (value) => enteredUrl = value,
                   decoration: InputDecoration(
                     hintText: "https://www.dropbox.com/...",
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 14,
                       vertical: 12,

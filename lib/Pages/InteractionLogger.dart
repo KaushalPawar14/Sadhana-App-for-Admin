@@ -402,9 +402,6 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                         initialValue: interactionType,
                         decoration: InputDecoration(
                           labelText: "How did you connect?",
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
                         ),
                         items: kInteractionTypes
                             .map((t) => DropdownMenuItem(
@@ -465,9 +462,6 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                           hintText:
                               "e.g. Met Ravi after the evening program. He is "
                               "struggling to chant during exam week...",
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
                         ),
                       ),
                       const SizedBox(height: 16),

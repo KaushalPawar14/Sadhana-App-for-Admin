@@ -171,6 +171,38 @@ void main() {
       expect(hits, isEmpty);
     });
 
+    test('no spinners: ghosts replace every CircularProgressIndicator and LinearProgressIndicator spinner', () {
+      final hits = <String>[];
+      for (final f in files) {
+        // the theme names the indicator only to style it (nothing builds one)
+        if (isTheme(f)) continue;
+        for (final l in code(f)) {
+          if (RegExp(r'(CircularProgressIndicator|RefreshProgressIndicator)\(').hasMatch(l.value)) {
+            hits.add('${rel(f)}:${l.key + 1}');
+          }
+        }
+      }
+      expect(hits, isEmpty);
+    });
+
+    test('screens use the shared components: GuideAppBar, GuideDialog, GuideChoiceChip', () {
+      final hits = <String>[];
+      final bare = {
+        RegExp(r'(?<![A-Za-z_.])AppBar\('): 'GuideAppBar',
+        RegExp(r'(?<![A-Za-z_.])AlertDialog\('): 'GuideDialog',
+        RegExp(r'(?<![A-Za-z_.])(ChoiceChip|FilterChip)\('): 'GuideChoiceChip',
+      };
+      for (final f in files) {
+        if (isTheme(f) || rel(f) == 'lib/widgets/GuideDialog.dart') continue;
+        for (final l in code(f)) {
+          for (final e in bare.entries) {
+            if (e.key.hasMatch(l.value)) hits.add('${rel(f)}:${l.key + 1} should use ${e.value}');
+          }
+        }
+      }
+      expect(hits, isEmpty, reason: hits.join(', '));
+    });
+
     test('fonts are bundled: Fraunces and Inter files and licences', () {
       for (final p in [
         'assets/fonts/Fraunces-Medium.ttf',

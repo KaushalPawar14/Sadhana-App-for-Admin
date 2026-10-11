@@ -435,7 +435,6 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
             decoration: const InputDecoration(
               labelText: "Note to the guide",
               isDense: true,
-              border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 6),
