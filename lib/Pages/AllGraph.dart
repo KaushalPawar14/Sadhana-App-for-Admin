@@ -607,9 +607,11 @@ class MyPieChart extends StatelessWidget {
                 ),
               ),
               SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
+              Wrap(
+          alignment: WrapAlignment.spaceEvenly,
+          spacing: 12,
+          runSpacing: 6,
+          children: [
                   LegendItem(color: context.g.success, text: "Fully"),
                   LegendItem(color: context.g.warning, text: "Partial"),
                   LegendItem(color: context.g.danger, text: "Missed"),
@@ -667,8 +669,10 @@ class FinishTimingChart extends StatelessWidget {
         SizedBox(height: 12),
 
         // ✅ Legend
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        Wrap(
+          alignment: WrapAlignment.spaceEvenly,
+          spacing: 12,
+          runSpacing: 6,
           children: [
             LegendItem(color: context.g.success, text: "1:00 PM"),
             LegendItem(color: context.g.warning, text: "4:00 PM"),
@@ -730,8 +734,10 @@ class TempleEntryChart extends StatelessWidget {
         SizedBox(height: 12),
 
         // Legend Section
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        Wrap(
+          alignment: WrapAlignment.spaceEvenly,
+          spacing: 12,
+          runSpacing: 6,
           children: [
             LegendItem(
               color: context.g.success,

@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/Home/Calendar.dart';
+import 'package:folk_guide_app/Home/Scores.dart';
+import 'package:folk_guide_app/Pages/AdminRegisterUserPage.dart';
+import 'package:folk_guide_app/Pages/AllGraph.dart';
+import 'package:folk_guide_app/Pages/CompoundTaskEditorPage.dart';
+import 'package:folk_guide_app/Pages/GuideSignIn.dart';
 import 'package:folk_guide_app/Pages/AbcdeHub.dart';
 import 'package:folk_guide_app/Pages/AdminManager.dart';
 import 'package:folk_guide_app/Pages/AssociationManager.dart';
@@ -69,6 +74,14 @@ final Map<String, Widget Function()> screens = {
   'service_bank': () => const ServiceBankPage(),
   'student_profile': () => const StudentProfilePage(studentUid: 's1'),
   'submission_status': () => const SubmissionStatusPage(),
+  'scores': () => ScoreScreen(username: 'Arjun Kumar', selectedDate: DateTime.now()),
+  'all_graph': () => const AllGraph(username: 'Arjun Kumar', role: 'Stay at FOLK'),
+  'challenge_contributions': () => const ChallengeContributionsPage(challengeId: 'c1', challengeName: 'Ekadashi 64 rounds', target: 64, total: 40),
+  'compound_task_editor': () => const CompoundTaskEditorPage(guideId: 'G', targetId: 't1', isHod: true, hodUid: 'H'),
+  'chat_transcript': () => const StudentChatTranscriptPage(studentUid: 's1', studentName: 'Arjun Kumar', messageId: 'm1', flaggedCreatedAt: null),
+  'interaction_detail': () => const InteractionDetailPage(docId: 'd1', studentName: 'Arjun Kumar'),
+  'sign_in': () => const GuideSignInPage(),
+  'admin_register_user': () => const AdminRegisterUserPage(),
   'force_update': () => const ForceUpdateScreen(),
   'non_play_install': () => const NonPlayInstallScreen(),
 };

@@ -382,7 +382,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      DropdownButtonFormField<String>(
+                      DropdownButtonFormField<String>(isExpanded: true, 
                         initialValue: interactionType,
                         decoration: InputDecoration(
                           labelText: "How did you connect?",
@@ -1117,7 +1117,7 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
                       ),
                       const SizedBox(height: 12),
                       _card(
-                        child: DropdownButtonFormField<String>(
+                        child: DropdownButtonFormField<String>(isExpanded: true, 
                           initialValue: _interactionType,
                           decoration: const InputDecoration(
                             labelText: "How did you connect?",
@@ -1165,7 +1165,7 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
                                 style: TextStyle(fontSize: 14),
                               ),
                             ),
-                            DropdownButton<String>(
+                            DropdownButton<String>(isExpanded: true, 
                               value: _confidence,
                               underline: const SizedBox(),
                               onChanged: (v) =>
