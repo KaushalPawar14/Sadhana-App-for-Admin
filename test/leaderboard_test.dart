@@ -250,6 +250,168 @@ void main() {
       expect(find.byType(LeaderboardPage), findsOneWidget);
     });
   });
+
+  bestPerformerTests();
+}
+
+
+// ------------------------------------------------------------------ Best performer
+
+Future<FakeFirebaseFirestore> withWinners({bool oldWeekToo = true}) async {
+  final db = await seeded();
+  Future<void> week(String id, String at, Map<String, Map<String, dynamic>> byRanking) async {
+    final ref = db.collection('competition-results').doc('weekly').collection('weeks').doc(id);
+    await ref.set({'generatedAt': at});
+    for (final e in byRanking.entries) {
+      await ref.collection('byCategory').doc(e.key).set(e.value);
+    }
+  }
+
+  Map<String, dynamic> improved(String n, num inc, {String guide = 'E1', String team = 'G'}) =>
+      {'name': n, 'increase': inc, 'reason': '+$inc points vs last week', 'scopeGuide': guide, 'scopeTeam': team};
+  Map<String, dynamic> keeper(String n, int c, int d, {String guide = 'E1', String team = 'G'}) =>
+      {'name': n, 'commitment': c, 'daysMet': d, 'reason': 'kept $c rounds on $d of 7 days', 'scopeGuide': guide, 'scopeTeam': team};
+  if (oldWeekToo) {
+    await week('2026-W41', '2026-10-11T00:05:00.000', {
+      'folk_male': {'mostImproved': improved('Old Winner', 1), 'commitmentKeeper': null},
+    });
+  }
+  await week('2026-W42', '2026-10-18T00:05:00.000', {
+    'folk_male': {'mostImproved': improved('Arjun', 24), 'commitmentKeeper': keeper('Dev Far', 16, 6, guide: 'E9', team: 'G9')},
+    'hostel_localite_male': {'mostImproved': null, 'commitmentKeeper': keeper('Hari', 16, 6)},
+    'folk_female': {'mostImproved': improved('Radha', 7, guide: 'F1', team: ''), 'commitmentKeeper': null},
+    'hostel_localite_female': {'mostImproved': null, 'commitmentKeeper': keeper('Gopi', 8, 5, guide: 'F1', team: '')},
+  });
+  return db;
+}
+
+Future<void> openWithWinners(WidgetTester tester, AdminProfile p, {double scale = 1.0, bool dark = false, bool winners = true}) async {
+  phone(tester, scale);
+  AdminProfileProvider.instance.debugSet(p);
+  GuideDb.useForTests(winners ? await withWinners() : await seeded());
+  await tester.pumpWidget(guideHost(const LeaderboardPage(), dark: dark));
+  await tester.pumpAndSettle();
+  await tester.drag(find.byType(Scrollable).first, const Offset(0, -2000));
+  await tester.pumpAndSettle();
+}
+
+void bestPerformerTests() {
+  group('Best performer section', () {
+    testWidgets('a Guide sees both winners of BOTH categories for boys, and who is in his group', (tester) async {
+      await openWithWinners(tester, profile('G', 'GUIDE'));
+      expect(find.text('BEST PERFORMER'), findsOneWidget);
+      expect(find.text('Arjun'), findsWidgets);
+      expect(find.text('+24 points vs last week'), findsOneWidget);
+      expect(find.text('Dev Far'), findsOneWidget);
+      expect(find.text('kept 16 rounds on 6 of 7 days'), findsNWidgets(2), reason: 'Dev Far (FOLK) and Hari (Hostel & Localite)');
+      expect(find.text('Hari'), findsOneWidget);
+      expect(find.text('No winner this week.'), findsOneWidget, reason: 'Hostel & Localite has no most-improved winner');
+      // in his group: Arjun (team G) and Hari (team G); not Dev Far (another team)
+      expect(find.text('In your group'), findsNWidgets(2));
+      // never the girls, never an older week
+      for (final n in ['Gopi', 'Old Winner']) {
+        expect(find.text(n), findsNothing, reason: n);
+      }
+      expect(find.text('+7 points vs last week'), findsNothing, reason: 'the girls winner');
+    });
+
+    testWidgets('a Female Enabler sees the girls winners only', (tester) async {
+      await openWithWinners(tester, profile('F1', 'FEMALE_ENABLER'));
+      expect(find.text('+7 points vs last week'), findsOneWidget, reason: 'Radha, FOLK girls');
+      expect(find.text('kept 8 rounds on 5 of 7 days'), findsOneWidget, reason: 'Gopi, Hostel & Localite girls');
+      expect(find.text('Arjun'), findsNothing);
+      expect(find.text('In your group'), findsNWidgets(2));
+    });
+
+    testWidgets('a HOD follows the Boys / Girls choice; everyone is in his scope', (tester) async {
+      await openWithWinners(tester, profile('H', 'HOD'));
+      expect(find.text('Dev Far'), findsOneWidget);
+      expect(find.text('In your group'), findsNWidgets(3));
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, 2000));
+      await tester.pumpAndSettle();
+      await tester.tap(chip('Girls'));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -2000));
+      await tester.pumpAndSettle();
+      expect(find.text('+7 points vs last week'), findsOneWidget);
+      expect(find.text('kept 8 rounds on 5 of 7 days'), findsOneWidget);
+      expect(find.text('Arjun'), findsNothing);
+    });
+
+    testWidgets('no weekly results yet: a friendly line', (tester) async {
+      await openWithWinners(tester, profile('G', 'GUIDE'), winners: false);
+      expect(find.textContaining('No winners yet'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('an error offers Retry', (tester) async {
+      phone(tester, 1.0);
+      AdminProfileProvider.instance.debugSet(profile('G', 'GUIDE'));
+      final data = _BestFlaky();
+      LeaderboardData.instance = data;
+      await tester.pumpWidget(guideHost(const LeaderboardPage()));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -2000));
+      await tester.pumpAndSettle();
+      expect(find.text("Couldn't load the winners just now."), findsOneWidget);
+      await tester.tap(find.text('Retry').last);
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -2000));
+      await tester.pumpAndSettle();
+      expect(find.text('+3 points vs last week'), findsOneWidget);
+      expect(data.calls, 2);
+    });
+
+    test('scope rule: HOD all; Guide his team and unassigned boys; Enabler their own and unassigned', () {
+      final guide = profile('G', 'GUIDE');
+      final enabler = profile('E1', 'MALE_ENABLER');
+      final femaleEnabler = profile('F1', 'FEMALE_ENABLER');
+      expect(winnerInScope(profile('H', 'HOD'), scopeGuide: 'x', scopeTeam: 'y', gender: 'female'), isTrue);
+      expect(winnerInScope(guide, scopeGuide: 'E1', scopeTeam: 'G', gender: 'male'), isTrue);
+      expect(winnerInScope(guide, scopeGuide: 'E9', scopeTeam: 'G9', gender: 'male'), isFalse);
+      expect(winnerInScope(guide, scopeGuide: '', scopeTeam: '', gender: 'male'), isTrue);
+      expect(winnerInScope(enabler, scopeGuide: 'E1', scopeTeam: 'G', gender: 'male'), isTrue);
+      expect(winnerInScope(enabler, scopeGuide: 'E2', scopeTeam: 'G', gender: 'male'), isFalse);
+      expect(winnerInScope(femaleEnabler, scopeGuide: '', scopeTeam: '', gender: 'female'), isTrue);
+      expect(winnerInScope(femaleEnabler, scopeGuide: 'F2', scopeTeam: '', gender: 'female'), isFalse);
+      expect(parseBestWinner(null, guide, 'male'), isNull);
+      expect(parseBestWinner({'name': ' '}, guide, 'male'), isNull);
+    });
+
+    for (final dark in [false, true]) {
+      for (final scale in kScales) {
+        testWidgets('${dark ? 'dark' : 'light'} text $scale: the winners section does not overflow (HOD, both genders)', (tester) async {
+          await openWithWinners(tester, profile('H', 'HOD'), scale: scale, dark: dark);
+          expectNoOverflow(tester);
+          await tester.drag(find.byType(Scrollable).first, const Offset(0, 3000));
+          await tester.pumpAndSettle();
+          await tester.tap(chip('Girls'));
+          await tester.pumpAndSettle();
+          await tester.drag(find.byType(Scrollable).first, const Offset(0, -3000));
+          await tester.pumpAndSettle();
+          expectNoOverflow(tester);
+        });
+      }
+    }
+  });
+}
+
+class _BestFlaky implements LeaderboardData {
+  int calls = 0;
+  @override
+  Future<List<LeaderboardEntry>> ranking({required String category, required String gender, required LeaderboardPeriod period}) async =>
+      const [LeaderboardEntry(name: 'Arjun', score: 5, days: 1)];
+
+  @override
+  Future<Map<String, BestPerformerSet>> bestPerformers({required String gender}) async {
+    calls++;
+    if (calls == 1) throw StateError('offline');
+    return {
+      'folk': const BestPerformerSet(
+        mostImproved: BestWinnerInfo(name: 'Arjun', reason: '+3 points vs last week', inScope: true),
+      ),
+    };
+  }
 }
 
 class _FlakyData implements LeaderboardData {
@@ -260,10 +422,16 @@ class _FlakyData implements LeaderboardData {
     if (calls == 1) throw StateError('offline');
     return const [LeaderboardEntry(name: 'Arjun', score: 5, days: 1)];
   }
+
+  @override
+  Future<Map<String, BestPerformerSet>> bestPerformers({required String gender}) async => {};
 }
 
 class _SlowData implements LeaderboardData {
   final done = Completer<List<LeaderboardEntry>>();
   @override
   Future<List<LeaderboardEntry>> ranking({required String category, required String gender, required LeaderboardPeriod period}) => done.future;
+
+  @override
+  Future<Map<String, BestPerformerSet>> bestPerformers({required String gender}) async => {};
 }

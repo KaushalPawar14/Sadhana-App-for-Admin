@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'AdminProfile.dart';
+import 'GuideDb.dart';
 import 'StudentScope.dart';
 
 /// The competition categories. Hostel and Localite students compete TOGETHER in one
@@ -66,6 +68,57 @@ List<LeaderboardEntry> rankCompetition(
   return out;
 }
 
+/// One of the two weekly Best performer winners of a ranking (decided on the server,
+/// `functions/bestPerformers.js`).
+class BestWinnerInfo {
+  const BestWinnerInfo({required this.name, required this.reason, required this.inScope});
+
+  final String name;
+
+  /// The short reason: "+24 points vs last week" / "kept 16 rounds on 6 of 7 days".
+  final String reason;
+
+  /// Whether the winner is one of THIS admin's students (their team, their own, or an
+  /// unassigned student of their gender); the HOD's scope is everyone.
+  final bool inScope;
+}
+
+/// The two winners of one category (for the viewed gender) in the latest finalised week.
+class BestPerformerSet {
+  const BestPerformerSet({this.mostImproved, this.commitmentKeeper});
+
+  final BestWinnerInfo? mostImproved;
+  final BestWinnerInfo? commitmentKeeper;
+
+  bool get hasWinner => mostImproved != null || commitmentKeeper != null;
+}
+
+/// Whether a student with this assignment is within [profile]'s scope. The same rule as
+/// `StudentScope`: HOD all; Guide his team and the unassigned boys; Enabler their own and
+/// the unassigned of their gender.
+bool winnerInScope(AdminProfile profile, {required String scopeGuide, required String scopeTeam, required String gender}) {
+  if (profile.isHod) return true;
+  final unassignedOfMine = scopeGuide.isEmpty && gender == profile.gender;
+  if (profile.isGuide) return scopeTeam == profile.id || unassignedOfMine;
+  return scopeGuide == profile.id || unassignedOfMine;
+}
+
+BestWinnerInfo? parseBestWinner(Object? raw, AdminProfile profile, String gender) {
+  if (raw is! Map) return null;
+  final name = (raw['name'] ?? '').toString().trim();
+  if (name.isEmpty) return null;
+  return BestWinnerInfo(
+    name: name,
+    reason: (raw['reason'] ?? '').toString().trim(),
+    inScope: winnerInScope(
+      profile,
+      scopeGuide: (raw['scopeGuide'] ?? '').toString(),
+      scopeTeam: (raw['scopeTeam'] ?? '').toString(),
+      gender: gender,
+    ),
+  );
+}
+
 /// Everything the Leaderboard screen reads, behind one interface (the app uses the
 /// Firestore-backed one; a widget test can hand in plain values).
 abstract class LeaderboardData {
@@ -78,6 +131,10 @@ abstract class LeaderboardData {
     required String gender,
     required LeaderboardPeriod period,
   });
+
+  /// The latest week's two winners for [gender], per category (`folk`, `hostel_localite`).
+  /// A category with no results is absent from the map.
+  Future<Map<String, BestPerformerSet>> bestPerformers({required String gender});
 }
 
 class FirestoreLeaderboardData implements LeaderboardData {
@@ -97,5 +154,30 @@ class FirestoreLeaderboardData implements LeaderboardData {
       extraEquals: {'category': category, 'gender': gender},
     );
     return rankCompetition(snap.docs, period);
+  }
+
+  @override
+  Future<Map<String, BestPerformerSet>> bestPerformers({required String gender}) async {
+    final profile = AdminProfileProvider.require();
+    final weeks = await GuideDb.instance
+        .collection('competition-results')
+        .doc('weekly')
+        .collection('weeks')
+        .orderBy('generatedAt', descending: true)
+        .limit(1)
+        .get();
+    final out = <String, BestPerformerSet>{};
+    if (weeks.docs.isEmpty) return out;
+    for (final category in [kCategoryFolk, kCategoryHostelLocalite]) {
+      // The rules let an admin read the rankings of THEIR gender only.
+      final snap = await weeks.docs.first.reference.collection('byCategory').doc('${category}_$gender').get();
+      final data = snap.data();
+      if (data == null) continue;
+      out[category] = BestPerformerSet(
+        mostImproved: parseBestWinner(data['mostImproved'], profile, gender),
+        commitmentKeeper: parseBestWinner(data['commitmentKeeper'], profile, gender),
+      );
+    }
+    return out;
   }
 }

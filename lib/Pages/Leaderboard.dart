@@ -39,6 +39,10 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
   /// Bumped on every request, so a slow answer for an old selection is ignored.
   int _request = 0;
 
+  /// The weekly Best performer winners for the viewed gender (both categories).
+  Future<Map<String, BestPerformerSet>>? _best;
+  String? _bestGender;
+
   bool get _isHod => AdminProfileProvider.viewerIsHod;
 
   @override
@@ -47,6 +51,12 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
     // Non-HOD admins are fixed to the gender of their role; a HOD starts on Boys.
     _gender = AdminProfileProvider.instance.profile?.gender ?? 'male';
     _fetch();
+    _fetchBest();
+  }
+
+  void _fetchBest() {
+    _bestGender = _gender;
+    _best = LeaderboardData.instance.bestPerformers(gender: _gender);
   }
 
   Future<void> _fetch() async {
@@ -79,6 +89,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
     _gender = gender ?? _gender;
     _period = period ?? _period;
     _fetch();
+    if (_bestGender != _gender) setState(_fetchBest);
   }
 
   Widget _chips(String label, List<Widget> chips) {
@@ -158,23 +169,34 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(
                   GuideSpace.pagePadding, 8, GuideSpace.pagePadding, 28),
-              child: GuideStateView(
-                state: _load,
-                ghost: const GuideGhostList(rows: 6, rowHeight: 64, padding: EdgeInsets.zero),
-                emptyMessage: 'No scores yet for this group ${_period == LeaderboardPeriod.weekly ? 'this week' : 'this month'}.',
-                onRetry: _fetch,
-                content: Column(
-                  children: [
-                    for (var i = 0; i < _entries.length; i++)
-                      GuideEntry(
-                        index: i,
-                        child: Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: _Row(rank: i + 1, entry: _entries[i]),
-                        ),
-                      ),
-                  ],
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  GuideStateView(
+                    state: _load,
+                    ghost: const GuideGhostList(rows: 6, rowHeight: 64, padding: EdgeInsets.zero),
+                    emptyMessage: 'No scores yet for this group ${_period == LeaderboardPeriod.weekly ? 'this week' : 'this month'}.',
+                    onRetry: _fetch,
+                    content: Column(
+                      children: [
+                        for (var i = 0; i < _entries.length; i++)
+                          GuideEntry(
+                            index: i,
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: _Row(rank: i + 1, entry: _entries[i]),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  _BestSection(
+                    future: _best,
+                    boys: boys,
+                    onRetry: () => setState(_fetchBest),
+                  ),
+                ],
               ),
             ),
           ),
@@ -225,6 +247,135 @@ class _Row extends StatelessWidget {
           Text(entry.score.toStringAsFixed(2), style: t.bodyStrong),
         ],
       ),
+    );
+  }
+}
+
+/// "Best performer": the two weekly winners of each category, for the viewed gender, in
+/// the latest finalised week. A winner in the admin's own group is marked.
+class _BestSection extends StatelessWidget {
+  const _BestSection({required this.future, required this.boys, required this.onRetry});
+
+  final Future<Map<String, BestPerformerSet>>? future;
+  final bool boys;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.gText;
+    final g = context.g;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('BEST PERFORMER', style: t.label),
+        const SizedBox(height: 2),
+        Text(
+          "The week's two winners — ${boys ? 'boys' : 'girls'}, decided every Sunday.",
+          style: t.caption.copyWith(color: g.mutedText),
+        ),
+        const SizedBox(height: 10),
+        FutureBuilder<Map<String, BestPerformerSet>>(
+          future: future,
+          builder: (context, snap) {
+            if (snap.connectionState != ConnectionState.done) {
+              return const GuideGhostArea(child: GuideGhostBlock(height: 120));
+            }
+            if (snap.hasError) {
+              return GuideCard(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    Expanded(child: Text("Couldn't load the winners just now.", style: t.small)),
+                    TextButton(onPressed: onRetry, child: const Text('Retry')),
+                  ],
+                ),
+              );
+            }
+            final data = snap.data ?? const <String, BestPerformerSet>{};
+            if (data.isEmpty) {
+              return GuideCard(
+                padding: const EdgeInsets.all(14),
+                child: Text('No winners yet — the first ones appear after the weekly results.', style: t.small),
+              );
+            }
+            return Column(
+              children: [
+                for (final category in [kCategoryFolk, kCategoryHostelLocalite])
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _CategoryWinners(category: category, set: data[category]),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _CategoryWinners extends StatelessWidget {
+  const _CategoryWinners({required this.category, required this.set});
+
+  final String category;
+  final BestPerformerSet? set;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.gText;
+    return GuideCard(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(categoryLabel(category), style: t.cardTitle),
+          const SizedBox(height: 8),
+          _WinnerLine(label: 'Most improved', winner: set?.mostImproved),
+          const SizedBox(height: 8),
+          _WinnerLine(label: 'Commitment keeper', winner: set?.commitmentKeeper),
+        ],
+      ),
+    );
+  }
+}
+
+class _WinnerLine extends StatelessWidget {
+  const _WinnerLine({required this.label, required this.winner});
+
+  final String label;
+  final BestWinnerInfo? winner;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.gText;
+    final g = context.g;
+    final w = winner;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: t.caption),
+        if (w == null)
+          Text('No winner this week.', style: t.small)
+        else ...[
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            children: [
+              Text(w.name, style: t.bodyStrong),
+              if (w.inScope)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: g.brass.withValues(alpha: .16),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text('In your group', style: t.pill.copyWith(color: g.brass)),
+                ),
+            ],
+          ),
+          if (w.reason.isNotEmpty) Text(w.reason, style: t.small),
+        ],
+      ],
     );
   }
 }
