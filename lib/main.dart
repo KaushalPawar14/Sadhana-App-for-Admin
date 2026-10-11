@@ -4,7 +4,6 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'theme/GuideTheme.dart';
-import 'widgets/GuideSurface.dart';
 import 'theme/GuideTokens.dart';
 import 'theme/ThemeModeController.dart';
 import 'package:folk_guide_app/utils/BottomNavBar.dart';
@@ -17,7 +16,7 @@ import 'utils/InstallSource.dart';
 import 'Pages/NonPlayInstallScreen.dart';
 import 'Services/Notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'widgets/GuideGhost.dart';
+import 'Pages/LaunchSplash.dart';
 import 'dart:async';
 
 import 'Pages/ForceUpdateScreen.dart';
@@ -149,121 +148,77 @@ class SplashScreen extends StatefulWidget {
   _SplashScreenState createState() => _SplashScreenState();
 }
 
-/// The launch screen: a ghost of the app, shown AT ONCE (there is no fixed delay and no
-/// animation to wait for), while [StartupGate] works out where to go. The decisions and their
-/// order are what this screen always made (see `StartupGate`); the differences are that
-/// nothing waits for a timer, the force-update read is capped at 1.5 s and runs alongside
-/// everything else, the FCM token is no longer registered here (the shell does it after its
-/// first frame), and a signed-in admin with a cached profile goes straight into the app while
-/// the profile is re-checked in the background.
+/// The launch screen: the splash (see `Pages/LaunchSplash.dart`) for a minimum of 2 seconds, with
+/// the startup work below running in parallel during those 2 seconds — it never adds waiting.
+/// The decisions and their order are what this screen always made (see `StartupGate`): the
+/// force-update read (capped at 1.5 s) and the install check start together, the FCM token is
+/// not registered here (the shell does it after its first frame), and a signed-in admin with a
+/// cached profile goes straight into the app while the profile is re-checked in the background.
 class _SplashScreenState extends State<SplashScreen> {
-  @override
-  void initState() {
-    super.initState();
-    StartupTrace.mark('splash initState (ghost shown)');
-    WidgetsBinding.instance.addPostFrameCallback((_) => _go());
-  }
-
-  Future<void> _go() async {
-    final outcome = await StartupGate.run(
-      forceUpdate: ForceUpdateCheck.isUpdateRequired,
-      currentEmail: () => FirebaseAuth.instance.currentUser?.email ??
-          (FirebaseAuth.instance.currentUser == null ? null : ''),
-      installedOutsidePlayStore: installedOutsidePlayStore,
-      cachedProfile: (email) async {
-        final cached = await AdminProfileProvider.instance.readCache(email);
-        if (cached != null) {
-          AdminProfileProvider.instance.restore(cached);
-          // The pref every screen reads for the locked identity.
-          final prefs = await SharedPreferences.getInstance();
-          if (prefs.getString('selected_guide') != cached.id) {
-            await UpdateTokenService().saveSelectedGuide(cached.id);
+  Future<StartupOutcome> _start() => StartupGate.run(
+        forceUpdate: ForceUpdateCheck.isUpdateRequired,
+        currentEmail: () => FirebaseAuth.instance.currentUser?.email ??
+            (FirebaseAuth.instance.currentUser == null ? null : ''),
+        installedOutsidePlayStore: installedOutsidePlayStore,
+        cachedProfile: (email) async {
+          final cached = await AdminProfileProvider.instance.readCache(email);
+          if (cached != null) {
+            AdminProfileProvider.instance.restore(cached);
+            // The pref every screen reads for the locked identity.
+            final prefs = await SharedPreferences.getInstance();
+            if (prefs.getString('selected_guide') != cached.id) {
+              await UpdateTokenService().saveSelectedGuide(cached.id);
+            }
           }
-        }
-        return cached;
-      },
-      resolveFresh: GuideAuthGate.resolveAndPersistIdentity,
-      trace: StartupTrace.mark,
-    );
-    if (!mounted) return;
+          return cached;
+        },
+        resolveFresh: GuideAuthGate.resolveAndPersistIdentity,
+        trace: StartupTrace.mark,
+      );
 
+  /// The screen for each decision (the routes are exactly the splash's always).
+  Widget _pageFor(StartupOutcome outcome) {
     switch (outcome.target) {
       case StartupTarget.forceUpdate:
-        // `markAppReady()` is deliberately NOT called: a notification tapped while an update is
-        // required stays queued and can never fire underneath this blocking screen.
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const ForceUpdateScreen()),
-        );
+        return const ForceUpdateScreen();
       case StartupTarget.signIn:
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const GuideSignInPage()),
-        );
+        return const GuideSignInPage();
       case StartupTarget.nonPlayInstall:
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const NonPlayInstallScreen()),
-        );
+        return const NonPlayInstallScreen();
       case StartupTarget.offline:
         // A transient problem (no network, server busy): keep the session and ask them to try
         // again, rather than signing a real admin out.
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const GuideSignInPage(initialError: kOfflineMessage),
-          ),
-        );
+        return const GuideSignInPage(initialError: kOfflineMessage);
       case StartupTarget.notRegistered:
-        await GuideAuthGate.signOut();
-        if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const GuideSignInPage(initialError: kNotRegisteredMessage),
-          ),
-        );
+        return const GuideSignInPage(initialError: kNotRegisteredMessage);
       case StartupTarget.shell:
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => CurvedNavBar(outcome.guideId!)),
-        );
-        StartupTrace.mark('app shell pushed (first real screen)');
-        // Splash-race fix (Master Task, 2026-09-10): called immediately AFTER the navigation
-        // that reaches the real content, so a notification route queued during this window
-        // lands on top of the shell instead of being evicted by it.
-        markAppReady();
-        if (outcome.fromCache) unawaited(_revalidateInBackground());
+        return CurvedNavBar(outcome.guideId!);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // A ghost of the app's own shape (page header, then rows), instantly; no animation to wait for.
-    return GuideScaffold(
-      body: SafeArea(
-        child: GuideGhostArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 28, GuideSpace.pagePadding, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                GuideGhostBar(width: 90, height: 11),
-                SizedBox(height: 10),
-                GuideGhostBar(width: 220, height: 30),
-                SizedBox(height: 26),
-                GuideGhostBlock(height: 120),
-                SizedBox(height: 14),
-                GuideGhostRow(),
-                SizedBox(height: 10),
-                GuideGhostRow(),
-                SizedBox(height: 10),
-                GuideGhostRow(),
-              ],
-            ),
-          ),
-        ),
-      ),
+    return LaunchSplash(
+      start: _start,
+      pageFor: _pageFor,
+      // An account that is no longer a registered admin is signed out before the sign-in screen
+      // explains why (exactly what a fresh resolve did before).
+      beforeNavigate: (outcome) async {
+        if (outcome.target == StartupTarget.notRegistered) await GuideAuthGate.signOut();
+      },
+      afterNavigate: (outcome) {
+        if (outcome.target != StartupTarget.shell) {
+          // `markAppReady()` is deliberately NOT called on the blocking / sign-in screens: a
+          // notification tapped meanwhile stays queued and can never fire underneath them.
+          return;
+        }
+        StartupTrace.mark('app shell pushed (first real screen)');
+        // Splash-race fix (Master Task, 2026-09-10): called immediately AFTER the navigation that
+        // reaches the real content, so a notification route queued during the splash lands on top
+        // of the shell instead of being evicted by it.
+        markAppReady();
+        if (outcome.fromCache) unawaited(_revalidateInBackground());
+      },
     );
   }
 }

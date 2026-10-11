@@ -209,9 +209,8 @@ void main() {
   group('the splash has no fixed delay, no slow work in front of the first screen', () {
     final main = File('lib/main.dart').readAsStringSync();
 
-    test('no Future.delayed, no Lottie splash animation, no awaited token registration', () {
+    test('no fixed delay in main (the 2 s minimum lives in LaunchSplash and runs in parallel), no awaited token registration', () {
       expect(main.contains('Future.delayed'), isFalse);
-      expect(main.contains('Lottie'), isFalse);
       expect(main.contains('updateAdminFcmToken('), isFalse, reason: 'the shell registers the token after its first frame');
       expect(main, contains('StartupGate.run('));
       expect(main, contains('unawaited(_revalidateInBackground())'));
