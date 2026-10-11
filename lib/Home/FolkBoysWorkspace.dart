@@ -94,13 +94,11 @@ import '../widgets/GuideDialog.dart';
 /// UNCHANGED (still HOD-only for this board kind) — it governs the generic
 /// board-list/open-for-editing check used by [_openBoardSwitcher] and
 /// custom boards (Phase 4), not this board's own drag permission, which has
-/// its own, narrower rule. [_ensureBoard] runs
-/// for any viewer, HOD or not (unlike the old `BoardsHome.dart`, which only
-/// bootstrapped it from the HOD's device), since this board is the only view
-/// of this whole tab — otherwise a guide who opens the app before the HOD
-/// ever has would see an empty screen forever. Idempotent
-/// (`_ensuring`/`_ensured` guard, plus `ensureGuideAssignmentBoard` itself
-/// no-ops if the board already exists).
+/// its own, narrower rule. [_ensureBoard] runs for the HOD only: the security rules let only
+/// the HOD read or create the shared board, so a Guide or an Enabler never waits for it - their
+/// lanes come from their profile and the students they may read ([_board]), with an in-memory
+/// Unassigned column ([kUnassignedLocalColumn]). Idempotent (`_ensuring`/`_ensured` guard, plus
+/// `ensureGuideAssignmentBoard` itself no-ops if the board already exists).
 ///
 /// Unassigned column is ALWAYS visible, unconditionally, to everyone — 15 of
 /// 17 real students have no `guideId` at all, making it the single most
@@ -400,6 +398,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
 
   bool _ensuring = false;
   bool _ensured = false;
+  bool _ensureFailed = false;
   bool _reconciling = false;
 
   /// Which board is showing — Phase 4. `null` means the mandatory
@@ -585,17 +584,58 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     return out;
   }
 
+  /// Creates the shared Guide Assignment board when it does not exist yet. HOD ONLY: the
+  /// security rules let only the HOD read or create that board, so for anyone else this
+  /// could never succeed (and the board never waits for it, see [_board]). A failure is
+  /// remembered so the board can say so with Retry instead of breathing forever.
   Future<void> _ensureBoard(List<BoardDoc> all, String guide) async {
-    if (_ensuring || _ensured) return;
+    if (_ensuring || _ensured || _ensureFailed) return;
     _ensuring = true;
     try {
-      // Deliberately unconditional, not HOD-gated — see this file's header.
       await BoardData.instance.ensureGuideBoard(all: all, hodGuide: guide);
       _ensured = true;
     } catch (_) {
-      // Next rebuild retries.
+      _ensureFailed = true;
+      if (mounted) setState(() {});
     }
     _ensuring = false;
+  }
+
+  /// How long the board waits for a first answer before it stops breathing and offers Retry.
+  static const Duration _firstAnswerWithin = Duration(seconds: 20);
+
+  /// [source] with a limit on the FIRST event only (a quiet snapshot stream is normal
+  /// afterwards): when nothing arrives in time it errors, so the board shows Retry.
+  Stream<T> _within<T>(Stream<T> source) {
+    StreamSubscription<T>? sub;
+    Timer? timer;
+    late final StreamController<T> out;
+    out = StreamController<T>(
+      onListen: () {
+        timer = Timer(_firstAnswerWithin, () {
+          if (!out.isClosed) out.addError(TimeoutException('no first answer', _firstAnswerWithin));
+        });
+        sub = source.listen(
+          (e) {
+            timer?.cancel();
+            out.add(e);
+          },
+          onError: (Object error, StackTrace st) {
+            timer?.cancel();
+            out.addError(error, st);
+          },
+          onDone: () {
+            timer?.cancel();
+            out.close();
+          },
+        );
+      },
+      onCancel: () {
+        timer?.cancel();
+        return sub?.cancel();
+      },
+    );
+    return out.stream;
   }
 
   // ---------------------------------------------------------------------------
@@ -2118,19 +2158,26 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     }
   }
 
-  /// The board's ghost (two columns) while data loads, or frozen with Retry on a
-  /// failed stream. `setState` re-subscribes: every stream here is built in `build`.
-  Widget _boardWait(AsyncSnapshot<Object?> snap) {
+  /// The board's ghost (two columns) while data loads, or frozen with Retry on a failed (or
+  /// unanswered) stream. `setState` re-subscribes: every stream here is built in `build`.
+  Widget _boardWait(AsyncSnapshot<Object?>? snap, {bool failed = false}) {
     final ghost = GuideBoardGhost(columnWidth: _colW);
-    if (snap.hasError) {
+    if (failed || (snap?.hasError ?? false)) {
       return GuideErrorOverGhost(
         ghost: ghost,
         message: 'Could not load the board. Check your connection and try again.',
-        onRetry: () => setState(() {}),
+        onRetry: () => setState(() => _ensureFailed = false),
       );
     }
     return GuideGhostArea(child: ghost);
   }
+
+  /// Nothing to show: the ghost, still, with a short friendly line.
+  Widget _boardEmpty() => GuideEmptyOverGhost(
+        ghost: GuideBoardGhost(columnWidth: _colW),
+        title: 'No students yet',
+        message: 'Students will appear here as soon as they join and are assigned to you.',
+      );
 
   /// The loaded board, cross-faded in over the ghost it replaces.
   Widget _boardReveal(Widget content) =>
@@ -2157,9 +2204,24 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
         ),
       );
 
+  /// The mandatory board. Every state leaves the loading ghost: data -> the board, nothing to
+  /// show -> a still ghost with a friendly line, an error or no first answer in time -> a
+  /// frozen ghost with Retry.
+  ///
+  /// Only the HOD reads or creates the shared Guide Assignment board (the security rules), so
+  /// ONLY the HOD waits for it. A Guide or an Enabler never does: their lanes come from their
+  /// profile (themselves, a Guide's Male Enablers) plus the students the rules let them read.
   Widget _board(String guide) {
+    if (!AdminProfileProvider.require().isHod) {
+      return _boardBody(
+        guide: guide,
+        boardId: '',
+        columns: const [kUnassignedLocalColumn],
+        reconcile: false,
+      );
+    }
     return StreamBuilder<List<BoardDoc>>(
-      stream: BoardData.instance.boards(),
+      stream: _within(BoardData.instance.boards()),
       builder: (context, boardsSnap) {
         if (!boardsSnap.hasData) return _boardWait(boardsSnap);
         final all = boardsSnap.data!;
@@ -2172,86 +2234,99 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             break;
           }
         }
-        if (board == null) return _boardWait(boardsSnap);
+        if (board == null) {
+          if (_ensureFailed) return _boardWait(null, failed: true);
+          return _boardWait(boardsSnap);
+        }
         final boardId = board.id;
 
         return StreamBuilder<List<BoardColumn>>(
-          stream: BoardData.instance.columns(boardId),
+          stream: _within(BoardData.instance.columns(boardId)),
           builder: (context, colSnap) {
             if (!colSnap.hasData) return _boardWait(colSnap);
-            final columns = colSnap.data!;
-
-            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              // The students THIS viewer may see — `StudentScope`'s scoped
-              // stream (HOD: the unfiltered collection, which is what lets
-              // the Unassigned lanes contain anything for him; everyone else:
-              // only what the security rules let them read). See
-              // [_studentsStream].
-              stream: _studentsStream(),
-              builder: (context, userSnap) {
-                if (!userSnap.hasData) return _boardWait(userSnap);
-
-                final boys = <_Boy>[];
-                for (final doc in userSnap.data!.docs) {
-                  final boy = _Boy.fromUser(doc.id, doc.data());
-                  if (boy != null) boys.add(boy);
-                }
-                boys.sort((a, b) =>
-                    a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-
-                // Keeps "a column exists because an admin exists" true by
-                // construction (the board renders a column for every
-                // visible admin even before its document exists — see
-                // [_visibleColumns]). Never deletes — same rule the old
-                // board shipped with. The roster is the admin list of the
-                // loaded profile; `adminUsers` is no longer read directly.
-                if (!_reconciling) {
-                  _reconciling = true;
-                  BoardData.instance.reconcileColumns(
-                    boardId: boardId,
-                    roster: [
-                      for (final a in _boardAdmins(AdminProfileProvider.require()))
-                        a.id
-                    ],
-                    existing: columns,
-                  ).catchError((_) {}).whenComplete(() => _reconciling = false);
-                }
-
-                // Role-based columns in gender lanes — see [_visibleColumns].
-                final visibleColumns = _visibleColumns(columns);
-
-                return _boardReveal(Column(
-                  children: [
-                    // FOLK / Hostel / Localite legend under the top bar.
-                    const GuideGroupLegend(),
-                    // Drag-to-delete target — see [_trashTarget]'s own
-                    // doc comment. Only rendered while a card is actually
-                    // being dragged.
-                    _trashTarget(allBoys: boys),
-                    Expanded(
-                      child: _canvas(
-                        guide: guide,
-                        boardId: boardId,
-                        columns: visibleColumns,
-                        allBoys: boys,
-                        columnBoys: (lc) => boys.where(lc.holds).toList(),
-                        headerExtra: (lc) {
-                          final split = residenceSplit(
-                                  boys.where(lc.holds).map((b) => b.role))
-                              .labelFor(female: lc.lane == 'female');
-                          final admin = lc.admin;
-                          return admin == null
-                              ? split
-                              : "${admin.role.label} · $split";
-                        },
-                      ),
-                    ),
-                  ],
-                ));
-              },
+            return _boardBody(
+              guide: guide,
+              boardId: boardId,
+              columns: colSnap.data!,
+              reconcile: true,
             );
           },
         );
+      },
+    );
+  }
+
+  /// The lanes and cards, once the columns are known. [boardId] is empty (and [reconcile]
+  /// false) for a viewer without the shared board: nothing is written to it.
+  Widget _boardBody({
+    required String guide,
+    required String boardId,
+    required List<BoardColumn> columns,
+    required bool reconcile,
+  }) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      // The students THIS viewer may see: `StudentScope`'s scoped stream (HOD: the
+      // unfiltered collection, which is what lets the Unassigned lanes contain anything for
+      // him; everyone else: only what the security rules let them read). See
+      // [_studentsStream].
+      stream: _within(_studentsStream()),
+      builder: (context, userSnap) {
+        if (!userSnap.hasData) return _boardWait(userSnap);
+
+        final boys = <_Boy>[];
+        for (final doc in userSnap.data!.docs) {
+          final boy = _Boy.fromUser(doc.id, doc.data());
+          if (boy != null) boys.add(boy);
+        }
+        boys.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+        // Nobody to show (e.g. a new Female Enabler while there are no female students).
+        if (boys.isEmpty) return _boardEmpty();
+
+        // Keeps "a column exists because an admin exists" true by construction (the board
+        // renders a column for every visible admin even before its document exists - see
+        // [_visibleColumns]). Never deletes. HOD only: it writes to the shared board.
+        if (reconcile && !_reconciling) {
+          _reconciling = true;
+          BoardData.instance
+              .reconcileColumns(
+                boardId: boardId,
+                roster: [
+                  for (final a in _boardAdmins(AdminProfileProvider.require())) a.id
+                ],
+                existing: columns,
+              )
+              .catchError((_) {})
+              .whenComplete(() => _reconciling = false);
+        }
+
+        // Role-based columns in gender lanes - see [_visibleColumns].
+        final visibleColumns = _visibleColumns(columns);
+
+        return _boardReveal(Column(
+          children: [
+            // FOLK / Hostel / Localite legend under the top bar.
+            const GuideGroupLegend(),
+            // Drag-to-delete target - see [_trashTarget]'s own doc comment. Only rendered
+            // while a card is actually being dragged.
+            _trashTarget(allBoys: boys),
+            Expanded(
+              child: _canvas(
+                guide: guide,
+                boardId: boardId,
+                columns: visibleColumns,
+                allBoys: boys,
+                columnBoys: (lc) => boys.where(lc.holds).toList(),
+                headerExtra: (lc) {
+                  final split = residenceSplit(boys.where(lc.holds).map((b) => b.role))
+                      .labelFor(female: lc.lane == 'female');
+                  final admin = lc.admin;
+                  return admin == null ? split : "${admin.role.label} · $split";
+                },
+              ),
+            ),
+          ],
+        ));
       },
     );
   }

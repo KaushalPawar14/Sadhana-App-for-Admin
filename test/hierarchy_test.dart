@@ -513,7 +513,7 @@ void main() {
     });
 
     test('version bumped', () {
-      expect(File('pubspec.yaml').readAsStringSync(), contains('version: 1.1.4+9'));
+      expect(File('pubspec.yaml').readAsStringSync(), contains('version: 1.1.5+10'));
     });
   });
 }

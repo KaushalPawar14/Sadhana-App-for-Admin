@@ -14,7 +14,7 @@ import 'package:folk_guide_app/widgets/GuideBoardGhost.dart';
 import 'package:folk_guide_app/widgets/GuideBoardMotion.dart';
 import 'package:folk_guide_app/widgets/GuideGhost.dart';
 
-import 'board_test.dart' show FakeBoardData, openBoard, roster;
+import 'board_test.dart' show FakeBoardData, everyone, openBoard, profile, roster;
 import 'support/guide_test_support.dart';
 
 /// Boards that the test releases by hand.
@@ -45,8 +45,9 @@ void main() {
   });
 
   testWidgets('loading: two ghost columns, no spinner; the real board fades in over them without moving', (tester) async {
+    // the shared Guide Assignment board is the HOD's: only the HOD waits for it
     final slow = SlowBoardData();
-    await openBoard(tester, data: slow, reduce: false);
+    await openBoard(tester, data: slow, reduce: false, me: profile('H', 'HOD', admins: everyone), size: const Size(1400, 900));
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.byType(GuideBoardGhost), findsOneWidget);
@@ -72,7 +73,7 @@ void main() {
 
   testWidgets('a failed load: a frozen ghost, a short message and Retry that listens again', (tester) async {
     final slow = SlowBoardData();
-    await openBoard(tester, data: slow, reduce: false);
+    await openBoard(tester, data: slow, reduce: false, me: profile('H', 'HOD', admins: everyone), size: const Size(1400, 900));
     slow.boardsC.addError('permission-denied');
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));

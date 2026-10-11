@@ -158,6 +158,18 @@ const String kUnsortedTitle = 'Unsorted';
 /// Title of the permanent column on Board C for students with no guide.
 const String kUnassignedTitle = 'Unassigned';
 
+/// The Unassigned column as an in-memory stand-in for a viewer who cannot read the shared
+/// Guide Assignment board (only the HOD can): same look as the stored one, no document id,
+/// so nothing is ever written to a board for it.
+const BoardColumn kUnassignedLocalColumn = BoardColumn(
+  id: '',
+  title: kUnassignedTitle,
+  order: 9999,
+  colorValue: 0xFF757575,
+  kind: kColumnKindUnassigned,
+  guideId: '',
+);
+
 /// Default column colours, cycled when seeding.
 const List<int> kColumnPalette = [
   0xFF00695C,
