@@ -15,18 +15,20 @@ import 'package:sizer/sizer.dart';
 import 'utils/AdminProfile.dart';
 import 'utils/InstallSource.dart';
 import 'Pages/NonPlayInstallScreen.dart';
-import 'Services/HierarchyApi.dart';
 import 'Services/Notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:lottie/lottie.dart';
+import 'widgets/GuideGhost.dart';
 import 'dart:async';
 
 import 'Pages/ForceUpdateScreen.dart';
 import 'Pages/GuideSignIn.dart';
 import 'Services/UpdateToken.dart';
+import 'Services/UpdateFCM.dart' show UpdateTokenService;
 import 'utils/ForceUpdateCheck.dart';
 import 'utils/GuideAuthGate.dart';
 import 'utils/NotificationRouter.dart';
+import 'utils/StartupGate.dart';
+import 'utils/StartupTrace.dart';
 
 /// Deep-link routing (Master Task, 2026-09-10 — Part 3). Unlike the
 /// Student app, this app has exactly one `MaterialApp` (below) and its
@@ -46,6 +48,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 void main() async {
+  StartupTrace.start();
   WidgetsFlutterBinding.ensureInitialized();
   // Portrait only (the manifest locks it too, so there is no rotation flash
   // before Flutter starts).
@@ -53,6 +56,7 @@ void main() async {
       const [DeviceOrientation.portraitUp]);
   final prefs = await SharedPreferences.getInstance();
   String? savedGuide = prefs.getString('selected_guide');
+  StartupTrace.mark('SharedPreferences read');
 
   // Force-update bug fix, 2026-09-16 — moved out of the post-runApp()
   // microtask below and awaited HERE instead. `SplashScreen.initState()`
@@ -65,8 +69,13 @@ void main() async {
   // `ForceUpdateCheck`'s own fail-open catch silently swallowed it — see
   // that file's header. Matches the Student app's `main.dart`, which
   // already awaits this before `runApp()`.
-  await Firebase.initializeApp();
-  final themeController = await ThemeModeController.load();
+  // Firebase and the saved Light / Dark / Auto choice do not depend on each other: together.
+  final initialised = await Future.wait<Object?>([
+    Firebase.initializeApp(),
+    ThemeModeController.load(),
+  ]);
+  final themeController = initialised[1] as ThemeModeController;
+  StartupTrace.mark('Firebase.initializeApp + theme done');
 
   runApp(
     MultiProvider(
@@ -85,12 +94,15 @@ void main() async {
     ),
   );
 
-  // Everything below only needs Firebase to already exist (guaranteed now)
-  // and has no bearing on the first frame or the force-update check, so it
-  // stays deferred exactly as before — permission dialogs, FCM token
-  // registration and missing-report computation still don't block first
-  // paint.
-  Future.microtask(() async {
+  StartupTrace.mark('runApp called');
+
+  // Everything below only needs Firebase to already exist (guaranteed now) and has no
+  // bearing on the first screen, so it starts AFTER the first frame is drawn (it used to be
+  // a microtask, which runs before it): the permission dialog, the notification channel and
+  // the token-refresh listener. Registering the FCM token itself is done by the app shell
+  // (`FolkBoysEntryScreen`, after its first frame) and by `GuideSignInPage` — never from here.
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    StartupTrace.mark('first frame drawn');
     FirebaseMessaging.onBackgroundMessage(
       _firebaseMessagingBackgroundHandler,
     );
@@ -100,10 +112,8 @@ void main() async {
     FirebaseCM firebaseCM = FirebaseCM();
     await firebaseCM.initNotifications();
 
-    // The token itself is written only after a real sign-in (SplashScreen /
-    // GuideSignInPage), never from the cached `selected_guide`.
     listenForAdminFcmTokenRefresh();
-
+    StartupTrace.mark('notification setup done (background)');
   });
 }
 
@@ -139,212 +149,151 @@ class SplashScreen extends StatefulWidget {
   _SplashScreenState createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _fadeController;
-  late final Animation<double> _fadeAnimation;
-
-  /// Follow-up task, 2026-09-10 — kicked off HERE, concurrently with the
-  /// splash's own timer below, so it costs no extra visible delay in the
-  /// common case: a Firestore round trip comfortably finishes inside the
-  /// existing 4-second window, and a slow/failed one still resolves
-  /// (fails open) via its own timeout by the time that timer fires.
-  late final Future<bool> _forceUpdateCheck;
-
+/// The launch screen: a ghost of the app, shown AT ONCE (there is no fixed delay and no
+/// animation to wait for), while [StartupGate] works out where to go. The decisions and their
+/// order are what this screen always made (see `StartupGate`); the differences are that
+/// nothing waits for a timer, the force-update read is capped at 1.5 s and runs alongside
+/// everything else, the FCM token is no longer registered here (the shell does it after its
+/// first frame), and a signed-in admin with a cached profile goes straight into the app while
+/// the profile is re-checked in the background.
+class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
+    StartupTrace.mark('splash initState (ghost shown)');
+    WidgetsBinding.instance.addPostFrameCallback((_) => _go());
+  }
 
-    // Fade controller: 2 seconds for fade in/out
-    _fadeController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
+  Future<void> _go() async {
+    final outcome = await StartupGate.run(
+      forceUpdate: ForceUpdateCheck.isUpdateRequired,
+      currentEmail: () => FirebaseAuth.instance.currentUser?.email ??
+          (FirebaseAuth.instance.currentUser == null ? null : ''),
+      installedOutsidePlayStore: installedOutsidePlayStore,
+      cachedProfile: (email) async {
+        final cached = await AdminProfileProvider.instance.readCache(email);
+        if (cached != null) {
+          AdminProfileProvider.instance.restore(cached);
+          // The pref every screen reads for the locked identity.
+          final prefs = await SharedPreferences.getInstance();
+          if (prefs.getString('selected_guide') != cached.id) {
+            await UpdateTokenService().saveSelectedGuide(cached.id);
+          }
+        }
+        return cached;
+      },
+      resolveFresh: GuideAuthGate.resolveAndPersistIdentity,
+      trace: StartupTrace.mark,
     );
+    if (!mounted) return;
 
-    // Fade animation from 0 (invisible) to 1 (visible)
-    _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _fadeController,
-        curve: Curves.easeInOut,
-      ),
-    );
-
-    // Repeat the fade-in/out animation forever
-    _fadeController.repeat(reverse: true);
-
-    _forceUpdateCheck = ForceUpdateCheck.isUpdateRequired();
-
-    // Navigate after 3 seconds
-    Future.delayed(const Duration(seconds: 4), () async {
-      if (!mounted) return;
-
-      // Decided at the SAME point splash already decides where to go, so
-      // the update screen wins outright — whichever branch below fires is
-      // the ONLY navigation this splash screen ever performs.
-      // `markAppReady()` (the one thing that can flush a queued
-      // notification route — see `utils/NotificationRouter.dart`) is
-      // called ONLY on the normal branch below. Skipping it in the
-      // force-update branch means a notification tapped while an update
-      // is required simply stays queued — it can never fire underneath or
-      // after this blocking screen, because nothing ever unblocks it.
-      final mustUpdate = await _forceUpdateCheck;
-      if (!mounted) return;
-
-      if (mustUpdate) {
+    switch (outcome.target) {
+      case StartupTarget.forceUpdate:
+        // `markAppReady()` is deliberately NOT called: a notification tapped while an update is
+        // required stays queued and can never fire underneath this blocking screen.
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const ForceUpdateScreen()),
         );
-        return;
-      }
-
-      // Real-auth gate, REBUILT — Master Task, 2026-09-14 ("Replace the
-      // Guide app's name picker with Google Sign-In, and add admin
-      // management"). The picker (`FolkGuideSelectionPage`) is gone from
-      // this decision entirely; identity is resolved fresh from
-      // `adminUsers` every launch, never taken on trust from the cached
-      // `selected_guide` pref. Three cases:
-      //  1. Nobody signed in yet (fresh install, or after a real logout) —
-      //     go to the sign-in screen; no error, this is the normal
-      //     first-launch state.
-      //  2. Signed in, but their email no longer resolves to any
-      //     `adminUsers` document (removed, or their email changed since
-      //     last launch) — force a sign-out so no stale session lingers,
-      //     then go to the sign-in screen WITH an explanation.
-      //  3. Signed in AND resolved — proceeds straight to that guide's
-      //     shell. Firebase Auth sessions persist across launches on their
-      //     own, so an already-registered guide is never asked to sign in
-      //     again here; only the (cheap, one-query) identity RESOLUTION
-      //     re-runs every launch, not the sign-in itself.
-      final currentUser = FirebaseAuth.instance.currentUser;
-
-      if (currentUser == null) {
+      case StartupTarget.signIn:
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const GuideSignInPage()),
         );
-        return;
-      }
-
-      // Blocking screen for a copy installed outside the Play Store (release
-      // builds only; a positive "not from the Play Store" answer is required).
-      if (await installedOutsidePlayStore()) {
-        if (!mounted) return;
+      case StartupTarget.nonPlayInstall:
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const NonPlayInstallScreen()),
         );
-        return;
-      }
-
-      String? resolvedGuide;
-      try {
-        resolvedGuide = await GuideAuthGate.resolveAndPersistIdentity(
-            currentUser.email);
-      } on HierarchyException {
-        // A transient problem (no network, server busy): keep the session and
-        // ask them to try again, rather than signing a real admin out.
-        if (!mounted) return;
+      case StartupTarget.offline:
+        // A transient problem (no network, server busy): keep the session and ask them to try
+        // again, rather than signing a real admin out.
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => const GuideSignInPage(
-              initialError:
-                  'Could not reach the server. Check your connection and try again.',
-            ),
+            builder: (_) => const GuideSignInPage(initialError: kOfflineMessage),
           ),
         );
-        return;
-      }
-      if (!mounted) return;
-
-      if (resolvedGuide == null) {
+      case StartupTarget.notRegistered:
         await GuideAuthGate.signOut();
         if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => const GuideSignInPage(
-              initialError:
-                  'This account is not registered as a FOLK guide. Contact your HOD.',
-            ),
+            builder: (_) => const GuideSignInPage(initialError: kNotRegisteredMessage),
           ),
         );
-        return;
-      }
-
-      // FCM token registration (Part 2.7) — same mechanism as before,
-      // re-run here too since this is the one place a resolution happens
-      // without going through `GuideSignInPage`'s own sign-in flow (an
-      // already-signed-in relaunch).
-      await updateAdminFcmToken(resolvedGuide);
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => CurvedNavBar(resolvedGuide!)),
-      );
-      // Splash-race fix (Master Task, 2026-09-10 — Part 2) — called
-      // immediately AFTER `pushReplacement`, the exact moment nothing
-      // further from this splash screen will ever navigate again. Any
-      // notification route that arrived during this splash window was
-      // queued rather than applied (see `markAppReady()`'s own doc
-      // comment in `utils/NotificationRouter.dart`) — applying it now
-      // means it lands ON TOP of what `pushReplacement` just navigated
-      // to, instead of being evicted by it a moment later.
-      //
-      // Deliberately NOT called on the two auth-gate branches above: this
-      // must fire only the moment the app actually reaches its real
-      // content, exactly as before — routing a queued notification onto
-      // the sign-in screen would make no sense. `GuideSignInPage` makes
-      // this same call itself, from the same position relative to its own
-      // "enter the app" navigation, once sign-in succeeds.
-      markAppReady();
-    });
-  }
-
-  @override
-  void dispose() {
-    _fadeController.dispose();
-    super.dispose();
+      case StartupTarget.shell:
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => CurvedNavBar(outcome.guideId!)),
+        );
+        StartupTrace.mark('app shell pushed (first real screen)');
+        // Splash-race fix (Master Task, 2026-09-10): called immediately AFTER the navigation
+        // that reaches the real content, so a notification route queued during this window
+        // lands on top of the shell instead of being evicted by it.
+        markAppReady();
+        if (outcome.fromCache) unawaited(_revalidateInBackground());
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final t = context.gText;
+    // A ghost of the app's own shape (page header, then rows), instantly; no animation to wait for.
     return GuideScaffold(
       body: SafeArea(
-        child: Center(
+        child: GuideGhostArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
+            padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 28, GuideSpace.pagePadding, 0),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: SizedBox(
-                    width: 200,
-                    height: 200,
-                    child: Lottie.asset(
-                      'assets/emoji/splash_screen.json',
-                      repeat: true,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: Text(
-                    "Now it's easy to check Sadhana daily",
-                    textAlign: TextAlign.center,
-                    style: t.sectionTitle.copyWith(height: 1.3),
-                  ),
-                ),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                GuideGhostBar(width: 90, height: 11),
+                SizedBox(height: 10),
+                GuideGhostBar(width: 220, height: 30),
+                SizedBox(height: 26),
+                GuideGhostBlock(height: 120),
+                SizedBox(height: 14),
+                GuideGhostRow(),
+                SizedBox(height: 10),
+                GuideGhostRow(),
+                SizedBox(height: 10),
+                GuideGhostRow(),
               ],
             ),
           ),
         ),
       ),
     );
+  }
+}
+
+/// After the app opened from the cached profile: ask the server again. Removed -> sign out and
+/// go to the sign-in screen with the explanation (exactly what a fresh resolve did before).
+/// Role / team changed -> rebuild the shell from the new profile, so who sees what is correct
+/// at once. Anything else is already applied by the provider. A server that cannot be reached
+/// changes nothing.
+Future<void> _revalidateInBackground() async {
+  final result = await AdminProfileProvider.instance.revalidate();
+  StartupTrace.mark('admin profile re-checked in background: ${result.name}');
+  final nav = guideNavigatorKey.currentState;
+  if (nav == null) return;
+  switch (result) {
+    case ProfileRefresh.removed:
+      await GuideAuthGate.signOut();
+      nav.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const GuideSignInPage(initialError: kNotRegisteredMessage)),
+        (_) => false,
+      );
+    case ProfileRefresh.restructured:
+      final id = AdminProfileProvider.current?.id;
+      if (id == null) return;
+      await UpdateTokenService().saveSelectedGuide(id);
+      nav.pushAndRemoveUntil(MaterialPageRoute(builder: (_) => CurvedNavBar(id)), (_) => false);
+    case ProfileRefresh.unchanged:
+    case ProfileRefresh.updated:
+    case ProfileRefresh.offline:
+      break;
   }
 }
 

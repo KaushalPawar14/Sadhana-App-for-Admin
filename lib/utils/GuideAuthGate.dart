@@ -69,6 +69,7 @@ class GuideAuthGate {
     await GoogleSignIn().signOut();
     await FirebaseAuth.instance.signOut();
     AdminProfileProvider.instance.clear();
+    await AdminProfileProvider.instance.clearCache();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('selected_guide');
   }

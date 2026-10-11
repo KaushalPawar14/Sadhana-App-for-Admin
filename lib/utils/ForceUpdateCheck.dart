@@ -36,10 +36,11 @@ import 'GuideDb.dart';
 /// one of these lets the user in. A blocking screen must only ever be
 /// caused by a genuinely-too-old install, never by connectivity.
 class ForceUpdateCheck {
-  /// Generous enough for a normal Firestore round trip, short enough that
-  /// a genuinely stuck connection still resolves (fails open) well within
-  /// the splash screen's own on-screen time on both apps (4-5 seconds).
-  static const Duration _timeout = Duration(seconds: 6);
+  /// Enough for a normal Firestore round trip (a few hundred ms), short enough that a stuck
+  /// connection fails open quickly: the app now opens as soon as this and nothing else is
+  /// pending, so a stuck check must not hold the first screen back (it was 6 s while the
+  /// splash showed for a fixed 4 s anyway).
+  static const Duration timeout = Duration(milliseconds: 1500);
 
   static Future<bool> isUpdateRequired() async {
     try {
@@ -47,7 +48,7 @@ class ForceUpdateCheck {
           .collection('appConfig')
           .doc('versions')
           .get()
-          .timeout(_timeout);
+          .timeout(timeout);
 
       if (!snap.exists) {
         return false;

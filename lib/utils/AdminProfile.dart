@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -175,6 +177,30 @@ class AdminProfile {
     return out;
   }
 
+  /// The same shape the server's `getAdminProfile` answers with ([AdminProfile.fromMap] reads
+  /// it back), so the profile can be cached on this device.
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'displayName': displayName,
+        'role': role.wire,
+        'teamGuide': teamGuide,
+        'email': email,
+        'notificationPrefs': {'groups': groupPrefs, 'types': typePrefs},
+        'notificationTypes': [
+          for (final t in notificationTypes) {'key': t.key, 'label': t.label, 'scope': t.scope},
+        ],
+        'admins': [
+          for (final a in admins)
+            {
+              'id': a.id,
+              'displayName': a.displayName,
+              'role': a.role.wire,
+              'teamGuide': a.teamGuide,
+              if (a.email != null) 'email': a.email,
+            },
+        ],
+      };
+
   factory AdminProfile.fromMap(Map<String, dynamic> m) {
     final prefs = m['notificationPrefs'];
     final types = <NotificationTypeInfo>[
@@ -209,9 +235,98 @@ class AdminProfile {
 /// Loaded once after sign-in via the `getAdminProfile` callable; screens never
 /// read `adminUsers` themselves. `isHod` etc. replace every old
 /// `guide == kHodGuideId` check (several HODs are possible; no id is special).
+/// What [AdminProfileProvider.revalidate] found when it asked the server again.
+enum ProfileRefresh {
+  /// The same profile.
+  unchanged,
+
+  /// Something that does not change what the app shows structurally (preferences, the admin
+  /// list, a display name): the provider already holds the new one and has notified.
+  updated,
+
+  /// The id, role or team changed: who sees what is different, so the shell must be rebuilt.
+  restructured,
+
+  /// The server says this account is no longer a registered admin: sign out.
+  removed,
+
+  /// The server could not be reached: keep what we have.
+  offline,
+}
+
 class AdminProfileProvider extends ChangeNotifier {
   AdminProfileProvider._();
   static final AdminProfileProvider instance = AdminProfileProvider._();
+
+  /// The last profile the server gave this device (role, display name, team, preferences, the
+  /// admins this viewer may see), kept so the app can open at once on the next launch. It is
+  /// only ever used for a signed-in user whose email matches it, is refreshed from the server in
+  /// the background on every launch, and is deleted on sign-out. The server enforces every
+  /// permission again on every read and write; this is only what the screens were built from.
+  static const String cacheKey = 'admin_profile_cache_v1';
+
+  /// The cached profile for [email] (case-insensitive), or null.
+  Future<AdminProfile?> readCache(String email) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(cacheKey);
+      if (raw == null) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final profile = AdminProfile.fromMap(Map<String, dynamic>.from(decoded));
+      if (profile.id.isEmpty || profile.email.trim().toLowerCase() != email.trim().toLowerCase()) {
+        return null;
+      }
+      return profile;
+    } catch (_) {
+      return null; // a damaged cache is no cache: the normal (slower) path runs
+    }
+  }
+
+  Future<void> _writeCache(AdminProfile profile) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(cacheKey, jsonEncode(profile.toMap()));
+    } catch (_) {}
+  }
+
+  Future<void> clearCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(cacheKey);
+    } catch (_) {}
+  }
+
+  /// Makes [profile] (from the cache) the current one without asking the server.
+  void restore(AdminProfile profile) {
+    _profile = profile;
+    notifyListeners();
+  }
+
+  /// Asks the server again (in the background, after the app is showing) and reports what
+  /// changed; the cache and the current profile follow the answer.
+  Future<ProfileRefresh> revalidate({HierarchyApi? api}) async {
+    final before = _profile;
+    final AdminProfile? fetched;
+    try {
+      fetched = await (api ?? HierarchyApi.instance).getAdminProfile();
+    } catch (_) {
+      return ProfileRefresh.offline;
+    }
+    if (fetched == null) return ProfileRefresh.removed;
+    _profile = fetched;
+    await _writeCache(fetched);
+    notifyListeners();
+    if (before == null ||
+        before.id != fetched.id ||
+        before.role != fetched.role ||
+        before.teamGuide != fetched.teamGuide) {
+      return ProfileRefresh.restructured;
+    }
+    return jsonEncode(before.toMap()) == jsonEncode(fetched.toMap())
+        ? ProfileRefresh.unchanged
+        : ProfileRefresh.updated;
+  }
 
   AdminProfile? _profile;
   AdminProfile? get profile => _profile;
@@ -245,6 +360,7 @@ class AdminProfileProvider extends ChangeNotifier {
     final fetched = await (api ?? HierarchyApi.instance).getAdminProfile();
     _profile = fetched;
     if (fetched != null) {
+      await _writeCache(fetched);
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('selected_guide', fetched.id);
@@ -276,6 +392,7 @@ class AdminProfileProvider extends ChangeNotifier {
 
   void clear() {
     _profile = null;
+    clearCache();
     notifyListeners();
   }
 }
