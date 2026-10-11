@@ -111,8 +111,33 @@ class FakeBoardData implements BoardData {
   /// Students whose book commitment is unseen (the cards show a dot for these).
   Set<String> unseenCommitmentUids = {};
 
+  /// Per book: `{studentUid: {bookDocId}}`. [unseenCommitmentUids] (a whole student) is
+  /// kept for the older card test: it means that student's first book.
+  Map<String, Set<String>> unseenBooks = {};
+
+  final StreamController<Map<String, Set<String>>> unseenC = StreamController.broadcast();
+  final List<String> seenBooks = [];
+
+  Map<String, Set<String>> get _allUnseen => {
+        for (final u in unseenCommitmentUids) u: {'${u}_level-1_book_1'},
+        for (final e in unseenBooks.entries) e.key: {...e.value},
+      };
+
   @override
-  Stream<Set<String>> unseenCommitments(String guide) => Stream.value(unseenCommitmentUids);
+  Stream<Map<String, Set<String>>> unseenCommitments(String guide) async* {
+    yield _allUnseen;
+    yield* unseenC.stream;
+  }
+
+  @override
+  Future<void> markBooksSeen(String guide, String studentUid, Iterable<String> bookDocIds) async {
+    seenBooks.addAll(bookDocIds);
+    // what the cursor write does to the live stream
+    unseenCommitmentUids.remove(studentUid);
+    final left = unseenBooks[studentUid]?..removeAll(bookDocIds);
+    if (left != null && left.isEmpty) unseenBooks.remove(studentUid);
+    unseenC.add(_allUnseen);
+  }
 }
 
 Map<String, dynamic> user(String name,

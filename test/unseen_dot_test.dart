@@ -3,6 +3,7 @@ import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/utils/AdminProfile.dart';
 import 'package:folk_guide_app/utils/GuideDb.dart';
+import 'package:folk_guide_app/utils/SeenMarkers.dart';
 import 'package:folk_guide_app/utils/UnseenAggregates.dart';
 
 /// What the Home "FOLK Boys Board" dot counts, role by role:
@@ -212,5 +213,104 @@ void main() {
       await as(db, profile('F1', 'FEMALE_ENABLER'));
       expect(await dot('F1'), isFalse);
     });
+  });
+
+  group('per book: which book, the old cursor, clearing order', () {
+    Future<void> book(FakeFirebaseFirestore db, String id, String uid, Timestamp at, {String guide = 'G', String team = 'G'}) =>
+        db.collection('booksRead').doc(id).set({
+          'uid': uid,
+          'commitmentSetBy': 'guide',
+          'commitmentSetAt': at,
+          'scopeGuide': guide,
+          'scopeTeam': team,
+          'scopeGender': 'male',
+        });
+
+    Future<Map<String, Set<String>>> books(String viewer) =>
+        UnseenAggregates.bookCommitmentUnseenBooks(viewer).firstWhere((_) => true);
+
+    Future<FakeFirebaseFirestore> two() async {
+      final db = FakeFirebaseFirestore();
+      await db.collection('users').doc('s1').set({'name': 'Arjun', 'guideId': 'G', 'teamGuide': 'G', 'gender': 'male'});
+      await book(db, 's1_level-1_book_3', 's1', t1);
+      await book(db, 's1_level-2_book_1', 's1', t1);
+      return db;
+    }
+
+    test('the exact books: both, by document id', () async {
+      final db = await two();
+      await as(db, profile('H', 'HOD'));
+      expect(await books('H'), {'s1': {'s1_level-1_book_3', 's1_level-2_book_1'}});
+    });
+
+    test('book -> level -> card -> Home: each marker clears only its own book', () async {
+      final db = await two();
+      await as(db, profile('H', 'HOD'));
+      Future<void> seen(String id) => db.collection('seenMarkers').doc('H').set({
+            'bookCommitmentBooks': {'s1': {id: t2}},
+          }, SetOptions(merge: true));
+      await seen('s1_level-1_book_3');
+      expect(await books('H'), {'s1': {'s1_level-2_book_1'}}, reason: 'level 1 is clear, level 2 and the card are not');
+      expect(await UnseenAggregates.bookCommitmentsRosterUnseen('H', true).firstWhere((_) => true), isTrue);
+      await seen('s1_level-2_book_1');
+      expect(await books('H'), isEmpty, reason: 'the card is clear');
+      expect(await UnseenAggregates.bookCommitmentsRosterUnseen('H', true).firstWhere((_) => true), isFalse, reason: 'the Home dot follows');
+    });
+
+    test('the old per-student cursor still means "seen up to": older books are seen, newer ones are not', () async {
+      final db = await two();
+      await book(db, 's1_level-3_book_1', 's1', Timestamp.fromDate(DateTime(2026, 9, 20)));
+      await as(db, profile('H', 'HOD'));
+      await db.collection('seenMarkers').doc('H').set({
+        'bookCommitments': {'s1': t2},
+      });
+      expect(await books('H'), {'s1': {'s1_level-3_book_1'}});
+    });
+
+    test('a new commitment on a book that was seen shows again; the old marker is not enough', () async {
+      final db = await two();
+      await as(db, profile('H', 'HOD'));
+      await db.collection('seenMarkers').doc('H').set({
+        'bookCommitmentBooks': {'s1': {'s1_level-1_book_3': t2, 's1_level-2_book_1': t2}},
+      });
+      expect(await books('H'), isEmpty);
+      await book(db, 's1_level-1_book_3', 's1', Timestamp.fromDate(DateTime(2026, 9, 9)));
+      expect(await books('H'), {'s1': {'s1_level-1_book_3'}});
+    });
+
+    test('markSeenBooks writes the nested per-book marker and keeps the old fields', () async {
+      final db = await two();
+      GuideDb.useForTests(db);
+      await db.collection('seenMarkers').doc('H').set({'bookCommitments': {'s1': t0}, 'calendarEvents': t0});
+      await SeenMarkers.markSeenBooks('H', 's1', ['s1_level-1_book_3']);
+      final d = (await db.collection('seenMarkers').doc('H').get()).data()!;
+      expect(d['bookCommitments'], {'s1': t0});
+      expect(d['calendarEvents'], t0);
+      expect((d['bookCommitmentBooks'] as Map)['s1'], contains('s1_level-1_book_3'));
+    });
+
+    for (final c in [
+      ('Guide G', 'G', 'GUIDE', ''),
+      ('Male Enabler M1', 'M1', 'MALE_ENABLER', 'G'),
+    ]) {
+      test('${c.$1}: only the books of students on his board', () async {
+        final db = await world();
+        await db.collection('booksRead').doc('s2_level-2_book_1').set({
+          'uid': 's2',
+          'commitmentSetBy': 'guide',
+          'commitmentSetAt': t1,
+          'scopeGuide': 'M1',
+          'scopeTeam': 'G',
+          'scopeGender': 'male',
+        });
+        await as(db, profile(c.$2, c.$3, team: c.$4));
+        final got = await books(c.$2);
+        final expected = c.$2 == 'G' ? {'s1', 's2', 's3'} : {'s2', 's3'};
+        expect(got.keys.toSet(), expected);
+        expect(got.containsKey('s4'), isFalse);
+        expect(got.containsKey('s5'), isFalse);
+        expect(got['s2'], {'s2_level-1_book_1', 's2_level-2_book_1'});
+      });
+    }
   });
 }

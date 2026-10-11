@@ -97,6 +97,42 @@ class SeenMarkers {
     });
   }
 
+  /// Per-BOOK seen markers for book commitments:
+  /// `seenMarkers/{viewerId}.bookCommitmentBooks.{studentUid}.{bookDocId}` (a separate
+  /// field, so the older per-student cursor `bookCommitments.{uid}` keeps working
+  /// beside it: it means "seen up to" for everything older).
+  static const String bookKey = 'bookCommitmentBooks';
+
+  static Future<void> markSeenBooks(
+      String viewerId, String studentUid, Iterable<String> bookDocIds) async {
+    final ids = bookDocIds.where((e) => e.isNotEmpty).toList();
+    if (viewerId.isEmpty || studentUid.isEmpty || ids.isEmpty || debugDisable) return;
+    await _col.doc(viewerId).set({
+      bookKey: {
+        studentUid: {for (final id in ids) id: FieldValue.serverTimestamp()},
+      },
+    }, SetOptions(merge: true));
+  }
+
+  /// `{studentUid: {bookDocId: seenAt}}` for every book this viewer has seen.
+  static Stream<Map<String, Map<String, Timestamp>>> bookCursors(String viewerId) {
+    if (viewerId.isEmpty) return Stream.value(const {});
+    return _col.doc(viewerId).snapshots().map((doc) {
+      final feature = doc.data()?[bookKey];
+      if (feature is! Map) return const <String, Map<String, Timestamp>>{};
+      final out = <String, Map<String, Timestamp>>{};
+      feature.forEach((uid, books) {
+        if (books is! Map) return;
+        final m = <String, Timestamp>{};
+        books.forEach((id, v) {
+          if (v is Timestamp) m[id.toString()] = v;
+        });
+        out[uid.toString()] = m;
+      });
+      return out;
+    });
+  }
+
   /// Combines a "latest real activity" stream with a "last seen" stream
   /// into one "is this currently unseen" boolean stream — the single
   /// primitive every feature's own unseen-stream is built from, kept in

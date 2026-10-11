@@ -202,40 +202,45 @@ class UnseenAggregates {
     };
   }
 
-  /// WHICH students have a book commitment, set by a guide, that this admin has not
-  /// yet seen: every `booksRead` doc's own `commitmentSetAt` (only when
-  /// `commitmentSetBy == 'guide'`) against THAT student's cursor. Read through the
-  /// scoped history query (`scopeGuide`/`scopeTeam` stamps), and ONLY for students
-  /// that are on this admin's board - a commitment for a student the admin cannot
-  /// open never counts. A student's cursor is written when their card is expanded
-  /// (and when this admin assigns the book themselves).
+  /// WHICH books have a commitment, set by a guide, that this admin has not seen yet, per
+  /// student: `{studentUid: {bookDocId}}`. A `booksRead` doc's own `commitmentSetAt` (only
+  /// when `commitmentSetBy == 'guide'`) is unseen when it is newer than BOTH the old
+  /// per-student cursor (`bookCommitments.{uid}`, meaning "seen up to" for everything
+  /// older) and that book's own marker (`bookCommitmentBooks.{uid}.{bookDocId}`).
+  /// Read through the scoped history query (`scopeGuide`/`scopeTeam` stamps), and ONLY
+  /// for students on this admin's board: a commitment for a student the admin cannot
+  /// open never counts.
   ///
-  /// The Board tile's dot is "this set is not empty"; the board itself reads the
-  /// same set to put a dot on exactly those cards, so the dot can always be found.
-  static Stream<Set<String>> bookCommitmentUnseenUids(String guide) {
-    if (debugDisable) return Stream.value(const <String>{});
-    late StreamController<Set<String>> controller;
+  /// The Board tile's dot is "this is not empty"; the board puts a dot on that student's
+  /// card, on the level that holds the book, and on the book row itself.
+  static Stream<Map<String, Set<String>>> bookCommitmentUnseenBooks(String guide) {
+    if (debugDisable) return Stream.value(const <String, Set<String>>{});
+    late StreamController<Map<String, Set<String>>> controller;
     List<QueryDocumentSnapshot<Map<String, dynamic>>>? docs;
-    Map<String, Timestamp>? cursors;
+    Map<String, Timestamp>? studentCursors;
+    Map<String, Map<String, Timestamp>>? bookCursors;
     Set<String>? roster;
     final subs = <StreamSubscription>[];
 
     void emit() {
-      if (docs == null || cursors == null || roster == null) return;
-      final unseen = <String>{};
+      if (docs == null || studentCursors == null || bookCursors == null || roster == null) return;
+      final unseen = <String, Set<String>>{};
       for (final doc in docs!) {
         if (doc.data()['commitmentSetBy'] != 'guide') continue;
         final ts = doc.data()['commitmentSetAt'];
         if (ts is! Timestamp) continue;
         final uid = (doc.data()['uid'] ?? '').toString();
         if (!roster!.contains(uid)) continue;
-        final cursor = cursors![uid];
-        if (cursor == null || ts.compareTo(cursor) > 0) unseen.add(uid);
+        final student = studentCursors![uid];
+        if (student != null && ts.compareTo(student) <= 0) continue;
+        final book = bookCursors![uid]?[doc.id];
+        if (book != null && ts.compareTo(book) <= 0) continue;
+        unseen.putIfAbsent(uid, () => <String>{}).add(doc.id);
       }
       controller.add(unseen);
     }
 
-    controller = StreamController<Set<String>>.broadcast(
+    controller = StreamController<Map<String, Set<String>>>.broadcast(
       onListen: () {
         _boardRosterUids().then((r) {
           roster = r;
@@ -246,7 +251,11 @@ class UnseenAggregates {
           emit();
         }));
         subs.add(SeenMarkers.subCursors(guide, 'bookCommitments').listen((c) {
-          cursors = c;
+          studentCursors = c;
+          emit();
+        }));
+        subs.add(SeenMarkers.bookCursors(guide).listen((c) {
+          bookCursors = c;
           emit();
         }));
       },
@@ -259,6 +268,10 @@ class UnseenAggregates {
 
     return controller.stream;
   }
+
+  /// The students with at least one unseen book commitment.
+  static Stream<Set<String>> bookCommitmentUnseenUids(String guide) =>
+      bookCommitmentUnseenBooks(guide).map((m) => m.keys.toSet());
 
   /// "Is ANY student's book commitment unseen" (the Home Board tile and the shell).
   static Stream<bool> bookCommitmentsRosterUnseen(String guide, bool isHod) =>

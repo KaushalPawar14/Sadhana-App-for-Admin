@@ -6,6 +6,7 @@ import 'BoardQueries.dart' as bq;
 import 'BookProgressData.dart';
 import 'BookProgressData.dart' as bp;
 import 'StudentScope.dart';
+import 'SeenMarkers.dart';
 import 'UnseenAggregates.dart';
 import 'UnseenFeatureBadge.dart';
 import 'AdminProfile.dart';
@@ -63,9 +64,13 @@ abstract class BoardData {
   /// Wraps a card's Comments icon with its per-student unseen dot.
   Widget commentsBadge({required String studentUid, required Widget child});
 
-  /// The uids of the students (on this admin's board) with a book commitment, set by a
-  /// guide, that this admin has not seen yet. The cards show a dot for these.
-  Stream<Set<String>> unseenCommitments(String guide);
+  /// `{studentUid: {bookDocId}}` of the book commitments (set by a guide, for students on
+  /// this admin's board) that this admin has not seen yet: the card, the level and the
+  /// book row each show a dot for these.
+  Stream<Map<String, Set<String>>> unseenCommitments(String guide);
+
+  /// These books of [studentUid] have been seen by [guide] (written per book).
+  Future<void> markBooksSeen(String guide, String studentUid, Iterable<String> bookDocIds);
 }
 
 class FirestoreBoardData implements BoardData {
@@ -131,8 +136,12 @@ class FirestoreBoardData implements BoardData {
           .snapshots();
 
   @override
-  Stream<Set<String>> unseenCommitments(String guide) =>
-      UnseenAggregates.bookCommitmentUnseenUids(guide);
+  Stream<Map<String, Set<String>>> unseenCommitments(String guide) =>
+      UnseenAggregates.bookCommitmentUnseenBooks(guide);
+
+  @override
+  Future<void> markBooksSeen(String guide, String studentUid, Iterable<String> bookDocIds) =>
+      SeenMarkers.markSeenBooks(guide, studentUid, bookDocIds);
 
   @override
   Widget commentsBadge({required String studentUid, required Widget child}) =>

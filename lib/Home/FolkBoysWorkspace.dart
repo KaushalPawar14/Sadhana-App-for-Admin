@@ -434,8 +434,45 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
 
   /// Students whose book commitment (set by a guide) this admin has not seen: their cards
   /// show a dot, so what the Home tile's dot counts can always be found and opened.
-  final ValueNotifier<Set<String>> _commitmentUnseen = ValueNotifier<Set<String>>(const {});
-  StreamSubscription<Set<String>>? _commitmentSub;
+  final ValueNotifier<Map<String, Set<String>>> _commitmentUnseen =
+      ValueNotifier<Map<String, Set<String>>>(const {});
+  StreamSubscription<Map<String, Set<String>>>? _commitmentSub;
+
+  /// Books already sent to be marked seen (so a rebuild never writes twice).
+  final Set<String> _sentSeen = {};
+  final Map<String, Timer> _seenTimers = {};
+
+  /// How long an unseen book stays marked after its row is on screen: long enough to notice.
+  static const Duration _seenDelay = Duration(milliseconds: 1500);
+
+  String _bookDocId(_Boy boy, BookConfigEntry b) => '${boy.uid}_${b.level}_${b.key}';
+
+  /// The book is seen now (tapped, or its row has been on screen for a moment).
+  void _markBookSeen(_Boy boy, String bookDocId) {
+    if (!(_commitmentUnseen.value[boy.uid]?.contains(bookDocId) ?? false)) return;
+    if (!_sentSeen.add(bookDocId)) return;
+    _seenTimers.remove(bookDocId)?.cancel();
+    BoardData.instance.markBooksSeen(_guide, boy.uid, [bookDocId]);
+  }
+
+  /// These books' rows are on screen (their level is open): mark each seen shortly after.
+  void _scheduleSeen(_Boy boy, String level, Iterable<String> bookDocIds) {
+    final unseen = _commitmentUnseen.value[boy.uid];
+    if (unseen == null) return;
+    for (final id in bookDocIds) {
+      if (!unseen.contains(id) || _sentSeen.contains(id) || _seenTimers.containsKey(id)) continue;
+      _seenTimers[id] = Timer(_seenDelay, () {
+        _seenTimers.remove(id);
+        // Still on screen? (the card and the level are still open)
+        if (!mounted ||
+            !_expandedUids.contains(boy.uid) ||
+            !_expandedLevels.contains('${boy.uid}_$level')) {
+          return;
+        }
+        _markBookSeen(boy, id);
+      });
+    }
+  }
 
   @override
   void initState() {
@@ -449,6 +486,9 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   @override
   void dispose() {
     _commitmentSub?.cancel();
+    for (final t in _seenTimers.values) {
+      t.cancel();
+    }
     _commitmentUnseen.dispose();
     _hController.dispose();
     super.dispose();
@@ -2965,9 +3005,9 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                     ),
                   ),
                   if (!forceCollapsed)
-                    ValueListenableBuilder<Set<String>>(
+                    ValueListenableBuilder<Map<String, Set<String>>>(
                       valueListenable: _commitmentUnseen,
-                      builder: (context, unseen, _) => unseen.contains(boy.uid) && !expanded
+                      builder: (context, unseen, _) => (unseen[boy.uid]?.isNotEmpty ?? false)
                           ? const Padding(
                               padding: EdgeInsets.only(right: 6),
                               child: UnseenDot(size: 9),
@@ -3098,12 +3138,8 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   /// was opened for.
   Widget _expandedDetail({required _Boy boy}) {
     _booksConfigFuture ??= BoardData.instance.booksConfig();
-    // Master Task 2026-09-10, Part 6 — expanding this student's own card is
-    // "seen" for their book commitments (per-student, so one student's
-    // update never marks a different student's own panel seen). Fire-and-
-    // forget, no UI here — this file's board internals (drag, drop,
-    // permissions, `_usersQuery`, `_visibleColumns`) are unchanged.
-    SeenMarkers.markSeenSub(_guide, 'bookCommitments', boy.uid);
+    // A book commitment is "seen" per BOOK now (its level open and its row on screen, or the
+    // row tapped), not by expanding the card: see [_levelDropdown] / [_bookStatusRow].
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -3264,6 +3300,10 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     final showAll = _allBooksShown.contains(levelKey);
     final listed = showAll ? displayOrder : displayOrder.take(_booksShown).toList();
     final hidden = displayOrder.length - listed.length;
+    if (open && books.isNotEmpty) {
+      // The rows on screen now: any unseen one is seen shortly.
+      _scheduleSeen(boy, level, [for (final b in listed) _bookDocId(boy, b)]);
+    }
 
     final g = context.g;
     final t = context.gText;
@@ -3295,6 +3335,20 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                     children: [
                       Expanded(
                         child: Text(kBookLevelLabels[level] ?? level, style: t.cardTitleSmall),
+                      ),
+                      // An unseen book in this level (also while the level is closed).
+                      ValueListenableBuilder<Map<String, Set<String>>>(
+                        valueListenable: _commitmentUnseen,
+                        builder: (context, unseen, _) {
+                          final ids = unseen[boy.uid];
+                          final has = ids != null && books.any((b) => ids.contains(_bookDocId(boy, b)));
+                          return has
+                              ? const Padding(
+                                  padding: EdgeInsets.only(right: 6),
+                                  child: UnseenDot(size: 9),
+                                )
+                              : const SizedBox.shrink();
+                        },
                       ),
                       AnimatedRotation(
                         turns: open ? .5 : 0,
@@ -3411,7 +3465,12 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     // mark a book finished from this card); a finished one is not tappable.
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: isFinished ? null : () => _openAssignBookDialog(boy: boy, book: book, entry: entry),
+      onTap: isFinished
+          ? null
+          : () {
+              _markBookSeen(boy, _bookDocId(boy, book));
+              _openAssignBookDialog(boy: boy, book: book, entry: entry);
+            },
       child: ConstrainedBox(
         constraints: BoxConstraints(minHeight: isFinished ? 36 : GuideShape.touchTarget),
         child: Padding(
@@ -3444,6 +3503,16 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                       ),
                   ],
                 ),
+              ),
+              ValueListenableBuilder<Map<String, Set<String>>>(
+                valueListenable: _commitmentUnseen,
+                builder: (context, unseen, _) =>
+                    (unseen[boy.uid]?.contains(_bookDocId(boy, book)) ?? false)
+                        ? const Padding(
+                            padding: EdgeInsets.only(right: 6),
+                            child: UnseenDot(size: 9),
+                          )
+                        : const SizedBox.shrink(),
               ),
               if (!isFinished) Icon(Icons.chevron_right_rounded, size: 18, color: g.mutedText),
             ],
@@ -3762,7 +3831,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       }
 
       // The admin who set the commitment has seen it: it must not light their own dot.
-      SeenMarkers.markSeenSub(_guide, 'bookCommitments', boy.uid);
+      BoardData.instance.markBooksSeen(_guide, boy.uid, ['${boy.uid}_${book.level}_${book.key}']);
 
       await _notifyStudentOfBookAssignment(
         studentUid: boy.uid,
