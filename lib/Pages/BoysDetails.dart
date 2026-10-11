@@ -259,7 +259,8 @@ class _AdminControlPageState extends State<AdminControlPage> {
                     ),
                     const SizedBox(height: 10),
                     if (_isHod) ...[
-                      DropdownButtonFormField<String>(isExpanded: true, 
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
                         value: gender,
                         decoration:
                             const InputDecoration(labelText: "Gender"),
@@ -282,7 +283,8 @@ class _AdminControlPageState extends State<AdminControlPage> {
                       ),
                       const SizedBox(height: 10),
                     ],
-                    DropdownButtonFormField<String>(isExpanded: true, 
+                    DropdownButtonFormField<String>(
+                      isExpanded: true,
                       value: residence,
                       decoration:
                           const InputDecoration(labelText: "Residence"),
@@ -303,7 +305,8 @@ class _AdminControlPageState extends State<AdminControlPage> {
                     ),
                     if (_isHod) ...[
                       const SizedBox(height: 10),
-                      DropdownButtonFormField<String?>(isExpanded: true, 
+                      DropdownButtonFormField<String?>(
+                        isExpanded: true,
                         value: assignedGuide,
                         decoration: const InputDecoration(
                             labelText: "Assign to guide"),

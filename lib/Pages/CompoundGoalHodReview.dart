@@ -77,7 +77,8 @@ class _CompoundGoalHodReviewState extends State<CompoundGoalHodReview> {
                     // Server-filtered admin list (a HOD sees every admin).
                     final List<AdminSummary> admins =
                         AdminProfileProvider.require().admins;
-                    return DropdownButtonFormField<String>(isExpanded: true, 
+                    return DropdownButtonFormField<String>(
+                      isExpanded: true,
                       initialValue: _selectedGuide,
                       decoration: const InputDecoration(
                         labelText: "Guide",

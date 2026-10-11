@@ -548,7 +548,8 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: DropdownButtonFormField<int>(isExpanded: true, 
+                child: DropdownButtonFormField<int>(
+                  isExpanded: true,
                   initialValue: task.fromLevel,
                   decoration:
                       const InputDecoration(labelText: "From level", isDense: true),
@@ -562,7 +563,8 @@ class _CompoundTaskEditorPageState extends State<CompoundTaskEditorPage> {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: DropdownButtonFormField<int>(isExpanded: true, 
+                child: DropdownButtonFormField<int>(
+                  isExpanded: true,
                   initialValue: task.toLevel,
                   decoration:
                       const InputDecoration(labelText: "To level", isDense: true),
