@@ -1,3 +1,4 @@
+import '../theme/GuideColors.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 Future<void> initializeNotifications() async {
@@ -5,7 +6,7 @@ Future<void> initializeNotifications() async {
   FlutterLocalNotificationsPlugin();
 
   const AndroidInitializationSettings initializationSettingsAndroid =
-  AndroidInitializationSettings('@mipmap/ic_launcher');
+  AndroidInitializationSettings('@drawable/ic_stat_notification');
   final InitializationSettings initializationSettings =
   InitializationSettings(android: initializationSettingsAndroid);
 
@@ -24,6 +25,9 @@ Future<void> showNotification() async {
     importance: Importance.max,
     priority: Priority.high,
     ticker: 'ticker',
+    icon: 'ic_stat_notification',
+    color: GuideColors.notificationAccent, // brass
+    largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
   );
 
   const NotificationDetails platformChannelSpecifics =

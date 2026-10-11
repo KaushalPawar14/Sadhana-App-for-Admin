@@ -3,4 +3,7 @@
     <!-- The app's page background (GuideColors.light.pageBackground). The window
          shows it until Flutter draws its first frame, so there is no flash. -->
     <color name="folk_page_background">#F6F4EF</color>
+
+    <!-- Notification accent colour: brass (GuideColors.brass). -->
+    <color name="notification_color">#A9812F</color>
 </resources>

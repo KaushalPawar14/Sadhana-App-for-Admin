@@ -1,3 +1,4 @@
+import '../theme/GuideColors.dart';
 import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -43,7 +44,7 @@ class FirebaseCM {
     // Initialize the notification plugin
     await localNotifications.initialize(
       InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        android: AndroidInitializationSettings('@drawable/ic_stat_notification'),
       ),
       // Deep-link routing (Master Task, 2026-09-10 — Part 3) — the ONE
       // launch state `getInitialMessage()`/`onMessageOpenedApp` below
@@ -99,6 +100,11 @@ class FirebaseCM {
           importance: Importance.max,
           priority: Priority.high,
           showWhen: false,
+          // The small icon is a white glyph on transparent (Android draws it as a
+          // silhouette); the full-colour logo is the large icon.
+          icon: 'ic_stat_notification',
+          color: GuideColors.notificationAccent, // brass
+          largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
         ),
       ),
       // Carries the SAME routing data this message arrived with (Master
