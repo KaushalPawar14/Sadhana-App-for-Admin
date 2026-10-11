@@ -15,6 +15,7 @@ import '../widgets/GuideSurface.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
+import '../widgets/GuideMeta.dart';
 
 /// Service Bank — replaces `Pages/DevotionalServiceManager.dart` entirely
 /// (Phase: Service Bank, Part 4). Reached from the same "D" tile on
@@ -377,12 +378,7 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
     final selected = _groupBy == value;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        label: Text(label),
-        selected: selected,
-        onSelected: (_) => setState(() => _groupBy = value),
-        selectedColor: context.g.brass.withValues(alpha: .14),
-      ),
+      child: GuideChoiceChip(label: label, selected: selected, onSelected: (_) => setState(() => _groupBy = value)),
     );
   }
 
@@ -707,11 +703,7 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
                     Wrap(
                       spacing: 8,
                       children: kAssignmentStatuses.map((s) {
-                        return ChoiceChip(
-                          label: Text(statusLabel(s)),
-                          selected: status == s,
-                          onSelected: saving ? null : (_) => saveStatus(s),
-                        );
+                        return GuideChoiceChip(label: statusLabel(s), selected: status == s, onSelected: saving ? null : (_) => saveStatus(s));
                       }).toList(),
                     ),
                     const Divider(height: 28),
@@ -739,22 +731,13 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
                     const SizedBox(height: 10),
                     Row(
                       children: [
-                        ChoiceChip(
-                          label: const Text("Not yet"),
-                          selected: competenceLevel == kCompetenceNotYet,
-                          onSelected: saving
+                        GuideChoiceChip(label: "Not yet", selected: competenceLevel == kCompetenceNotYet, onSelected: saving
                               ? null
-                              : (_) => setSheetState(() => competenceLevel = kCompetenceNotYet),
-                        ),
+                              : (_) => setSheetState(() => competenceLevel = kCompetenceNotYet)),
                         const SizedBox(width: 8),
-                        ChoiceChip(
-                          label: const Text("Yes"),
-                          selected: competenceLevel == kCompetenceYes,
-                          selectedColor: context.g.success.withValues(alpha: .14),
-                          onSelected: saving
+                        GuideChoiceChip(label: "Yes", color: context.g.success, selected: competenceLevel == kCompetenceYes, onSelected: saving
                               ? null
-                              : (_) => setSheetState(() => competenceLevel = kCompetenceYes),
-                        ),
+                              : (_) => setSheetState(() => competenceLevel = kCompetenceYes)),
                       ],
                     ),
                     const SizedBox(height: 10),

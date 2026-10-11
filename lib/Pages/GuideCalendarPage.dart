@@ -20,6 +20,7 @@ import '../widgets/GuideSurface.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
+import '../widgets/GuideMeta.dart';
 
 /// Guide Calendar — text-to-dates, mandatory + personal layers (Part 5,
 /// management UI). GUIDE APP ONLY; the Student app has no read path to
@@ -1312,11 +1313,7 @@ class _NotifyOffsetsPicker extends StatelessWidget {
           runSpacing: 4,
           children: kNotifyOffsetLabels.entries.map((entry) {
             final isSelected = selected.contains(entry.key);
-            return FilterChip(
-              label: Text(entry.value, style: context.gText.small.copyWith(color: context.g.text)),
-              selected: isSelected,
-              onSelected: (v) => _toggle(entry.key, v),
-            );
+            return GuideChoiceChip(label: entry.value, selected: isSelected, onSelected: (v) => _toggle(entry.key, v));
           }).toList(),
         ),
         const SizedBox(height: 2),
@@ -1357,11 +1354,7 @@ class _EventTypePicker extends StatelessWidget {
           spacing: 6,
           runSpacing: 4,
           children: kEventTypeLabels.entries.map((entry) {
-            return ChoiceChip(
-              label: Text(entry.value, style: context.gText.small.copyWith(color: context.g.text)),
-              selected: selected == entry.key,
-              onSelected: (_) => onChanged(entry.key),
-            );
+            return GuideChoiceChip(label: entry.value, selected: selected == entry.key, onSelected: (_) => onChanged(entry.key));
           }).toList(),
         ),
       ],

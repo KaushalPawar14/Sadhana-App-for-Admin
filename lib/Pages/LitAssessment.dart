@@ -9,6 +9,7 @@ import '../theme/GuideTheme.dart';
 import '../theme/GuideColors.dart';
 import '../utils/GuideDb.dart';
 import '../widgets/GuideWait.dart';
+import '../widgets/GuideMeta.dart';
 
 /// LIT assessment — private, guide-only (FOLK_HANDOFF.md Section 8).
 ///
@@ -295,15 +296,9 @@ class _LitEntrySheetState extends State<_LitEntrySheet> {
                   final selected = _confidence == level;
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(
-                        level[0].toUpperCase() + level.substring(1),
-                      ),
-                      selected: selected,
-                      onSelected: _saving
+                    child: GuideChoiceChip(label: level[0].toUpperCase() + level.substring(1), selected: selected, onSelected: _saving
                           ? null
-                          : (_) => setState(() => _confidence = level),
-                    ),
+                          : (_) => setState(() => _confidence = level)),
                   );
                 }).toList(),
               ),

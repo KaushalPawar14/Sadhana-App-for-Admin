@@ -12,6 +12,7 @@ import '../utils/GuideDb.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
+import '../widgets/GuideMeta.dart';
 
 /// Podcast / audiobook link manager — FOLK-2/4/8/12/16.
 ///
@@ -507,16 +508,7 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
             runSpacing: 8,
             children: kSupportedLanguages.entries.map((entry) {
               final selected = _language == entry.key;
-              return ChoiceChip(
-                label: Text(entry.value),
-                selected: selected,
-                onSelected: (_) => setState(() => _language = entry.key),
-                selectedColor: context.g.success.withValues(alpha: .14),
-                labelStyle: TextStyle(
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
-                  color: selected ? context.g.success : context.g.text,
-                ),
-              );
+              return GuideChoiceChip(label: entry.value, selected: selected, onSelected: (_) => setState(() => _language = entry.key));
             }).toList(),
           ),
         ],

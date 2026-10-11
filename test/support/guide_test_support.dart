@@ -79,6 +79,8 @@ Future<void> shot(WidgetTester tester, String name, {GlobalKey? key}) async {
       image = await layer.toImage(Offset.zero & tester.view.physicalSize / tester.view.devicePixelRatio, pixelRatio: 2);
     }
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    File('${dir.path}/$name.png').writeAsBytesSync(bytes!.buffer.asUint8List());
+    final file = File('${dir.path}/$name.png');
+    file.parent.createSync(recursive: true);
+    file.writeAsBytesSync(bytes!.buffer.asUint8List());
   });
 }

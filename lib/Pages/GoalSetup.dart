@@ -155,14 +155,12 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
                 ),
               ),
               const SizedBox(height: 16),
-              Container(
+              GuideCard(
                 padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: context.g.surface,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: context.g.border),
-                ),
-                child: Column(
+                // The radio rows paint their ink on the nearest Material.
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text("Metric",
@@ -198,6 +196,7 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
                       ),
                     ),
                   ],
+                ),
                 ),
               ),
               const SizedBox(height: 8),

@@ -14,6 +14,7 @@ import '../utils/GuideDb.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
+import '../widgets/GuideMeta.dart';
 
 /// Chanting Challenges — a COLLECTIVE roster target.
 ///
@@ -236,31 +237,16 @@ class _ChantingChallengeManagerPageState
                           runSpacing: 8,
                           children: guides.map((g) {
                             final selected = _selectedGuideIds.contains(g);
-                            return FilterChip(
-                              label: Text(AdminProfileProvider.require()
+                            return GuideChoiceChip(label: AdminProfileProvider.require()
                                       .adminById(g)
                                       ?.displayName ??
-                                  g),
-                              selected: selected,
-                              onSelected: (v) => setDialogState(() {
+                                  g, selected: selected, onSelected: (v) => setDialogState(() {
                                 if (v) {
                                   _selectedGuideIds.add(g);
                                 } else {
                                   _selectedGuideIds.remove(g);
                                 }
-                              }),
-                              selectedColor: context.g.brass
-                                  .withValues(alpha: .15),
-                              checkmarkColor: context.g.brass,
-                              labelStyle: TextStyle(
-                                color: selected
-                                    ? context.g.brass
-                                    : context.g.text,
-                                fontWeight: selected
-                                    ? FontWeight.w700
-                                    : FontWeight.normal,
-                              ),
-                            );
+                              }));
                           }).toList(),
                         );
                       },
