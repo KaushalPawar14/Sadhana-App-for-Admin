@@ -4,6 +4,7 @@ import '../theme/GuideColors.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import 'GuideSurface.dart';
+import 'GuideBoardMotion.dart';
 
 class GuideNavItem {
   const GuideNavItem({
@@ -123,7 +124,10 @@ class _NavButton extends StatelessWidget {
                 icon,
                 if (active) ...[
                   const SizedBox(width: 8),
-                  Text(item.label, maxLines: 1, style: t.navLabel.copyWith(color: color)),
+                  // The label fades in as the item opens (and is gone when it closes).
+                  GuideFadeIn(
+                    child: Text(item.label, maxLines: 1, style: t.navLabel.copyWith(color: color)),
+                  ),
                 ],
               ],
             ),

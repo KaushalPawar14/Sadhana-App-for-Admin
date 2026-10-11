@@ -91,6 +91,36 @@ void main() {
       expect(GhostClock.instance.running, isFalse);
     });
 
+    testWidgets('a ghost that is not on screen holds no ticker: another tab, or a covered route', (tester) async {
+      phone(tester, 1.0);
+      await tester.pumpWidget(guideHost(
+        const Scaffold(
+          body: IndexedStack(index: 0, children: [SizedBox(), TickerMode(enabled: false, child: GuideGhostList(rows: 1))]),
+        ),
+        reduce: false,
+      ));
+      expect(GhostClock.instance.running, isFalse, reason: 'the ghost is on the hidden tab');
+      expect(tester.binding.transientCallbackCount, 0);
+
+      // a visible ghost, then a route pushed over it
+      final key = GlobalKey<NavigatorState>();
+      await tester.pumpWidget(MaterialApp(
+        navigatorKey: key,
+        home: const Scaffold(body: GuideGhostList(rows: 1)),
+      ));
+      await tester.pump();
+      expect(GhostClock.instance.running, isTrue);
+      key.currentState!.push(MaterialPageRoute<void>(builder: (_) => const Scaffold(body: Text('covering'))));
+      await tester.pumpAndSettle();
+      expect(GhostClock.instance.running, isFalse, reason: 'covered by an opaque route');
+      key.currentState!.pop();
+      await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 1))
+          .catchError((_) => 0);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(GhostClock.instance.running, isTrue, reason: 'visible again');
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('ghost rows have the real row height and gap', (tester) async {
       phone(tester, 1.0);
       await tester.pumpWidget(guideHost(const Scaffold(body: GuideGhostList(rows: 3, rowHeight: 72, gap: 10))));

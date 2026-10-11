@@ -111,7 +111,10 @@ class _CurvedNavBarState extends State<CurvedNavBar> {
                   index: currentIdx,
                   children: [
                     for (var i = 0; i < 3; i++)
-                      _built.contains(i) ? _pageFor(i) : const SizedBox.shrink(),
+                      // A tab that is not showing runs no tickers (no breathing ghosts).
+                      _built.contains(i)
+                          ? TickerMode(enabled: i == currentIdx, child: _pageFor(i))
+                          : const SizedBox.shrink(),
                   ],
                 ),
               ),

@@ -93,7 +93,10 @@ class GuideGhostArea extends StatefulWidget {
 class _GuideGhostAreaState extends State<GuideGhostArea> {
   bool _held = false;
 
-  bool _wantClock(BuildContext context) => widget.pulsing && !GuideMotion.reduced(context);
+  // A ghost that cannot be seen (another tab of the shell, a screen covered by another
+  // route) does not hold the clock: TickerMode is off there.
+  bool _wantClock(BuildContext context) =>
+      widget.pulsing && !GuideMotion.reduced(context) && TickerMode.of(context);
 
   void _sync(bool want) {
     if (want == _held) return;

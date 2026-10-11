@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/Home/FolkBoysEntry.dart';
 import 'package:folk_guide_app/utils/AdminProfile.dart';
+import 'package:folk_guide_app/utils/BottomNavBar.dart';
 import 'package:folk_guide_app/utils/CalendarQueries.dart';
 import 'package:folk_guide_app/utils/GoalCompoundQueries.dart';
 import 'package:folk_guide_app/utils/HomeData.dart';
@@ -192,6 +193,24 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(loaded(GuideHeroCard), findsOneWidget);
+  });
+
+  testWidgets('the shell: Home ghosts breathe only while Home is the tab on screen', (tester) async {
+    phone(tester, 1.0);
+    AdminProfileProvider.instance.debugSet(me());
+    final data = ManualHomeData();
+    HomeData.instance = data;
+    await tester.pumpWidget(guideHost(const CurvedNavBar('G'), reduce: false));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(GhostClock.instance.running, isTrue, reason: 'Home is loading');
+    await tester.tap(find.byIcon(Icons.grid_view_rounded));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(GhostClock.instance.running, isFalse, reason: 'Home is on a hidden tab');
+    await tester.tap(find.byIcon(Icons.home_outlined).first);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(GhostClock.instance.running, isTrue);
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('the tiles still appear if the roster count fails (they are the way in)', (tester) async {
