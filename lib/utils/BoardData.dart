@@ -6,7 +6,9 @@ import 'BoardQueries.dart' as bq;
 import 'BookProgressData.dart';
 import 'BookProgressData.dart' as bp;
 import 'StudentScope.dart';
+import 'UnseenAggregates.dart';
 import 'UnseenFeatureBadge.dart';
+import 'AdminProfile.dart';
 import 'GuideDb.dart';
 
 /// Everything the FOLK Boys board reads or writes, behind one interface. The app
@@ -60,6 +62,10 @@ abstract class BoardData {
 
   /// Wraps a card's Comments icon with its per-student unseen dot.
   Widget commentsBadge({required String studentUid, required Widget child});
+
+  /// The uids of the students (on this admin's board) with a book commitment, set by a
+  /// guide, that this admin has not seen yet. The cards show a dot for these.
+  Stream<Set<String>> unseenCommitments(String guide);
 }
 
 class FirestoreBoardData implements BoardData {
@@ -125,11 +131,20 @@ class FirestoreBoardData implements BoardData {
           .snapshots();
 
   @override
+  Stream<Set<String>> unseenCommitments(String guide) =>
+      UnseenAggregates.bookCommitmentUnseenUids(guide);
+
+  @override
   Widget commentsBadge({required String studentUid, required Widget child}) =>
       UnseenFeatureBadge(
         featureKey: 'studentComments',
         subKey: studentUid,
         timestampField: 'createdAt',
+        // A comment this admin wrote themselves is never "new" to them.
+        extractTimestamp: (m) =>
+            (m['authorId'] ?? '').toString() == (AdminProfileProvider.current?.id ?? '')
+                ? null
+                : m['createdAt'],
         dotOffset: const Offset(10, 10),
         latestQuery: (_) => GuideDb.instance
             .collection('studentComments')

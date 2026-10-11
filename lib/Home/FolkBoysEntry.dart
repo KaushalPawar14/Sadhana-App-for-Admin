@@ -358,13 +358,18 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     );
   }
 
-  Widget _tile(String guide, {required bool board, bool placeholder = false}) {
+  /// One of the two square tiles. [side] is the square's side: the tile is at least that
+  /// tall, and both tiles of the pair grow together if the text needs more room.
+  Widget _tile(String guide, {required bool board, required double side, bool placeholder = false}) {
     if (board) {
       final tile = GuideGradientTile(
         pastel: GuidePastel.slate,
         icon: Icons.groups_2_outlined,
         title: 'FOLK Boys Board',
         subtitle: placeholder ? '0 students' : _boardSubtitle(),
+        minHeight: side,
+        large: true,
+        showChevron: false,
         onTap: placeholder
             ? null
             : () => Navigator.push(
@@ -373,13 +378,15 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
                 ),
       );
       if (placeholder) return tile;
-      // "Any of my roster has an unseen student comment or book commitment"
-      // (see `_boardUnseen`).
+      // The dot counts what this admin can open from the board: a book commitment set by a
+      // guide (a dot on that student's card) or a comment someone else wrote (a dot on that
+      // card's Comments icon), for students on this admin's board only.
       return StreamBuilder<bool>(
         stream: _boardUnseen,
         builder: (context, snap) => UnseenBadge(
           show: snap.data ?? false,
           offset: const Offset(10, 10),
+          fillParent: true,
           child: tile,
         ),
       );
@@ -389,6 +396,9 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
       icon: Icons.calendar_month_outlined,
       title: 'Calendar',
       subtitle: placeholder ? 'Nothing due today' : _calendarSubtitle(),
+      minHeight: side,
+      large: true,
+      showChevron: false,
       onTap: placeholder
           ? null
           : () => Navigator.push(
@@ -401,13 +411,9 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     return placeholder ? tile : HomeData.instance.calendarBadge(child: tile);
   }
 
-  Widget _tilesRow(String guide, {bool placeholder = false}) => Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(child: _tile(guide, board: true, placeholder: placeholder)),
-          const SizedBox(width: GuideSpace.cardGap),
-          Expanded(child: _tile(guide, board: false, placeholder: placeholder)),
-        ],
+  Widget _tilesRow(String guide) => GuideSquarePair(
+        left: (side) => _tile(guide, board: true, side: side),
+        right: (side) => _tile(guide, board: false, side: side),
       );
 
   @override
@@ -518,23 +524,15 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
                   : KeyedSubtree(
                       key: const ValueKey('tiles-ghost'),
                       child: GuideGhostArea(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: GuideGhostOf(
-                                radius: GuideShape.tileRadius,
-                                placeholder: _tile('', board: true, placeholder: true),
-                              ),
-                            ),
-                            const SizedBox(width: GuideSpace.cardGap),
-                            Expanded(
-                              child: GuideGhostOf(
-                                radius: GuideShape.tileRadius,
-                                placeholder: _tile('', board: false, placeholder: true),
-                              ),
-                            ),
-                          ],
+                        child: GuideSquarePair(
+                          left: (side) => GuideGhostOf(
+                            radius: GuideShape.tileRadius,
+                            placeholder: _tile('', board: true, side: side, placeholder: true),
+                          ),
+                          right: (side) => GuideGhostOf(
+                            radius: GuideShape.tileRadius,
+                            placeholder: _tile('', board: false, side: side, placeholder: true),
+                          ),
                         ),
                       ),
                     ),

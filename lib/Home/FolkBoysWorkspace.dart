@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -15,6 +17,7 @@ import '../utils/SeenMarkers.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentDeletion.dart';
 import '../utils/StudentScope.dart';
+import '../utils/UnseenDot.dart';
 import '../widgets/GuideBoard.dart';
 import '../widgets/GuideBoardGhost.dart';
 import '../widgets/GuideBoardMotion.dart';
@@ -429,8 +432,24 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   /// profile (several HODs may exist; no admin id is special).
   bool get _isHod => AdminProfileProvider.viewerIsHod;
 
+  /// Students whose book commitment (set by a guide) this admin has not seen: their cards
+  /// show a dot, so what the Home tile's dot counts can always be found and opened.
+  final ValueNotifier<Set<String>> _commitmentUnseen = ValueNotifier<Set<String>>(const {});
+  StreamSubscription<Set<String>>? _commitmentSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _commitmentSub = BoardData.instance.unseenCommitments(_guide).listen(
+      (uids) => _commitmentUnseen.value = uids,
+      onError: (_) {},
+    );
+  }
+
   @override
   void dispose() {
+    _commitmentSub?.cancel();
+    _commitmentUnseen.dispose();
     _hController.dispose();
     super.dispose();
   }
@@ -2946,6 +2965,16 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                     ),
                   ),
                   if (!forceCollapsed)
+                    ValueListenableBuilder<Set<String>>(
+                      valueListenable: _commitmentUnseen,
+                      builder: (context, unseen, _) => unseen.contains(boy.uid) && !expanded
+                          ? const Padding(
+                              padding: EdgeInsets.only(right: 6),
+                              child: UnseenDot(size: 9),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  if (!forceCollapsed)
                     AnimatedRotation(
                       turns: expanded ? .5 : 0,
                       duration: duration,
@@ -3731,6 +3760,9 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             Icons.info);
         return;
       }
+
+      // The admin who set the commitment has seen it: it must not light their own dot.
+      SeenMarkers.markSeenSub(_guide, 'bookCommitments', boy.uid);
 
       await _notifyStudentOfBookAssignment(
         studentUid: boy.uid,

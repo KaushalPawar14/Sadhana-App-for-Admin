@@ -12,6 +12,7 @@ import '../utils/Snackbar.dart';
 import '../utils/UnseenAggregates.dart';
 import '../utils/UnseenDot.dart';
 import '../widgets/GuideSurface.dart';
+import '../widgets/GuideEntry.dart';
 import '../widgets/GuideTiles.dart';
 
 /// The Analysis tab ("Folk analysis"): four tiles — ABCDE, Week planning,
@@ -88,8 +89,9 @@ class _CompetitionPageState extends State<CompetitionPage> {
     _open(GoalHomePage(guideId: guide));
   }
 
-  /// A tile, with an unseen dot when [unseen] says so.
-  Widget _tile({
+  /// A full-width card, with an unseen dot when [unseen] says so.
+  Widget _card({
+    required int index,
     required GuidePastel pastel,
     required IconData icon,
     required String title,
@@ -97,23 +99,27 @@ class _CompetitionPageState extends State<CompetitionPage> {
     required VoidCallback onTap,
     Stream<bool>? unseen,
   }) {
-    final tile = GuideGradientTile(
+    final card = GuideNavCard(
       pastel: pastel,
       icon: icon,
       title: title,
-      subtitle: subtitle,
+      description: subtitle,
       onTap: onTap,
-      minHeight: 160,
-      large: true,
-      showChevron: false,
     );
-    if (unseen == null) return tile;
-    return StreamBuilder<bool>(
-      stream: unseen,
-      builder: (context, snap) => UnseenBadge(
-        show: snap.data ?? false,
-        offset: const Offset(10, 10),
-        child: tile,
+    return GuideEntry(
+      index: index,
+      child: Padding(
+        padding: EdgeInsets.only(top: index == 0 ? 0 : GuideSpace.cardGap),
+        child: unseen == null
+            ? card
+            : StreamBuilder<bool>(
+                stream: unseen,
+                builder: (context, snap) => UnseenBadge(
+                  show: snap.data ?? false,
+                  offset: const Offset(10, 10),
+                  child: card,
+                ),
+              ),
       ),
     );
   }
@@ -142,9 +148,10 @@ class _CompetitionPageState extends State<CompetitionPage> {
         Padding(
           padding: const EdgeInsets.fromLTRB(
               GuideSpace.pagePadding, 22, GuideSpace.pagePadding, 0),
-          child: GuideTileGrid(
-            tiles: [
-              _tile(
+          child: Column(
+            children: [
+              _card(
+                index: 0,
                 pastel: GuidePastel.sand,
                 icon: Icons.spa_outlined,
                 title: 'ABCDE',
@@ -153,14 +160,16 @@ class _CompetitionPageState extends State<CompetitionPage> {
                 onTap: () => _open(const AbcdeHubPage()),
                 unseen: _abcdeUnseen,
               ),
-              _tile(
+              _card(
+                index: 1,
                 pastel: GuidePastel.slate,
                 icon: Icons.event_note_outlined,
                 title: 'Week planning',
                 subtitle: 'Plan the week ahead',
                 onTap: () => _open(const WeeklyPlanningPage()),
               ),
-              _tile(
+              _card(
+                index: 2,
                 pastel: GuidePastel.clay,
                 icon: Icons.flag_outlined,
                 title: 'Priority students',
@@ -169,7 +178,8 @@ class _CompetitionPageState extends State<CompetitionPage> {
                 onTap: () => _open(const PriorityHubPage()),
                 unseen: _priorityStudentsUnseen,
               ),
-              _tile(
+              _card(
+                index: 3,
                 pastel: GuidePastel.mauve,
                 icon: Icons.track_changes_outlined,
                 title: 'Guide targets',

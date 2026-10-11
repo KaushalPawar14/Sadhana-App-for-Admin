@@ -8,6 +8,7 @@ import 'package:folk_guide_app/utils/AdminProfile.dart';
 import 'package:folk_guide_app/utils/BoardData.dart';
 import 'package:folk_guide_app/utils/BoardQueries.dart';
 import 'package:folk_guide_app/utils/SeenMarkers.dart';
+import 'package:folk_guide_app/utils/UnseenDot.dart';
 import 'package:folk_guide_app/widgets/GuideBoard.dart';
 import 'package:folk_guide_app/widgets/GuideBoardGhost.dart';
 import 'package:folk_guide_app/widgets/GuideBoardMotion.dart';
@@ -157,5 +158,19 @@ void main() {
     expect(find.byType(FadeTransition), findsWidgets);
     await tester.pumpAndSettle();
     expect(tester.binding.transientCallbackCount, 0);
+  });
+
+  testWidgets('a card whose book commitment is unseen shows a dot; expanding it clears the dot', (tester) async {
+    final data = FakeBoardData(users: roster)..unseenCommitmentUids = {'sg1'};
+    await openBoard(tester, data: data);
+    await tester.pumpAndSettle();
+    Finder dotOn(String name) => find.descendant(
+        of: find.ancestor(of: find.text(name), matching: find.byType(GuideBoardCardFrame)),
+        matching: find.byType(UnseenDot));
+    expect(dotOn('Arjun Kumar'), findsOneWidget);
+    expect(dotOn('Bhima Sen'), findsNothing, reason: 'only the unseen student');
+    await tester.tap(find.text('Arjun Kumar'));
+    await tester.pumpAndSettle();
+    expect(dotOn('Arjun Kumar'), findsNothing);
   });
 }

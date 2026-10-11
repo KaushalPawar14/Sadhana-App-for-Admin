@@ -107,6 +107,12 @@ class FakeBoardData implements BoardData {
 
   @override
   Widget commentsBadge({required String studentUid, required Widget child}) => child;
+
+  /// Students whose book commitment is unseen (the cards show a dot for these).
+  Set<String> unseenCommitmentUids = {};
+
+  @override
+  Stream<Set<String>> unseenCommitments(String guide) => Stream.value(unseenCommitmentUids);
 }
 
 Map<String, dynamic> user(String name,

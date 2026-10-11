@@ -62,6 +62,8 @@ class FirestoreHomeData implements HomeData {
   Widget calendarBadge({required Widget child}) => UnseenFeatureBadge(
         featureKey: 'calendarEvents',
         dotOffset: const Offset(10, 10),
+        // The tile sits in a square pair: it fills the cell, so both tiles stay equal.
+        fillParent: true,
         latestQuery: (g) => GuideDb.instance
             .collection('calendarEvents')
             .where('scope', isEqualTo: kScopeMandatory)

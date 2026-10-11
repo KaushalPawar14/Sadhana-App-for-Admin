@@ -15,6 +15,7 @@ import 'SubmissionStatus.dart';
 import '../utils/GuideDb.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
+import '../widgets/GuideEntry.dart';
 // `AdminRegisterUserPage` is no longer imported here: its "Add Hostelers" tile
 // was removed on 2026-08-14. **The screen file was deliberately kept** — it
 // registers a student wholesale into `users/{uid}`, which is the only path in
@@ -378,66 +379,11 @@ class _AdminControlPageState extends State<AdminControlPage> {
   @override
   Widget build(BuildContext context) {
     final t = context.gText;
-    final tiles = <Widget>[
-      GuideGradientTile(
-        pastel: GuidePastel.sage,
-        icon: Icons.person_add_alt_outlined,
-        title: "Add student",
-        subtitle: "Register a new student",
-        onTap: _openAddStudentDialog,
-        minHeight: 150,
-        large: true,
-        showChevron: false,
-      ),
-
-      /// Replaces the missing-reports section removed from the calendar's today
-      /// panel. Available to every guide: `SubmissionStatusPage` resolves its own
-      /// HOD/guide scoping internally.
-      GuideGradientTile(
-        pastel: GuidePastel.sand,
-        icon: Icons.fact_check_outlined,
-        title: "Submissions",
-        subtitle: "Review submitted work",
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const SubmissionStatusPage()),
-        ),
-        minHeight: 150,
-        large: true,
-        showChevron: false,
-      ),
-
-      /// Available to any guide and the HOD (see `AdminManager.dart`).
-      GuideGradientTile(
-        pastel: GuidePastel.slate,
-        icon: Icons.person_add_alt_1_outlined,
-        title: "Add admin",
-        subtitle: "Invite another guide",
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const AdminManagerPage()),
-        ),
-        minHeight: 150,
-        large: true,
-        showChevron: false,
-      ),
-
-      /// Which students and which kinds of events notify this admin (saved on the
-      /// server; applied when notifications route).
-      GuideGradientTile(
-        pastel: GuidePastel.mauve,
-        icon: Icons.notifications_active_outlined,
-        title: "Notifications",
-        subtitle: "Choose what you hear about",
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const NotificationSettingsPage()),
-        ),
-        minHeight: 150,
-        large: true,
-        showChevron: false,
-      ),
-    ];
+    // Add student and Submissions are available to every guide (Submissions resolves its own
+    // HOD/guide scoping); Add admin follows the add-rights matrix on its own screen;
+    // Notifications is every admin's own preferences.
+    Widget step(int i, Widget child) => GuideEntry(index: i, child: child);
+    const gap = SizedBox(height: GuideSpace.cardGap);
 
     return ListView(
       padding: EdgeInsets.only(bottom: GuideSpace.navClearanceOf(context)),
@@ -460,7 +406,69 @@ class _AdminControlPageState extends State<AdminControlPage> {
         Padding(
           padding: const EdgeInsets.fromLTRB(
               GuideSpace.pagePadding, 22, GuideSpace.pagePadding, 0),
-          child: GuideTileGrid(tiles: tiles),
+          child: Column(
+            children: [
+              // Top: a full-width card.
+              step(
+                0,
+                GuideNavCard(
+                  pastel: GuidePastel.sage,
+                  icon: Icons.person_add_alt_outlined,
+                  title: "Add student",
+                  description: "Register a new student",
+                  onTap: _openAddStudentDialog,
+                ),
+              ),
+              gap,
+              // Middle: two equal squares.
+              step(
+                1,
+                GuideSquarePair(
+                  left: (side) => GuideGradientTile(
+                    pastel: GuidePastel.sand,
+                    icon: Icons.fact_check_outlined,
+                    title: "Submissions",
+                    subtitle: "Review submitted work",
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SubmissionStatusPage()),
+                    ),
+                    minHeight: side,
+                    large: true,
+                    showChevron: false,
+                  ),
+                  right: (side) => GuideGradientTile(
+                    pastel: GuidePastel.mauve,
+                    icon: Icons.notifications_active_outlined,
+                    title: "Notifications",
+                    subtitle: "Choose what you hear about",
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const NotificationSettingsPage()),
+                    ),
+                    minHeight: side,
+                    large: true,
+                    showChevron: false,
+                  ),
+                ),
+              ),
+              gap,
+              // Bottom: a full-width card.
+              step(
+                2,
+                GuideNavCard(
+                  pastel: GuidePastel.slate,
+                  icon: Icons.person_add_alt_1_outlined,
+                  title: "Add admin",
+                  description: "Invite another guide",
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AdminManagerPage()),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );

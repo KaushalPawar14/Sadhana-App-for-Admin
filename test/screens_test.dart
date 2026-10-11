@@ -167,38 +167,127 @@ void main() {
   });
 
   // ------------------------------------------------------------- Analysis tab
-  testWidgets('Analysis: the four tiles, two per row, 150 dp or taller, each a pastel', (tester) async {
-    phone(tester, 1.0);
-    await tester.pumpWidget(guideHost(Scaffold(body: CompetitionPage())));
-    await settle(tester);
-    final tiles = find.byType(GuideGradientTile);
-    expect(tiles, findsNWidgets(4));
-    final rects = [for (var i = 0; i < 4; i++) tester.getRect(tiles.at(i))];
-    expect(rects[0].top, rects[1].top);
-    expect(rects[2].top, rects[3].top);
-    expect(rects[2].top, greaterThan(rects[0].bottom));
-    for (final r in rects) {
-      expect(r.height, greaterThanOrEqualTo(160));
+  group('Analysis: four full-width rectangular cards', () {
+    for (final dark in [false, true]) {
+      for (final scale in kScales) {
+        testWidgets('${dark ? 'dark' : 'light'}, text scale $scale on 360 dp', (tester) async {
+          phone(tester, scale);
+          await tester.pumpWidget(guideHost(Scaffold(body: CompetitionPage()), dark: dark));
+          await settle(tester);
+          expect(tester.takeException(), isNull);
+          final cards = find.byType(GuideNavCard);
+          expect(cards, findsNWidgets(4));
+          expect(find.byType(GuideGradientTile), findsNothing, reason: 'no square grid any more');
+          Rect r(int i) => tester.getRect(cards.at(i));
+          for (var i = 0; i < 4; i++) {
+            expect(r(i).width, 360 - 40, reason: 'full width inside the page padding');
+            expect(r(i).height, greaterThanOrEqualTo(92), reason: 'comfortable height');
+            expect(r(i).height, lessThan(r(i).width), reason: 'rectangular');
+            if (i > 0) expect(r(i).top, greaterThan(r(i - 1).bottom - 0.5));
+          }
+        });
+      }
     }
-    expect(find.text('INSIGHTS'), findsOneWidget);
-    expect(find.text('Folk analysis'), findsOneWidget);
+
+    testWidgets('titles and one-line descriptions, in the old order, serif titles', (tester) async {
+      phone(tester, 1.0);
+      await tester.pumpWidget(guideHost(Scaffold(body: CompetitionPage())));
+      await settle(tester);
+      final titles = tester.widgetList<GuideNavCard>(find.byType(GuideNavCard)).map((c) => c.title).toList();
+      expect(titles, ['ABCDE', 'Week planning', 'Priority students', 'Guide targets']);
+      expect(find.text('Five limbs of practice'), findsOneWidget);
+      expect(find.text('Plan the week ahead'), findsOneWidget);
+      expect(find.text('Who needs attention'), findsOneWidget);
+      expect(find.text('Group targets and phases'), findsOneWidget);
+      final style = tester.widget<Text>(find.text('Guide targets')).style!;
+      expect(style.fontFamily, 'Fraunces');
+      expect(find.byIcon(Icons.chevron_right_rounded), findsNWidgets(4));
+      expect(find.text('INSIGHTS'), findsOneWidget);
+    });
+
+    testWidgets('a card opens its page (Week planning)', (tester) async {
+      phone(tester, 1.0);
+      AdminProfileProvider.instance.debugSet(profile('GUIDE'));
+      WeekData.instance = FakeWeekData();
+      await tester.pumpWidget(guideHost(Scaffold(body: CompetitionPage())));
+      await settle(tester);
+      await tester.tap(find.text('Week planning'));
+      await tester.pumpAndSettle();
+      expect(find.byType(WeeklyPlanningPage), findsOneWidget);
+    });
+
+    testWidgets('the cards rise in one after another, then rest', (tester) async {
+      phone(tester, 1.0);
+      await tester.pumpWidget(guideHost(Scaffold(body: CompetitionPage()), reduce: false));
+      await tester.pump(const Duration(milliseconds: 30));
+      final first = tester.getTopLeft(find.byType(GuideNavCard).at(0)).dy;
+      final last = tester.getTopLeft(find.byType(GuideNavCard).at(3)).dy;
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(tester.getTopLeft(find.byType(GuideNavCard).at(0)).dy, lessThan(first));
+      expect(tester.getTopLeft(find.byType(GuideNavCard).at(3)).dy, closeTo(last, 0.5), reason: 'the last waits');
+      await tester.pumpAndSettle();
+      expect(tester.binding.transientCallbackCount, 0);
+    });
   });
 
   // ----------------------------------------------------------------- Tasks tab
-  testWidgets('Tasks: Add student, Submissions, Add admin, Notifications (150 dp tiles)', (tester) async {
-    phone(tester, 1.0);
-    AdminProfileProvider.instance.debugSet(profile('GUIDE'));
-    await tester.pumpWidget(guideHost(const Scaffold(body: AdminControlPage())));
-    await settle(tester);
-    expect(find.byType(GuideGradientTile), findsNWidgets(4));
-    for (final l in ['Add student', 'Submissions', 'Add admin', 'Notifications']) {
-      expect(find.text(l), findsOneWidget, reason: l);
+  group('Tasks: a wide card, two squares, a wide card', () {
+    Future<void> openTasks(WidgetTester tester, double scale, bool dark) async {
+      phone(tester, scale);
+      AdminProfileProvider.instance.debugSet(profile('GUIDE'));
+      await tester.pumpWidget(guideHost(const Scaffold(body: AdminControlPage()), dark: dark));
+      await settle(tester);
     }
-    expect(find.text('MANAGE'), findsOneWidget);
-    expect(find.text('Other tasks'), findsOneWidget);
-    for (var i = 0; i < 4; i++) {
-      expect(tester.getRect(find.byType(GuideGradientTile).at(i)).height, greaterThanOrEqualTo(150));
+
+    for (final dark in [false, true]) {
+      for (final scale in kScales) {
+        testWidgets('${dark ? 'dark' : 'light'}, text scale $scale on 360 dp', (tester) async {
+          await openTasks(tester, scale, dark);
+          expect(tester.takeException(), isNull);
+          final wide = find.byType(GuideNavCard);
+          final squares = find.byType(GuideGradientTile);
+          expect(wide, findsNWidgets(2));
+          expect(squares, findsNWidgets(2));
+          final addStudent = tester.getRect(find.ancestor(of: find.text('Add student'), matching: find.byType(GuideNavCard)));
+          final addAdmin = tester.getRect(find.ancestor(of: find.text('Add admin'), matching: find.byType(GuideNavCard)));
+          final sub = tester.getRect(find.ancestor(of: find.text('Submissions'), matching: find.byType(GuideGradientTile)));
+          final not = tester.getRect(find.ancestor(of: find.text('Notifications'), matching: find.byType(GuideGradientTile)));
+          // the order: Add student, then the squares, then Add admin
+          expect(addStudent.bottom, lessThanOrEqualTo(sub.top));
+          expect(sub.bottom, lessThanOrEqualTo(addAdmin.top));
+          expect(addStudent.width, 320);
+          expect(addAdmin.width, 320);
+          // two equal squares side by side
+          expect(sub.top, not.top);
+          expect(sub.size, not.size);
+          expect(sub.width, closeTo(154, 0.5));
+          expect(sub.height, greaterThanOrEqualTo(sub.width), reason: 'square (grows only for large text)');
+          if (scale == 1.0) expect(sub.height, closeTo(sub.width, 0.5), reason: 'perfectly square');
+          expect(not.left, greaterThan(sub.right));
+        });
+      }
     }
+
+    testWidgets('every card and tile is tappable (Submissions, Add admin, Notifications have their own pages)', (tester) async {
+      await openTasks(tester, 1.0, false);
+      for (final c in tester.widgetList<GuideNavCard>(find.byType(GuideNavCard))) {
+        expect(c.onTap, isNotNull, reason: c.title);
+      }
+      for (final c in tester.widgetList<GuideGradientTile>(find.byType(GuideGradientTile))) {
+        expect(c.onTap, isNotNull, reason: c.title);
+      }
+      expect(find.text('Submissions'), findsOneWidget);
+      expect(find.text('Notifications'), findsOneWidget);
+    });
+
+    testWidgets('Add student opens its dialog', (tester) async {
+      await openTasks(tester, 1.0, false);
+      await tester.tap(find.text('Add student'));
+      await tester.pumpAndSettle();
+      expect(find.text('Add a student'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 1));
+    });
   });
 
   // ---------------------------------------------------------------- This Week

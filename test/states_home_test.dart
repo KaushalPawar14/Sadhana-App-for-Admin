@@ -222,4 +222,49 @@ void main() {
     expect(find.text('FOLK Boys Board'), findsOneWidget);
     expect(find.text('Calendar'), findsOneWidget);
   });
+
+  for (final dark in [false, true]) {
+    for (final scale in kScales) {
+      testWidgets('Board and Calendar tiles: equal, side by side, square (${dark ? 'dark' : 'light'}, text scale $scale)', (tester) async {
+        final data = await pumpHome(tester, scale: scale, dark: dark);
+        data.targetsC.add([target('chanting', 2)]);
+        data.followC.add([]);
+        data.overdueC.add([]);
+        data.countC.add(24);
+        data.eventsC.complete(<CalendarEvent>[]);
+        await tester.pump();
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        final tiles = find.descendant(of: find.byKey(const ValueKey('tiles')), matching: find.byType(GuideGradientTile));
+        expect(tiles, findsNWidgets(2));
+        final a = tester.getRect(tiles.at(0));
+        final b = tester.getRect(tiles.at(1));
+        expect(a.top, b.top, reason: 'side by side');
+        expect(a.size, b.size, reason: 'exactly the same size');
+        expect(a.width, closeTo(154, 0.5));
+        expect(a.height, greaterThanOrEqualTo(a.width));
+        if (scale == 1.0) expect(a.height, closeTo(a.width, 0.5), reason: 'perfectly square');
+        expect(b.left - a.right, closeTo(12, 0.5));
+        // nothing is clipped: the whole text of both is inside its tile
+        for (final text in ['FOLK Boys Board', 'Calendar', '24 boys', 'Nothing due today']) {
+          final r = tester.getRect(find.descendant(of: tiles, matching: find.text(text)).first);
+          expect(a.contains(r.topLeft) || b.contains(r.topLeft), isTrue, reason: text);
+          expect(r.bottom, lessThanOrEqualTo((a.contains(r.topLeft) ? a : b).bottom + 0.5), reason: '$text is clipped');
+        }
+      });
+    }
+  }
+
+  testWidgets('with the dot showing, the two tiles are still the same size', (tester) async {
+    final data = await pumpHome(tester);
+    data.targetsC.add([]);
+    data.followC.add([]);
+    data.overdueC.add([]);
+    data.countC.add(3);
+    data.eventsC.complete(<CalendarEvent>[]);
+    await tester.pump();
+    await tester.pumpAndSettle();
+    final tiles = find.descendant(of: find.byKey(const ValueKey('tiles')), matching: find.byType(GuideGradientTile));
+    expect(tester.getSize(tiles.at(0)), tester.getSize(tiles.at(1)));
+  });
 }

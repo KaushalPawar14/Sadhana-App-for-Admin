@@ -171,7 +171,7 @@ class GuideGradientTile extends StatelessWidget {
     final tile = GuidePastelBox(
       pastel: pastel,
       minHeight: minHeight,
-      padding: EdgeInsets.all(large ? 16 : 14),
+      padding: const EdgeInsets.all(14),
       radius: large ? 20 : GuideShape.tileRadius,
       child: Column(
         mainAxisSize: large ? MainAxisSize.max : MainAxisSize.min,
@@ -182,20 +182,20 @@ class GuideGradientTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               large
-                  ? GuideIconTile(icon: icon, size: 44, iconSize: 22, radius: 14)
+                  ? GuideIconTile(icon: icon, size: 40, iconSize: 20, radius: 12)
                   : GuideIconTile(icon: icon),
               if (showChevron && !large)
                 const Icon(Icons.chevron_right_rounded,
                     size: 20, color: GuideColors.onPastelMuted),
             ],
           ),
-          SizedBox(height: large ? 16 : 12),
+          const SizedBox(height: 12),
           if (large) const Spacer(),
           Text(title, style: large ? t.onPastelTitle.copyWith(fontSize: 16) : t.onPastelTitle),
           if (subtitle != null) ...[
             const SizedBox(height: 3),
             Text(subtitle!,
-                style: large ? t.onPastelSmall.copyWith(height: 1.35) : t.onPastelSmall),
+                style: large ? t.onPastelSmall.copyWith(height: 1.3) : t.onPastelSmall),
           ],
         ],
       ),
@@ -557,6 +557,118 @@ class GuideSummaryBanner extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+
+/// A full-width rectangular navigation card (the Analysis tab, the wide cards of the
+/// Tasks tab): a pastel gradient, an icon tile on the left, a serif title with a
+/// one-line description under it, and a chevron on the right. At least 92 dp tall,
+/// it grows with the text; press feedback is the shared 0.97 scale. [badge] is an
+/// unseen dot drawn on its top-right corner.
+class GuideNavCard extends StatelessWidget {
+  const GuideNavCard({
+    super.key,
+    required this.pastel,
+    required this.icon,
+    required this.title,
+    this.description,
+    this.onTap,
+    this.badge,
+  });
+
+  final GuidePastel pastel;
+  final IconData icon;
+  final String title;
+  final String? description;
+  final VoidCallback? onTap;
+  final Widget? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.gText;
+    final card = GuidePastelBox(
+      pastel: pastel,
+      minHeight: 92,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      radius: 20,
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: GuideColors.pastelIconTile,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(icon, size: 26, color: GuideColors.onPastel),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(title, style: t.onPastelSerifTitle),
+                if (description != null) ...[
+                  const SizedBox(height: 3),
+                  Text(description!, style: t.onPastelSmall.copyWith(fontSize: 13, height: 1.35)),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Icon(Icons.chevron_right_rounded, size: 24, color: GuideColors.onPastelMuted),
+        ],
+      ),
+    );
+    return Semantics(
+      button: onTap != null,
+      label: description == null ? title : '$title, $description',
+      excludeSemantics: true,
+      child: PressScale(
+        enabled: onTap != null,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: badge == null
+              ? card
+              : Stack(clipBehavior: Clip.none, children: [card, Positioned(right: 8, top: 8, child: badge!)]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Two tiles side by side, exactly the same size and square: each is as wide as half the
+/// row ([side]), and at least [side] tall; if the text of either needs more room (a
+/// large text size) BOTH grow to the taller, so they always match and never clip.
+/// No LayoutBuilder: the side comes from the screen width and the page padding.
+class GuideSquarePair extends StatelessWidget {
+  const GuideSquarePair({super.key, required this.left, required this.right});
+
+  /// Each builds its tile for the given square [side] (use it as `minHeight`).
+  final Widget Function(double side) left;
+  final Widget Function(double side) right;
+
+  /// The side of one square for the current screen.
+  static double sideOf(BuildContext context) =>
+      (MediaQuery.sizeOf(context).width - 2 * GuideSpace.pagePadding - GuideSpace.cardGap) / 2;
+
+  @override
+  Widget build(BuildContext context) {
+    final side = sideOf(context);
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: left(side)),
+          const SizedBox(width: GuideSpace.cardGap),
+          Expanded(child: right(side)),
         ],
       ),
     );

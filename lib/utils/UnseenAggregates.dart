@@ -29,10 +29,12 @@ class UnseenAggregates {
   static bool debugDisable = false;
 
   static Stream<Timestamp?> _maxTimestamp(
-      Stream<QuerySnapshot<Map<String, dynamic>>> query, String field) {
+      Stream<QuerySnapshot<Map<String, dynamic>>> query, String field,
+      {bool Function(Map<String, dynamic> data)? where}) {
     return query.map((snap) {
       Timestamp? max;
       for (final doc in snap.docs) {
+        if (where != null && !where(doc.data())) continue;
         final ts = doc.data()[field];
         if (ts is Timestamp && (max == null || ts.compareTo(max) > 0)) {
           max = ts;
@@ -189,35 +191,56 @@ class UnseenAggregates {
     return snap.docs.map((d) => d.id).toList();
   }
 
-  /// Roster-wide aggregate over `booksRead` — every student's own
-  /// `commitmentSetAt` (only when `commitmentSetBy == 'guide'`, matching
-  /// `_expandedDetail`'s own per-student check) compared against THAT
-  /// student's own cursor. Hierarchy: read through the scoped history query
-  /// (`scopeGuide`/`scopeTeam` stamps), which is provable by the rules and
-  /// replaces the old chunked `uid whereIn` over the roster.
-  static Stream<bool> bookCommitmentsRosterUnseen(
-      String guide, bool isHod) {
-    if (debugDisable) return Stream.value(false);
-    late StreamController<bool> controller;
+  /// The students this admin can actually open on the board: the scoped roster,
+  /// minus any user without a name (the board skips those, so there is no card to
+  /// open for them).
+  static Future<Set<String>> _boardRosterUids() async {
+    final snap = await _scope.studentsGet();
+    return {
+      for (final d in snap.docs)
+        if ((d.data()['name'] ?? '').toString().trim().isNotEmpty) d.id,
+    };
+  }
+
+  /// WHICH students have a book commitment, set by a guide, that this admin has not
+  /// yet seen: every `booksRead` doc's own `commitmentSetAt` (only when
+  /// `commitmentSetBy == 'guide'`) against THAT student's cursor. Read through the
+  /// scoped history query (`scopeGuide`/`scopeTeam` stamps), and ONLY for students
+  /// that are on this admin's board - a commitment for a student the admin cannot
+  /// open never counts. A student's cursor is written when their card is expanded
+  /// (and when this admin assigns the book themselves).
+  ///
+  /// The Board tile's dot is "this set is not empty"; the board itself reads the
+  /// same set to put a dot on exactly those cards, so the dot can always be found.
+  static Stream<Set<String>> bookCommitmentUnseenUids(String guide) {
+    if (debugDisable) return Stream.value(const <String>{});
+    late StreamController<Set<String>> controller;
     List<QueryDocumentSnapshot<Map<String, dynamic>>>? docs;
     Map<String, Timestamp>? cursors;
+    Set<String>? roster;
     final subs = <StreamSubscription>[];
 
     void emit() {
-      if (docs == null || cursors == null) return;
-      final anyUnseen = docs!.any((doc) {
-        if (doc.data()['commitmentSetBy'] != 'guide') return false;
+      if (docs == null || cursors == null || roster == null) return;
+      final unseen = <String>{};
+      for (final doc in docs!) {
+        if (doc.data()['commitmentSetBy'] != 'guide') continue;
         final ts = doc.data()['commitmentSetAt'];
-        if (ts is! Timestamp) return false;
+        if (ts is! Timestamp) continue;
         final uid = (doc.data()['uid'] ?? '').toString();
+        if (!roster!.contains(uid)) continue;
         final cursor = cursors![uid];
-        return cursor == null || ts.compareTo(cursor) > 0;
-      });
-      controller.add(anyUnseen);
+        if (cursor == null || ts.compareTo(cursor) > 0) unseen.add(uid);
+      }
+      controller.add(unseen);
     }
 
-    controller = StreamController<bool>.broadcast(
+    controller = StreamController<Set<String>>.broadcast(
       onListen: () {
+        _boardRosterUids().then((r) {
+          roster = r;
+          emit();
+        });
         subs.add(_scope.historyStream('booksRead').listen((snap) {
           docs = snap.docs;
           emit();
@@ -237,6 +260,10 @@ class UnseenAggregates {
     return controller.stream;
   }
 
+  /// "Is ANY student's book commitment unseen" (the Home Board tile and the shell).
+  static Stream<bool> bookCommitmentsRosterUnseen(String guide, bool isHod) =>
+      bookCommitmentUnseenUids(guide).map((uids) => uids.isNotEmpty);
+
   /// Roster-wide aggregate over `studentComments/{uid}/messages` — one
   /// subcollection per student, with no `studentUid` field on the message
   /// docs themselves, so (unlike `booksRead`) there is no single batched
@@ -251,7 +278,7 @@ class UnseenAggregates {
       yield false;
       return;
     }
-    final uids = await myRosterUids(guide, isHod);
+    final uids = (await _boardRosterUids()).toList();
     if (uids.isEmpty) {
       yield false;
       return;
@@ -264,7 +291,9 @@ class UnseenAggregates {
               .doc(uid)
               .collection('messages')
               .snapshots(),
-          'createdAt');
+          'createdAt',
+          // A comment this admin wrote themselves is never "new" to them.
+          where: (m) => (m['authorId'] ?? '').toString() != guide);
       final seen = SeenMarkers.seenAtSub(guide, 'studentComments', uid);
       return SeenMarkers.unseenFrom(latest, seen);
     }).toList();

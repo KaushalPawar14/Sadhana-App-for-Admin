@@ -68,6 +68,7 @@ class GuideTypography {
   TextStyle get onPastelBody =>
       _body(14, GuideColors.onPastel, weight: FontWeight.w600);
   TextStyle get onPastelSmall => _body(12, GuideColors.onPastelMuted);
+  TextStyle get onPastelSerifTitle => _heading(19, GuideColors.onPastel, weight: FontWeight.w600, height: 1.2);
 
   // Text on the navy hero card.
   TextStyle get heroLabel => TextStyle(

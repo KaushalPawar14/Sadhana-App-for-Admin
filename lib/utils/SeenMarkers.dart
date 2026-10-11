@@ -34,7 +34,7 @@ class SeenMarkers {
   @visibleForTesting
   static bool debugDisable = false;
 
-  static final _col = GuideDb.instance.collection('seenMarkers');
+  static CollectionReference<Map<String, dynamic>> get _col => GuideDb.instance.collection('seenMarkers');
 
   /// A flat, whole-feature cursor — `seenMarkers/{viewerId}.{featureKey}`.
   ///

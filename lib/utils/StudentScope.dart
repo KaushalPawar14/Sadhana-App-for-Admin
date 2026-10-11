@@ -31,7 +31,7 @@ class StudentScope {
 
   final AdminProfile profile;
 
-  static final _db = GuideDb.instance;
+  static FirebaseFirestore get _db => GuideDb.instance;
 
   // -------------------------------------------------------------------------
   // students (`users`)
