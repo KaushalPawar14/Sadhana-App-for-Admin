@@ -14,6 +14,7 @@ import '../widgets/GuideTiles.dart';
 import '../utils/GuideDb.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideWait.dart';
+import '../widgets/GuideMeta.dart';
 
 /// Phase 7 — flagged student chat messages.
 ///
@@ -483,29 +484,18 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
             ),
 
             const SizedBox(height: 10),
-            Row(
+            GuideMetaWrap(
               children: [
-                Icon(Icons.schedule, size: 12, color: context.g.mutedText),
-                const SizedBox(width: 5),
-                Text(
-                  whenText,
-                  style: TextStyle(fontSize: 11, color: context.g.mutedText),
-                ),
-                if (_showsGuideLabel && guideId.isNotEmpty) ...[
-                  const SizedBox(width: 12),
-                  Icon(Icons.person_pin, size: 12, color: context.g.mutedText),
-                  const SizedBox(width: 4),
-                  Text(
-                    guideName,
-                    style:
-                        TextStyle(fontSize: 11, color: context.g.mutedText),
-                  ),
-                ],
+                GuideMeta(whenText, icon: Icons.schedule),
+                if (_showsGuideLabel && guideId.isNotEmpty)
+                  GuideMeta(guideName, icon: Icons.person_pin),
               ],
             ),
 
             const Divider(height: 22),
-            Row(
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 TextButton.icon(
                   onPressed: () => _markReviewed(docId, !reviewed),
@@ -518,7 +508,6 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
                     style: const TextStyle(fontSize: 12),
                   ),
                 ),
-                const Spacer(),
                 TextButton.icon(
                   onPressed: studentUid.isEmpty ?
                       null :

@@ -7,13 +7,13 @@ import '../utils/DropboxLink.dart';
 import '../utils/Snackbar.dart';
 import 'PodcastLinkManager.dart';
 import '../theme/GuideTheme.dart';
-import '../theme/GuideTokens.dart';
 import '../widgets/GuideSurface.dart';
 import '../utils/GuideDb.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
 import '../widgets/GuideMeta.dart';
+import '../widgets/GuideExpandable.dart';
 
 /// Book Link Manager
 ///
@@ -335,64 +335,28 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
     final books = _sortedBooks(titlesData);
     final isOpen = _expandedLevels.contains(level);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 22),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: context.g.surface,
-        borderRadius: BorderRadius.circular(GuideShape.cardRadius),
-        border: Border.all(color: context.g.border),
-        boxShadow: context.g.cardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Accordion header. The whole row is the tap target rather than just
-          // the chevron — a small icon is a poor thing to ask a thumb to find.
-          InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: () => setState(() {
-              if (!_expandedLevels.remove(level)) _expandedLevels.add(level);
-            }),
-            child: Row(
-              children: [
-                Container(
-                  width: 6,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    color: context.g.text,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  levelTitles[level] ?? level,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: context.g.text,
-                  ),
-                ),
-                const Spacer(),
-                // Count stays visible while collapsed, so a guide can see what
-                // is in each level without opening it.
-                Text(
-                  "${books.length} books",
-                  style: TextStyle(fontSize: 12, color: context.g.mutedText),
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  isOpen ? Icons.expand_less : Icons.expand_more,
-                  size: 22,
-                  color: context.g.text,
-                ),
-              ],
-            ),
-          ),
-          // Collapsed levels render nothing below the header. Every Edit
-          // button, dialog and Firestore write below is untouched — this
-          // controls only whether the rows are on screen.
-          if (isOpen) ...[
+    final t = context.gText;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: GuideExpandableCard(
+        expanded: isOpen,
+        onChanged: (_) => setState(() {
+          if (!_expandedLevels.remove(level)) _expandedLevels.add(level);
+        }),
+        headerMinHeight: 60,
+        headerPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        title: Text(levelTitles[level] ?? level),
+        titleStyle: t.sectionTitle,
+        // The count stays visible while collapsed, so a guide can see what is in
+        // each one without opening it.
+        trailing: Text("${books.length} books", style: t.small),
+        // Collapsed levels render nothing below the header. Every Edit button, dialog and
+        // Firestore write below is untouched: this only controls whether the rows show.
+        body: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
           const SizedBox(height: 16),
           if (books.isEmpty)
             Padding(
@@ -411,8 +375,9 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
                 url: (linksData?[entry.key] ?? '').toString(),
               ),
             ),
-          ],
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -422,20 +387,7 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         return GuideScaffold(
-          appBar: GuideAppBar(
-            title: Text(
-              // Renamed 2026-08-14 when podcast links were merged in below.
-              "Books & Podcasts",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: colorProvider.secondColor,
-                fontSize: 20,
-              ),
-            ),
-            leading: IconButton(
-              icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
-              onPressed: () => Navigator.pop(context),
-            )),
+          appBar: GuideAppBar(title: Text("Books & Podcasts")),
           body: StreamBuilder<QuerySnapshot>(
             stream:
                 GuideDb.instance.collection('books').snapshots(),
@@ -490,15 +442,14 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
                       Icon(Icons.headphones,
                           size: 20, color: colorProvider.secondColor),
                       const SizedBox(width: 8),
-                      Text(
+                      Flexible(child: Text(
                         "Podcast Links",
                         style: TextStyle(
                           fontSize: 19,
                           fontWeight: FontWeight.bold,
                           color: colorProvider.secondColor,
                         ),
-                      ),
-                    ],
+                      ))],
                   ),
                   const SizedBox(height: 12),
                   const PodcastLinkSections(),

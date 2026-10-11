@@ -121,17 +121,16 @@ class _ScoreScreenState extends State<ScoreScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
+                          Flexible(child: Text(
                             key, // Field name
                             style: TextStyle(
                                 fontSize: 16, fontWeight: FontWeight.w600, color: colorProvider.secondColor),
-                          ),
-                          Text(
+                          )),
+                          Flexible(child: Text(
                             '${data[key].toString()}${_getUnitForField(
                                 key, data[key])}', // Field value + unit
                             style: TextStyle(fontSize: 16, color: colorProvider.secondColor),
-                          ),
-                        ],
+                          ))],
                       ),
                     ),
                 ],

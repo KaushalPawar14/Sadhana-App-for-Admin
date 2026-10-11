@@ -368,7 +368,7 @@ class _GraphicalAnalysisSectionState extends State<GraphicalAnalysisSection> {
                         children: [
                           Icon(Icons.date_range, color: colorProvider.secondColor),
                           const SizedBox(width: 10),
-                          Text(
+                          Flexible(child: Text(
                             selectedRange == null
                                 ? "Select Date Range"
                                 : "${DateFormat('dd MMM').format(selectedRange!.start)} - ${DateFormat('dd MMM').format(selectedRange!.end)}",
@@ -377,8 +377,7 @@ class _GraphicalAnalysisSectionState extends State<GraphicalAnalysisSection> {
                               fontWeight: FontWeight.bold,
                               color: colorProvider.secondColor,
                             ),
-                          ),
-                        ],
+                          ))],
                       ),
                     ),
                   ),

@@ -189,11 +189,10 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
               children: [
                 Icon(Icons.person_pin, size: 13, color: context.g.mutedText),
                 const SizedBox(width: 4),
-                Text(
+                Flexible(child: Text(
                   "Guide: $guideName",
                   style: TextStyle(fontSize: 12, color: context.g.mutedText),
-                ),
-              ],
+                ))],
             ),
           ],
 
@@ -202,11 +201,10 @@ class _OverdueAssociationsPageState extends State<OverdueAssociationsPage> {
             children: [
               Icon(Icons.event, size: 13, color: context.g.mutedText),
               const SizedBox(width: 4),
-              Text(
+              Flexible(child: Text(
                 "$label ${DateFormat('dd MMM yyyy').format(item.since)}",
                 style: TextStyle(fontSize: 12, color: context.g.mutedText),
-              ),
-            ],
+              ))],
           ),
           const SizedBox(height: 8),
           Container(

@@ -690,11 +690,10 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
             children: [
               Icon(Icons.event, size: 13, color: context.g.mutedText),
               const SizedBox(width: 4),
-              Text(
+              Flexible(child: Text(
                 dateText,
                 style: TextStyle(fontSize: 12, color: context.g.mutedText),
-              ),
-            ],
+              ))],
           ),
           if (action.isNotEmpty || reasoning.isNotEmpty) ...[
             const SizedBox(height: 10),

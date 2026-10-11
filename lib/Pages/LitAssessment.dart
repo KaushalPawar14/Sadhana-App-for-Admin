@@ -247,14 +247,13 @@ class _LitEntrySheetState extends State<_LitEntrySheet> {
                   children: [
                     Icon(Icons.link, size: 14, color: context.g.mutedText),
                     const SizedBox(width: 6),
-                    Text(
+                    Flexible(child: Text(
                       "Linked to the interaction you just approved",
                       style: TextStyle(
                         fontSize: 11,
                         color: context.g.mutedText,
                       ),
-                    ),
-                  ],
+                    ))],
                 ),
               ],
               const SizedBox(height: 18),
@@ -682,13 +681,12 @@ class _LitHistorySectionState extends State<LitHistorySection> {
                 color: context.g.mutedText,
               ),
               const SizedBox(width: 5),
-              Text(
+              Flexible(child: Text(
                 linked
                     ? "From a logged interaction · $guide"
                     : "Standalone · $guide",
                 style: TextStyle(fontSize: 11, color: context.g.mutedText),
-              ),
-            ],
+              ))],
           ),
         ],
       ),

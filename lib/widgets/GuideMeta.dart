@@ -138,25 +138,28 @@ class GuideChoiceChip extends StatelessWidget {
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(color: selected ? c : g.border),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (selected) ...[
-                      Icon(Icons.check_rounded, size: 16, color: c),
-                      const SizedBox(width: 6),
-                    ],
-                    Flexible(
-                      child: Text(
-                        label,
-                        textAlign: TextAlign.center,
-                        style: t.buttonSecondary.copyWith(
-                          fontSize: 13,
-                          color: selected ? c : g.text,
-                          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                // One Text.rich: the check mark and the label wrap together and can
+                // never overflow a Row.
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      if (selected)
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.middle,
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: Icon(Icons.check_rounded, size: 16, color: c),
+                          ),
                         ),
-                      ),
-                    ),
-                  ],
+                      TextSpan(text: label),
+                    ],
+                  ),
+                  textAlign: TextAlign.center,
+                  style: t.buttonSecondary.copyWith(
+                    fontSize: 13,
+                    color: selected ? c : g.text,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  ),
                 ),
               ),
             ),

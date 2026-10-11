@@ -578,15 +578,14 @@ class _ChantingChallengeManagerPageState
                   children: [
                     Icon(icon, size: 12, color: colour),
                     const SizedBox(width: 4),
-                    Text(
+                    Flexible(child: Text(
                       label,
                       style: TextStyle(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w700,
                         color: colour,
                       ),
-                    ),
-                  ],
+                    ))],
                 ),
               ),
             ],
@@ -599,19 +598,18 @@ class _ChantingChallengeManagerPageState
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(
+              Flexible(child: Text(
                 "$total",
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
                   color: colour,
                 ),
-              ),
-              Text(
+              )),
+              Flexible(child: Text(
                 " / $target rounds together",
                 style: TextStyle(fontSize: 12.5, color: context.g.mutedText),
-              ),
-            ],
+              ))],
           ),
           const SizedBox(height: 8),
           ClipRRect(

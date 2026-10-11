@@ -3633,13 +3633,12 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                         children: [
                           const Icon(Icons.calendar_today, size: 16),
                           const SizedBox(width: 10),
-                          Text(
+                          Flexible(child: Text(
                             picked == null
                                 ? "Tap to choose a date"
                                 : picked!.toIso8601String().split('T')[0],
                             style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                        ],
+                          ))],
                       ),
                     ),
                   ),

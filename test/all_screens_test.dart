@@ -1,8 +1,6 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/Home/Calendar.dart';
-import 'package:folk_guide_app/Pages/AbcdeActivityCard.dart';
 import 'package:folk_guide_app/Pages/AbcdeHub.dart';
 import 'package:folk_guide_app/Pages/AdminManager.dart';
 import 'package:folk_guide_app/Pages/AssociationManager.dart';

@@ -301,8 +301,7 @@ class StudentDetailScreen extends StatelessWidget {
                                                         Icon(Icons.calendar_today_outlined,
                                                             size: 12, color: g.mutedText),
                                                         const SizedBox(width: 4),
-                                                        Text(book["startDate"], style: t.caption),
-                                                      ],
+                                                        Flexible(child: Text(book["startDate"], style: t.caption))],
                                                     ),
                                                     Row(
                                                       mainAxisSize: MainAxisSize.min,
@@ -315,12 +314,11 @@ class StudentDetailScreen extends StatelessWidget {
                                                           color: notes ? g.success : g.danger,
                                                         ),
                                                         const SizedBox(width: 4),
-                                                        Text(
+                                                        Flexible(child: Text(
                                                           notes ? "Notes made" : "No notes",
                                                           style: t.caption.copyWith(
                                                               color: notes ? g.success : g.danger),
-                                                        ),
-                                                      ],
+                                                        ))],
                                                     ),
                                                   ],
                                                 ),

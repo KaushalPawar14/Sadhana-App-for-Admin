@@ -155,11 +155,10 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
         children: [
           Icon(Icons.person_pin, size: 13, color: context.g.mutedText),
           const SizedBox(width: 4),
-          Text(
+          Flexible(child: Text(
             "Guide: $label",
             style: TextStyle(fontSize: 11, color: context.g.mutedText),
-          ),
-        ],
+          ))],
       ),
     );
   }
@@ -782,11 +781,10 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
             children: [
               Icon(Icons.event, size: 15, color: context.g.mutedText),
               const SizedBox(width: 5),
-              Text(
+              Flexible(child: Text(
                 "Preferred: ${_formatTs(data['preferredDate'])}",
                 style: TextStyle(fontSize: 12, color: context.g.mutedText),
-              ),
-            ],
+              ))],
           ),
           if (studentNotes.isNotEmpty) ...[
             const SizedBox(height: 10),
@@ -956,11 +954,10 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
             children: [
               Icon(Icons.event_available, size: 15, color: context.g.success),
               const SizedBox(width: 5),
-              Text(
+              Flexible(child: Text(
                 _formatTs(data['confirmedDate']),
                 style: TextStyle(fontSize: 12, color: context.g.success),
-              ),
-            ],
+              ))],
           ),
           const SizedBox(height: 14),
           Row(

@@ -239,7 +239,7 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
                     : context.g.warning,
               ),
               const SizedBox(width: 8),
-              Text(
+              Flexible(child: Text(
                 commitment == null
                     ? "No chanting commitment set"
                     : "Committed to $commitment rounds/day",
@@ -250,8 +250,7 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
                       ? context.g.mutedText
                       : context.g.text,
                 ),
-              ),
-            ],
+              ))],
           ),
         );
       },
@@ -422,14 +421,13 @@ class _BooksProgressPageState extends State<BooksProgressPage> {
                           Icon(Icons.edit_note,
                               size: 14, color: context.g.brass),
                           const SizedBox(width: 2),
-                          Text(
+                          Flexible(child: Text(
                             "Notes",
                             style: TextStyle(
                               fontSize: 10.5,
                               color: context.g.brass,
                             ),
-                          ),
-                        ],
+                          ))],
                       ),
                     if (unavailable)
                       Text(

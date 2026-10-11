@@ -306,8 +306,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                   color: context.g.brass,
                 ),
                 const SizedBox(width: 10),
-                Text(_statusStyle(s).label),
-              ],
+                Flexible(child: Text(_statusStyle(s).label))],
             ),
           );
         }).toList(),
@@ -552,25 +551,24 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                           Icon(Icons.event,
                               size: 15, color: context.g.mutedText),
                           const SizedBox(width: 5),
-                          Text(
+                          Flexible(child: Text(
                             _formatTs(data['tripDate']),
                             style: TextStyle(
                               fontSize: 12,
                               color: context.g.mutedText,
                             ),
-                          ),
+                          )),
                           const SizedBox(width: 14),
                           Icon(Icons.people,
                               size: 15, color: context.g.mutedText),
                           const SizedBox(width: 5),
-                          Text(
+                          Flexible(child: Text(
                             "${registrations.length}$capacity",
                             style: TextStyle(
                               fontSize: 12,
                               color: context.g.mutedText,
                             ),
-                          ),
-                        ],
+                          ))],
                       ),
                       const SizedBox(height: 12),
                       SizedBox(
