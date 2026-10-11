@@ -583,9 +583,6 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                           style: OutlinedButton.styleFrom(
                             foregroundColor: context.g.brass,
                             side: BorderSide(color: context.g.brass),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
                           ),
                         ),
                       ),

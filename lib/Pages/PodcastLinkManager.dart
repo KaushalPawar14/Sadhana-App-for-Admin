@@ -637,7 +637,6 @@ class _PodcastLinkSectionsState extends State<PodcastLinkSections> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-            const SizedBox(height: 16),
             if (numbers.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),

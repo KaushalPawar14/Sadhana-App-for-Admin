@@ -182,8 +182,6 @@ class _ServiceBankPageState extends State<ServiceBankPage> {
                       onPressed: (saving || selected.isEmpty) ? null : save,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: context.g.brass,
-                        shape:
-                            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                       child: saving
                           ? SizedBox(
@@ -766,7 +764,6 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
                         onPressed: saving ? null : saveCompetence,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: context.g.brass,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                         child: saving
                             ? SizedBox(

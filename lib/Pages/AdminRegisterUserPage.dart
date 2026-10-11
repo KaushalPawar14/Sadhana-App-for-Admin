@@ -245,8 +245,6 @@ class _AdminRegisterUserPageState extends State<AdminRegisterUserPage>
                           padding: EdgeInsets.symmetric(
                               horizontal: width * 0.1,
                               vertical: height * 0.02),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
                         ),
                         child: Text(
                           "Create User",

@@ -9,6 +9,7 @@ import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
 import 'FlaggedMessages.dart';
 import 'PriorityStudents.dart';
+import '../widgets/GuideEntry.dart';
 
 /// Priority Students hub — the two "who needs attention" screens, together.
 ///
@@ -54,12 +55,16 @@ class PriorityHubPage extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(
                   GuideSpace.pagePadding, 16, GuideSpace.pagePadding, 28),
               children: [
-                Text(
-                  "Two ways of seeing who needs you — one from their activity, "
-                  "one from what they have written.",
-                  style: t.body.copyWith(height: 1.55, color: context.g.mutedText),
+                GuideEntry(
+                  child: Text(
+                    "Two ways of seeing who needs you — one from their activity, "
+                    "one from what they have written.",
+                    style: t.body.copyWith(height: 1.55, color: context.g.mutedText),
+                  ),
                 ),
-                Padding(
+                GuideEntry(
+                  index: 1,
+                  child: Padding(
                   padding: const EdgeInsets.only(top: 12),
                   child: GuidePastelRow(
                     pastel: GuidePastel.slate,
@@ -69,7 +74,10 @@ class PriorityHubPage extends StatelessWidget {
                     onTap: () => _open(context, const PriorityStudentsPage()),
                   ),
                 ),
-                Padding(
+                ),
+                GuideEntry(
+                  index: 2,
+                  child: Padding(
                   padding: const EdgeInsets.only(top: 12),
                   // Master Task 2026-09-10, Part 6 — unseen = a flagged message
                   // since this guide last opened the list. Mirrors
@@ -88,6 +96,7 @@ class PriorityHubPage extends StatelessWidget {
                       onTap: () => _open(context, const FlaggedMessagesPage()),
                     ),
                   ),
+                ),
                 ),
               ],
             ),

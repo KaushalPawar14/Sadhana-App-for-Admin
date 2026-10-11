@@ -121,6 +121,66 @@ Future<FakeFirebaseFirestore> seededDb() async {
     'sourceTextBlockId': 'b1',
     'notifyOffsets': ['1w'],
   });
+  for (final level in ['level-1', 'level-2', 'level-3']) {
+    await db.collection('books').doc(level).set({
+      'book_1': 'Bhagavad-gita As It Is',
+      'book_2': 'Sri Isopanisad',
+      'book_3': 'The Nectar of Instruction and a very long title that needs to wrap on two lines',
+    });
+    await db.collection('books').doc('${level}_links').set({'book_1': 'https://example.org/1', 'book_2': ''});
+  }
+  for (final level in ['FOLK-2', 'FOLK-4', 'FOLK-8']) {
+    await db.collection('podcastModules').doc(level).set({
+      'ep_1_title': 'Introduction',
+      'ep_1_duration': '12:30',
+      'ep_2_title': 'The first chapter',
+      'ep_2_duration': '24:10',
+    });
+    await db.collection('podcastModules').doc('${level}_links').set({'ep_1_link': 'https://example.org/p1'});
+  }
+  final trip = await db.collection('expeditions').add({
+    'title': 'Govardhan parikrama weekend',
+    'location': 'Vrindavan',
+    'tripDate': Timestamp.fromDate(now.add(const Duration(days: 20))),
+    'maxParticipants': 30,
+    'status': 'open',
+  });
+  await trip.collection('registrations').doc('s1').set({
+    'studentName': 'Arjun Kumar',
+    'registeredAt': Timestamp.fromDate(now),
+    'hasReflected': true,
+    'reflectionText': 'It was deeply moving.',
+  });
+  await db.collection('chantingChallenges').add({
+    'name': 'Ekadashi 64 rounds',
+    'targetRounds': 64,
+    'targetDate': Timestamp.fromDate(now.add(const Duration(days: 5))),
+    'targetDateKey': '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
+    'status': 'active',
+    'currentTotal': 40,
+    'allStudents': true,
+    'guideIds': ['G'],
+    'createdBy': 'H',
+  });
+  await db.collection('serviceAssignments').add({
+    'studentUid': 's1',
+    'name': 'Arjun Kumar',
+    'serviceNumber': 1,
+    'status': 'assigned',
+    'assignedByGuideId': 'G',
+    'assignedAt': Timestamp.fromDate(now),
+    'competence': 'not_yet',
+  });
+  await db.collection('litAssessments').add({
+    'studentUid': 's1',
+    'guideId': 'G',
+    'assessedAt': Timestamp.fromDate(now),
+    'I': 3,
+    'L': 2,
+    'T': 4,
+    'confidence': 'medium',
+    'evidence': 'Regular japa and class attendance',
+  });
   await db.collection('flaggedChatMessages').add({
     'studentUid': 's1',
     'studentName': 'Arjun Kumar',

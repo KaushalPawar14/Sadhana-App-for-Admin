@@ -12,6 +12,7 @@ import 'BookLinkManager.dart';
 import 'ChantingChallengeManager.dart';
 import 'ExpeditionManager.dart';
 import 'ServiceBank.dart';
+import '../widgets/GuideEntry.dart';
 
 /// ABCDE hub — the guide-side entry point for the four ABCDE limbs that have
 /// a management screen.
@@ -65,9 +66,13 @@ class AbcdeHubPage extends StatelessWidget {
       description: subtitle,
       onTap: () => _open(context, destination),
     );
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: wrapBadge != null ? wrapBadge(row) : row,
+    return GuideEntry(
+      // A..E rise one after another, after the intro line.
+      index: letter.codeUnitAt(0) - 64,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: wrapBadge != null ? wrapBadge(row) : row,
+      ),
     );
   }
 
@@ -83,11 +88,13 @@ class AbcdeHubPage extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(
                   GuideSpace.pagePadding, 16, GuideSpace.pagePadding, 28),
               children: [
-                Text(
-                  "The five limbs of practice. Chanting is recorded by "
-                  "students themselves. Set a group target here, and their "
-                  "rounds are added together automatically.",
-                  style: t.body.copyWith(height: 1.55, color: context.g.mutedText),
+                GuideEntry(
+                  child: Text(
+                    "The five limbs of practice. Chanting is recorded by "
+                    "students themselves. Set a group target here, and their "
+                    "rounds are added together automatically.",
+                    style: t.body.copyWith(height: 1.55, color: context.g.mutedText),
+                  ),
                 ),
                 _row(
                   context,

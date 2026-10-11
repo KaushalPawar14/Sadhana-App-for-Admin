@@ -549,9 +549,6 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                         onPressed: saving ? null : save,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: context.g.brass,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
                         ),
                         child: saving
                             ? SizedBox(
@@ -737,9 +734,6 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
       style: OutlinedButton.styleFrom(
         foregroundColor: context.g.danger,
         side: BorderSide(color: context.g.danger),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
       ),
       child: const Text("Cancel"),
     );
@@ -838,9 +832,6 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                 style: ElevatedButton.styleFrom(
                   elevation: 0,
                   backgroundColor: context.g.success,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
                 ),
                 child: Text(
                   "Accept Student's Date",
@@ -857,9 +848,6 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                     style: OutlinedButton.styleFrom(
                       foregroundColor: context.g.brass,
                       side: BorderSide(color: context.g.brass),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
                     ),
                     child: const Text(
                       "Set My Own Date",
@@ -880,9 +868,6 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                     style: ElevatedButton.styleFrom(
                       elevation: 0,
                       backgroundColor: context.g.success,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
                     ),
                     child: Text(
                       "Confirm",
@@ -968,9 +953,6 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                   style: ElevatedButton.styleFrom(
                     elevation: 0,
                     backgroundColor: context.g.brass,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
                   ),
                   child: Text(
                     "Mark Complete",
@@ -985,9 +967,6 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                   style: OutlinedButton.styleFrom(
                     foregroundColor: context.g.danger,
                     side: BorderSide(color: context.g.danger),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
                   ),
                   child: const Text("Cancel"),
                 ),

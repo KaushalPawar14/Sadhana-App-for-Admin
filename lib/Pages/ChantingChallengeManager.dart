@@ -567,27 +567,8 @@ class _ChantingChallengeManagerPageState
                       fontSize: 15.5, fontWeight: FontWeight.w700),
                 ),
               ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                decoration: BoxDecoration(
-                  color: colour.withValues(alpha: .12),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  children: [
-                    Icon(icon, size: 12, color: colour),
-                    const SizedBox(width: 4),
-                    Flexible(child: Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w700,
-                        color: colour,
-                      ),
-                    ))],
-                ),
-              ),
+              const SizedBox(width: 8),
+              Flexible(child: GuideBadge(label, color: colour, icon: icon)),
             ],
           ),
           const SizedBox(height: 10),

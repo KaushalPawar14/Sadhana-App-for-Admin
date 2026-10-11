@@ -479,9 +479,13 @@ class GuideTileGrid extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(child: tiles[i]),
+              Expanded(child: GuideEntry(index: i, child: tiles[i])),
               const SizedBox(width: GuideSpace.cardGap),
-              Expanded(child: i + 1 < tiles.length ? tiles[i + 1] : const SizedBox.shrink()),
+              Expanded(
+                child: i + 1 < tiles.length
+                    ? GuideEntry(index: i + 1, child: tiles[i + 1])
+                    : const SizedBox.shrink(),
+              ),
             ],
           ),
         ),

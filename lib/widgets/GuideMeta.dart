@@ -130,6 +130,8 @@ class GuideChoiceChip extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: GuideShape.touchTarget, minWidth: GuideShape.touchTarget),
             child: Center(
+              widthFactor: 1,
+              heightFactor: 1,
               child: Container(
                 constraints: const BoxConstraints(minHeight: 38),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),

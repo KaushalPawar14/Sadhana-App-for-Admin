@@ -10,6 +10,7 @@ import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
 import '../utils/GuideDb.dart';
 import '../widgets/GuideWait.dart';
+import '../widgets/GuideEntry.dart';
 
 class BookReadingScreen extends StatefulWidget {
   const BookReadingScreen({super.key});
@@ -71,7 +72,9 @@ class _CheckSadhanaScreenState extends State<BookReadingScreen> {
                     final name = books[index].id;
                     final initial = name.isNotEmpty ? name[0].toUpperCase() : "?";
 
-                    return Padding(
+                    return GuideEntry(
+                      index: index,
+                      child: Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: GuideCard(
                         padding: EdgeInsets.zero,
@@ -114,6 +117,7 @@ class _CheckSadhanaScreenState extends State<BookReadingScreen> {
                             ),
                           ),
                         ),
+                      ),
                       ),
                     );
                   },

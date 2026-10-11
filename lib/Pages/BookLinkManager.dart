@@ -357,7 +357,6 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-          const SizedBox(height: 16),
           if (books.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),

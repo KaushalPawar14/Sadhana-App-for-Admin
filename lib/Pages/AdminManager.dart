@@ -8,6 +8,7 @@ import '../theme/GuideTokens.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
+import '../widgets/GuideEntry.dart';
 
 /// "Add Admin" / admin list — hierarchy version.
 ///
@@ -86,8 +87,10 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
                   padding: const EdgeInsets.fromLTRB(
                       GuideSpace.pagePadding, 12, GuideSpace.pagePadding, 110),
                   itemCount: admins.length,
-                  itemBuilder: (context, index) =>
-                      _adminTile(profile, admins[index], admins),
+                  itemBuilder: (context, index) => GuideEntry(
+                    index: index,
+                    child: _adminTile(profile, admins[index], admins),
+                  ),
                 );
               },
             ),
