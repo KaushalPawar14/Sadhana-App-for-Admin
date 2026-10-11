@@ -7,7 +7,6 @@ import 'package:folk_guide_app/Pages/ChantingChallengeManager.dart';
 import 'package:folk_guide_app/Pages/ExpeditionManager.dart';
 import 'package:folk_guide_app/Pages/GuideCalendarPage.dart';
 import 'package:folk_guide_app/Pages/InteractionLogger.dart';
-import 'package:folk_guide_app/Pages/ServiceBank.dart';
 import 'package:folk_guide_app/Pages/StudentProfilePage.dart';
 import 'package:folk_guide_app/widgets/GuideAppearanceSheet.dart';
 import 'package:folk_guide_app/widgets/GuideDialog.dart';
@@ -19,13 +18,12 @@ import 'support/guide_test_support.dart';
 /// light and dark at 360 dp, text scale 1.0 and 1.6 - nothing overflows, nothing is
 /// clipped, every button is at least 48 dp tall.
 class _Case {
-  const _Case(this.name, this.screen, this.tap, {this.expectDialog = true, this.byIcon, this.byTooltip});
+  const _Case(this.name, this.screen, this.tap, {this.expectDialog = true, this.byIcon});
   final String name;
   final Widget Function() screen;
   final String? tap;
   final bool expectDialog;
   final IconData? byIcon;
-  final String? byTooltip;
 }
 
 final cases = <_Case>[
@@ -54,9 +52,7 @@ void main() {
           await letDataArrive(tester);
           final target = c.tap != null
               ? find.text(c.tap!).first
-              : c.byIcon != null
-                  ? find.byIcon(c.byIcon!).first
-                  : find.byTooltip(c.byTooltip!).first;
+              : find.byIcon(c.byIcon!).first;
           await tester.ensureVisible(target);
           await tester.tap(target, warnIfMissed: false);
           await tester.pump();
