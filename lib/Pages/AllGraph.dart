@@ -9,6 +9,7 @@ import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../theme/GuideColors.dart';
 import '../utils/GuideDb.dart';
+import '../utils/Residence.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideWait.dart';
 
@@ -542,16 +543,20 @@ class _GraphicalAnalysisSectionState extends State<GraphicalAnalysisSection> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                MyPieChart(data: dailyServicesCount, title: "Daily Services 🛐"),
-                const SizedBox(height: 20),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 40),
-                  child: Divider(
-                    color: colorProvider.secondColor.withValues(alpha: 0.5),
-                    thickness: 1.5,
+                // Daily services exist on the FOLK form only: no graph for a Hostel or
+                // Localite student (boys or girls), who have no such data.
+                if (hasDailyServices(widget.role)) ...[
+                  MyPieChart(data: dailyServicesCount, title: "Daily Services 🛐"),
+                  const SizedBox(height: 20),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 40),
+                    child: Divider(
+                      color: colorProvider.secondColor.withValues(alpha: 0.5),
+                      thickness: 1.5,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
+                  const SizedBox(height: 20),
+                ],
               ],
             ),
           ),

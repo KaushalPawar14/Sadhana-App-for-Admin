@@ -28,8 +28,13 @@ class MissingReportService {
       final name = (doc.data()['name'] ?? '').toString();
       if (name.isEmpty) continue;
       checks.add(() async {
-        final report = await fetchMergedDateReport(name, today);
-        return report == null ? name : null;
+        try {
+          final report = await fetchMergedDateReport(name, today);
+          return report == null ? name : null;
+        } catch (_) {
+          // One failed read must not hide everybody else's missing report.
+          return null;
+        }
       }());
     }
     final results = await Future.wait(checks);

@@ -230,6 +230,14 @@ enum _MoveKind { hodReassign, claim, release }
 class _Boy {
   final String uid;
   final String name;
+
+  /// The student's name EXACTLY as stored on `users` (not trimmed). Every name-keyed
+  /// collection (sadhana reports, scorecard, competition) is keyed by this exact string,
+  /// because the Student app writes it that way. A name with a stray space ("Dhiraj Kumar ")
+  /// looked up by the trimmed [name] opened an empty folder: the guide saw an all-red
+  /// calendar while the student's own calendar was all green. Use [reportKey] for lookups,
+  /// [name] only for display and sorting.
+  final String reportKey;
   final String role;
   final String guideId;
 
@@ -249,12 +257,13 @@ class _Boy {
   const _Boy({
     required this.uid,
     required this.name,
+    String? reportKey,
     required this.role,
     required this.guideId,
     this.teamGuide = '',
     this.gender = '',
     this.isManualEntry = false,
-  });
+  }) : reportKey = reportKey ?? name;
 
   /// Which lane the board shows him in: a student whose gender is not
   /// explicitly 'female' is shown in the males lane.
@@ -272,6 +281,7 @@ class _Boy {
     return _Boy(
       uid: uid,
       name: name,
+      reportKey: (data['name'] ?? '').toString(),
       role: (data['role'] ?? '').toString(),
       guideId: ref.guideId,
       teamGuide: ref.teamGuide,
@@ -1044,7 +1054,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     // guideId/isHod no longer passed (Master Task, 2026-09-14) — the
     // Cloud Function derives the caller's own identity server-side now,
     // from their locked, email-resolved adminUsers record.
-    final result = await deleteStudentEverywhere(uid: boy.uid, name: boy.name);
+    final result = await deleteStudentEverywhere(uid: boy.uid, name: boy.reportKey);
 
     if (!mounted) return;
     Navigator.of(context, rootNavigator: true).pop(); // close the working dialog
@@ -3121,7 +3131,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                               context,
                               MaterialPageRoute(
                                 builder: (_) => CalendarPage(
-                                  username: boy.name,
+                                  username: boy.reportKey,
                                   role: boy.role,
                                   studentUid: boy.uid,
                                 ),

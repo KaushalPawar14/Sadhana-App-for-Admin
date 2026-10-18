@@ -7,6 +7,7 @@ import '../utils/CompetitionScore.dart';
 import '../utils/SadhanaReportSource.dart';
 import '../utils/ScorecardPoints.dart';
 import '../Pages/AllGraph.dart' show GraphicalAnalysisSection;
+import '../utils/Residence.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../utils/GuideDb.dart';
@@ -421,8 +422,10 @@ class _CalendarPageState extends State<CalendarPage> {
   /// weighted score: the app's real weighted points live in
   /// `competition/{name}.weekly.total_score`.
   Widget _totalPointsSection(ColorProvider colorProvider) {
-    final name = widget.username.trim();
-    if (name.isEmpty) return const SizedBox.shrink();
+    // The EXACT stored name is the document key (the Student app writes it untrimmed): a
+    // trimmed copy opened an empty document for a name with a stray space.
+    final name = widget.username;
+    if (name.trim().isEmpty) return const SizedBox.shrink();
 
     return StreamBuilder<DocumentSnapshot>(
       stream: GuideDb.instance
@@ -495,7 +498,9 @@ class _CalendarPageState extends State<CalendarPage> {
               _infoRow('Book Reading', '$book 📖', context.g.warning),
               _infoRow('Bhagavatam Classes', '$sbClass 🎧',
                   context.g.brass),
-              _infoRow('Services Done', '$service 🙏', context.g.success),
+              // Daily services exist on the FOLK form only (none for Hostel / Localite).
+              if (hasDailyServices(widget.role))
+                _infoRow('Services Done', '$service 🙏', context.g.success),
             ],
           ),
         );
@@ -530,8 +535,10 @@ class _CalendarPageState extends State<CalendarPage> {
   /// `points` into this tab, or keep both as separate entry points to the
   /// same number.
   Widget _scoresPanel(ColorProvider colorProvider) {
-    final name = widget.username.trim();
-    if (name.isEmpty) return const SizedBox.shrink();
+    // The EXACT stored name is the document key (the Student app writes it untrimmed): a
+    // trimmed copy opened an empty document for a name with a stray space.
+    final name = widget.username;
+    if (name.trim().isEmpty) return const SizedBox.shrink();
 
     return StreamBuilder<DocumentSnapshot>(
       stream: GuideDb.instance

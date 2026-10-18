@@ -69,9 +69,12 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
   /// guide can cross-check").
   List<_StudentSubmission> _submitted = [];
 
+  /// Students whose report could not be checked (a failed read): in neither group.
+  List<_StudentSubmission> _unchecked = [];
+
   /// Total students in scope, so the summary reads "3 of 12" rather than
   /// "3".
-  int get _inScope => _notSubmitted.length + _submitted.length;
+  int get _inScope => _notSubmitted.length + _submitted.length + _unchecked.length;
 
   /// Names currently mid-send, so a tapped button can show progress.
   final Set<String> _sending = {};
@@ -98,6 +101,7 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
 
     List<_StudentSubmission> notSubmitted = [];
     List<_StudentSubmission> submitted = [];
+    final unchecked = <_StudentSubmission>[];
 
     try {
       final snap = await StudentScope(profile).studentsGet();
@@ -117,13 +121,19 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
           // `MissingReportService.fetchMissingTokens()`'s own update: a
           // same-day residence change must not make an already-submitted
           // report look missing.
-          final report = await fetchMergedDateReport(name, today);
-
           final entry = (name: name, role: role, uid: uid);
-          if (report != null) {
-            submitted.add(entry);
-          } else {
-            notSubmitted.add(entry);
+          try {
+            final report = await fetchMergedDateReport(name, today);
+            if (report != null) {
+              submitted.add(entry);
+            } else {
+              notSubmitted.add(entry);
+            }
+          } catch (_) {
+            // ONE student's failed read must not blank the whole list (it used to make
+            // everyone vanish, i.e. "zero left to submit"). That student is reported
+            // separately instead of being guessed into either group.
+            unchecked.add(entry);
           }
         }));
       }
@@ -146,6 +156,7 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
       _isHod = isHod;
       _notSubmitted = notSubmitted;
       _submitted = submitted;
+      _unchecked = unchecked;
       _loading = false;
     });
   }
@@ -325,13 +336,16 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
 
   Widget _summaryCard() {
     final today = DateFormat('dd MMM yyyy').format(DateTime.now());
-    final allSubmitted = _inScope > 0 && _notSubmitted.isEmpty;
+    final allSubmitted = _inScope > 0 && _notSubmitted.isEmpty && _unchecked.isEmpty;
     return GuideSummaryBanner(
       tone: allSubmitted ? GuideTone.good : GuideTone.warn,
       icon: allSubmitted ? Icons.check_circle_outline : Icons.pending_actions_outlined,
       title: "${_notSubmitted.length} not submitted",
       lines: [
         _inScope > 0 ? "out of $_inScope students · $today" : today,
+        // A student whose report could not be read is never counted as "submitted".
+        if (_unchecked.isNotEmpty)
+          "${_unchecked.length} could not be checked — pull down to refresh",
         _isHod
             ? "All students (HOD view)"
             : "Students assigned to ${_guide ?? 'you'}",
