@@ -198,6 +198,14 @@ class HierarchyApi {
     };
   }
 
+  /// Deletes a trip and every registration for it (the trip's creator, or a HOD; the server checks).
+  /// Used for an active trip and for a History card alike. Nothing else is touched.
+  Future<({bool deleted, int registrationsDeleted})> deleteExpedition(String tripId) async {
+    final r = await _call('deleteExpedition', {'tripId': tripId});
+    final n = r['registrationsDeleted'];
+    return (deleted: r['deleted'] == true, registrationsDeleted: n is num ? n.toInt() : 0);
+  }
+
   Future<void> registerAdminToken(String token) =>
       _call('registerAdminToken', {'token': token});
 

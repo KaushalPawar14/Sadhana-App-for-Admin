@@ -175,7 +175,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
                   GuideStateView(
                     state: _load,
                     ghost: const GuideGhostList(rows: 6, rowHeight: 64, padding: EdgeInsets.zero),
-                    emptyMessage: 'No scores yet for this group ${_period == LeaderboardPeriod.weekly ? 'this week' : 'this month'}.',
+                    emptyMessage: leaderboardEmptyMessage(category: _category, gender: _gender, period: _period),
                     onRetry: _fetch,
                     content: Column(
                       children: [

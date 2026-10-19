@@ -15,6 +15,20 @@ String categoryLabel(String category) =>
 
 enum LeaderboardPeriod { weekly, monthly }
 
+/// What the leaderboard says when a ranking has nobody in it. FOLK girls: there are none (girls
+/// stay at the Hostel or are Localite), so "No students in this group yet"; every other group
+/// names itself: "No scores yet for Hostel & Localite boys this week".
+String leaderboardEmptyMessage({
+  required String category,
+  required String gender,
+  required LeaderboardPeriod period,
+}) {
+  if (category == kCategoryFolk && gender == 'female') return 'No students in this group yet.';
+  final who = gender == 'female' ? 'girls' : 'boys';
+  final when = period == LeaderboardPeriod.weekly ? 'this week' : 'this month';
+  return 'No scores yet for ${categoryLabel(category)} $who $when.';
+}
+
 extension LeaderboardPeriodX on LeaderboardPeriod {
   String get label => this == LeaderboardPeriod.weekly ? 'This week' : 'This month';
 

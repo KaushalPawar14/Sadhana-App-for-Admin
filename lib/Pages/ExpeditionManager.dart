@@ -3,24 +3,31 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../Services/HierarchyApi.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
-import '../utils/SeenMarkers.dart';
+import '../utils/ExpeditionModel.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
-import '../widgets/GuideSurface.dart';
 import '../utils/GuideDb.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideDialog.dart';
-import '../widgets/GuideWait.dart';
+import '../widgets/GuideMeta.dart';
 import '../widgets/GuideSheet.dart';
+import '../widgets/GuideSurface.dart';
+import '../widgets/GuideWait.dart';
+import 'ExpeditionRegistrations.dart';
 
 /// Expedition (pilgrimage / retreat) management.
 ///
-/// Tab 1 — trips this guide created (`expeditions`), with registration counts.
-/// Tab 2 — every registration belonging to the students this admin may see
-/// (`StudentScope`), with the state of their post-trip reflection.
+/// Tab 1 - Manage Trips: the active trips (a HOD sees every trip; everyone else the trips they created),
+/// with registration counts, each student's attendance, and delete.
+/// Tab 2 - History: trips whose date has passed (moved here by the server the day after the trip date),
+/// read only: the final status of every student, and delete for the trip's creator and HODs.
+///
+/// Every trip is for ONE gender (`targetGender`): a Guide or Male Enabler creates boys' trips, a Female Enabler
+/// girls'; a HOD chooses when creating. The Student app shows a student only the active trips of their own gender.
 class ExpeditionManagerPage extends StatefulWidget {
   const ExpeditionManagerPage({super.key});
 
@@ -30,13 +37,16 @@ class ExpeditionManagerPage extends StatefulWidget {
 
 class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
     with SingleTickerProviderStateMixin {
-  final FirebaseFirestore _firestore = GuideDb.instance;
+  FirebaseFirestore get _firestore => GuideDb.instance;
 
   String? _selectedGuide;
+  bool _isHod = false;
 
-  /// Explicit controller so the FAB can react to tab changes — reading the
-  /// inherited DefaultTabController does not trigger a rebuild.
+  /// Explicit controller so the FAB can react to tab changes.
   late final TabController _tabController;
+
+  /// The trips this admin may see; rebuilt on Retry.
+  late Stream<QuerySnapshot<Map<String, dynamic>>> _tripsStream;
 
   @override
   void initState() {
@@ -45,7 +55,10 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
       ..addListener(() {
         if (mounted) setState(() {});
       });
-    _loadGuide();
+    final profile = AdminProfileProvider.current;
+    _selectedGuide = profile?.id;
+    _isHod = profile?.isHod ?? false;
+    _tripsStream = _openTripsStream();
   }
 
   @override
@@ -54,25 +67,14 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
     super.dispose();
   }
 
-  Future<void> _loadGuide() async {
-    final guide = AdminProfileProvider.current?.id;
-    if (mounted) setState(() => _selectedGuide = guide);
-    // Master Task 2026-09-10, Part 6 — opening this screen is "seen" for
-    // newly-submitted reflections (the Tab 2 feed this guide reviews).
-    if (guide != null && guide.isNotEmpty) {
-      SeenMarkers.markSeen(guide, 'expeditionReflections');
-    }
+  /// A HOD reads every trip; everyone else the trips they created (the rules prove exactly this query).
+  Stream<QuerySnapshot<Map<String, dynamic>>> _openTripsStream() {
+    final trips = _firestore.collection('expeditions');
+    return (_isHod || _selectedGuide == null ? trips : trips.where('createdBy', isEqualTo: _selectedGuide)).snapshots();
   }
 
-  /// Registrations of the students this admin may see (server-stamped scope
-  /// fields; HOD unfiltered). One query shape for both tabs.
   Stream<QuerySnapshot<Map<String, dynamic>>> _registrationsStream() =>
       StudentScope.current().historyStream('expeditionRegistrations');
-
-  String _formatTs(dynamic value) {
-    if (value is! Timestamp) return "Not set";
-    return DateFormat('dd MMM yyyy').format(value.toDate());
-  }
 
   ({Color color, String label}) _statusStyle(String status) {
     switch (status) {
@@ -106,14 +108,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color.withValues(alpha: .4)),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: color,
-        ),
-      ),
+      child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color)),
     );
   }
 
@@ -122,12 +117,16 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
   // ---------------------------------------------------------------------------
 
   Future<void> _createTripDialog() async {
+    final profile = AdminProfileProvider.current;
+    if (profile == null) return;
     String title = '';
     String description = '';
     String location = '';
     String maxParticipants = '';
     DateTime? tripDate;
     DateTime? deadline;
+    // A Guide / Male Enabler: boys. A Female Enabler: girls. A HOD chooses.
+    String? targetGender = tripTargetGenderFor(profile);
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -140,47 +139,59 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (profile.isHod) ...[
+                    const Text("This trip is for", style: TextStyle(fontSize: 13)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        for (final g in const ['male', 'female'])
+                          GuideChoiceChip(
+                            key: ValueKey('trip-for-$g'),
+                            label: targetGenderLabel(g),
+                            selected: targetGender == g,
+                            onSelected: (_) => setDialogState(() => targetGender = g),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                  ] else ...[
+                    Text(
+                      "This trip is for ${targetGenderLabel(targetGender).toLowerCase()}.",
+                      key: const ValueKey('trip-for-fixed'),
+                      style: TextStyle(fontSize: 13, color: context.g.mutedText),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   TextFormField(
                     autofocus: true,
                     onChanged: (v) => title = v,
-                    decoration: InputDecoration(
-                      labelText: "Title",
-                    ),
+                    decoration: const InputDecoration(labelText: "Title"),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     onChanged: (v) => description = v,
                     maxLines: 3,
-                    decoration: InputDecoration(
-                      labelText: "Description",
-                      alignLabelWithHint: true,
-                    ),
+                    decoration: const InputDecoration(labelText: "Description", alignLabelWithHint: true),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     onChanged: (v) => location = v,
-                    decoration: InputDecoration(
-                      labelText: "Location",
-                    ),
+                    decoration: const InputDecoration(labelText: "Location"),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     onChanged: (v) => maxParticipants = v,
                     keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      labelText: "Max participants (optional)",
-                    ),
+                    decoration: const InputDecoration(labelText: "Max participants (optional)"),
                   ),
                   const SizedBox(height: 6),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.event, size: 20),
-                    title:
-                        const Text("Trip date", style: TextStyle(fontSize: 14)),
+                    title: const Text("Trip date", style: TextStyle(fontSize: 14)),
                     trailing: Text(
-                      tripDate == null
-                          ? "Not set"
-                          : DateFormat('dd MMM yyyy').format(tripDate!),
+                      tripDate == null ? "Not set" : DateFormat('dd MMM yyyy').format(tripDate!),
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                     onTap: () async {
@@ -191,20 +202,15 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                         firstDate: now,
                         lastDate: now.add(const Duration(days: 730)),
                       );
-                      if (picked != null) {
-                        setDialogState(() => tripDate = picked);
-                      }
+                      if (picked != null) setDialogState(() => tripDate = picked);
                     },
                   ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.how_to_reg, size: 20),
-                    title: const Text("Registration deadline",
-                        style: TextStyle(fontSize: 14)),
+                    title: const Text("Registration deadline", style: TextStyle(fontSize: 14)),
                     trailing: Text(
-                      deadline == null
-                          ? "Not set"
-                          : DateFormat('dd MMM yyyy').format(deadline!),
+                      deadline == null ? "Not set" : DateFormat('dd MMM yyyy').format(deadline!),
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                     onTap: () async {
@@ -215,24 +221,18 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                         firstDate: now,
                         lastDate: now.add(const Duration(days: 730)),
                       );
-                      if (picked != null) {
-                        setDialogState(() => deadline = picked);
-                      }
+                      if (picked != null) setDialogState(() => deadline = picked);
                     },
                   ),
                 ],
               ),
             ),
             actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text("Cancel"),
-              ),
+              TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text("Cancel")),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: context.g.brass),
                 onPressed: () => Navigator.pop(dialogContext, true),
-                child:
-                    Text("Create", style: TextStyle(color: context.g.onPrimary)),
+                child: Text("Create", style: TextStyle(color: context.g.onPrimary)),
               ),
             ],
           );
@@ -242,15 +242,12 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
 
     if (confirmed != true) return;
 
+    if (targetGender == null) {
+      if (mounted) showSnackbar(context, "Choose Boys or Girls for this trip", Colors.red, Icons.error);
+      return;
+    }
     if (title.trim().isEmpty || tripDate == null) {
-      if (mounted) {
-        showSnackbar(
-          context,
-          "Title and trip date are required",
-          Colors.red,
-          Icons.error,
-        );
-      }
+      if (mounted) showSnackbar(context, "Title and trip date are required", Colors.red, Icons.error);
       return;
     }
 
@@ -260,12 +257,15 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
         'description': description.trim(),
         'location': location.trim(),
         'tripDate': Timestamp.fromDate(tripDate!),
-        'registrationDeadline':
-            deadline == null ? null : Timestamp.fromDate(deadline!),
+        'registrationDeadline': deadline == null ? null : Timestamp.fromDate(deadline!),
         'createdBy': _selectedGuide ?? '',
         'createdAt': FieldValue.serverTimestamp(),
         'maxParticipants': int.tryParse(maxParticipants.trim()),
         'status': 'upcoming',
+        // Who the trip is for, and where it is in its life: active until the day after the trip date,
+        // when the server sets `archived: true` and it moves to History.
+        'targetGender': targetGender,
+        'archived': false,
       });
 
       if (!mounted) return;
@@ -276,7 +276,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
     }
   }
 
-  /// Lets the guide move a trip through upcoming → ongoing → completed.
+  /// Lets the creator move a trip through upcoming -> ongoing -> completed.
   Future<void> _changeStatus(String docId, String current) async {
     final next = await showDialog<String>(
       context: context,
@@ -288,14 +288,13 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
             child: Row(
               children: [
                 Icon(
-                  s == current
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_off,
+                  s == current ? Icons.radio_button_checked : Icons.radio_button_off,
                   size: 18,
                   color: context.g.brass,
                 ),
                 const SizedBox(width: 10),
-                Flexible(child: Text(_statusStyle(s).label))],
+                Flexible(child: Text(_statusStyle(s).label)),
+              ],
             ),
           );
         }).toList(),
@@ -305,11 +304,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
     if (next == null || next == current) return;
 
     try {
-      await _firestore
-          .collection('expeditions')
-          .doc(docId)
-          .update({'status': next});
-
+      await _firestore.collection('expeditions').doc(docId).update({'status': next});
       if (!mounted) return;
       showSnackbar(context, "Status updated", Colors.blue, Icons.check_circle);
     } catch (_) {
@@ -319,92 +314,70 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
   }
 
   // ---------------------------------------------------------------------------
+  // Delete (an active trip, or a History card)
+  // ---------------------------------------------------------------------------
+
+  Future<void> _confirmDelete(String tripId, Map<String, dynamic> trip, {required bool history}) async {
+    final name = history ? historyTitle(trip) : (trip['title'] ?? 'this trip').toString();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => GuideDialog(
+        title: Text(history ? "Delete this History card?" : "Delete this trip?"),
+        content: Text(
+          '"$name" and every registration for it will be removed permanently. '
+          '${history ? '' : 'Students will no longer see it. '}This cannot be undone.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text("Cancel")),
+          TextButton(
+            key: const ValueKey('confirm-delete-trip'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text("Delete", style: TextStyle(color: dialogContext.g.danger, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await HierarchyApi.instance.deleteExpedition(tripId);
+      if (!mounted) return;
+      showSnackbar(context, "Trip deleted", Colors.blue, Icons.check_circle);
+    } on HierarchyException catch (e) {
+      if (!mounted) return;
+      showSnackbar(context, e.message, Colors.red, Icons.error);
+    } catch (_) {
+      if (!mounted) return;
+      showSnackbar(context, "Could not delete the trip", Colors.red, Icons.error);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Registrations
   // ---------------------------------------------------------------------------
 
-  void _showRegistrations(
-    String tripTitle,
-    List<QueryDocumentSnapshot> registrations,
-  ) {
+  void _showRegistrations(String tripId, String tripTitle) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
         return Container(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(sheetContext).size.height * 0.75,
-          ),
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(sheetContext).size.height * 0.85),
+          padding: const EdgeInsets.fromLTRB(4, 12, 4, 0),
           decoration: BoxDecoration(
             color: context.g.surface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const GuideSheetHandle(),
-              const SizedBox(height: 18),
-              Text(
-                tripTitle,
-                style:
-                    const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+                child: Text(tripTitle, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
               ),
-              const SizedBox(height: 4),
-              Text(
-                "${registrations.length} registered",
-                style: TextStyle(fontSize: 12, color: context.g.mutedText),
-              ),
-              const SizedBox(height: 12),
-              Flexible(
-                child: registrations.isEmpty
-                    ? const Padding(
-                        padding: EdgeInsets.all(20),
-                        child: Text("Nobody has registered yet"),
-                      )
-                    : ListView(
-                        shrinkWrap: true,
-                        children: registrations.map((doc) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          final reflected = data['hasReflected'] == true;
-
-                          return ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: CircleAvatar(
-                              backgroundColor: context.g.brass,
-                              child: Text(
-                                (data['studentName'] ?? '?')
-                                    .toString()
-                                    .characters
-                                    .first
-                                    .toUpperCase(),
-                                style: TextStyle(color: context.g.onPrimary),
-                              ),
-                            ),
-                            title: Text(
-                              (data['studentName'] ?? 'Unknown').toString(),
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                            subtitle: Text(
-                              reflected
-                                  ? "Reflection submitted"
-                                  : "Reflection pending",
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: reflected ? context.g.success : context.g.warning,
-                              ),
-                            ),
-                            trailing: Icon(
-                              reflected ? Icons.check_circle : Icons.schedule,
-                              size: 18,
-                              color: reflected ? context.g.success : context.g.warning,
-                            ),
-                          );
-                        }).toList(),
-                      ),
-              ),
+              Flexible(child: ExpeditionRegistrationsList(tripId: tripId, editable: true)),
             ],
           ),
         );
@@ -412,152 +385,102 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
     );
   }
 
-  void _showReflection(Map<String, dynamic> data) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => GuideDialog(
-        title: Text((data['studentName'] ?? 'Reflection').toString()),
-        content: SingleChildScrollView(
-          child: Text(
-            (data['reflectionText'] ?? '').toString().isEmpty
-                ? "No reflection text."
-                : (data['reflectionText']).toString(),
-            style: const TextStyle(fontSize: 14, height: 1.5),
-          ),
+  void _openHistoryTrip(String tripId, Map<String, dynamic> trip) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ExpeditionHistoryTripPage(
+          tripId: tripId,
+          trip: trip,
+          onDelete: () => _confirmDelete(tripId, trip, history: true),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text("Close"),
-          ),
-        ],
       ),
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Tab 1 — trips
+  // Tab 1 - active trips
   // ---------------------------------------------------------------------------
 
-  Widget _buildTrips(String guide) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _firestore
-          .collection('expeditions')
-          .where('createdBy', isEqualTo: guide)
-          .snapshots(),
-      builder: (context, tripSnap) {
-        if (tripSnap.connectionState == ConnectionState.waiting) {
-          return const GuideWait();
-        }
+  Widget _buildTrips(List<QueryDocumentSnapshot<Map<String, dynamic>>> all) {
+    final trips = all.where((d) => !tripArchived(d.data())).toList()
+      ..sort((a, b) => soonestFirst(a.data(), b.data()));
 
-        final trips = tripSnap.data?.docs ?? [];
+    if (trips.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text("No active trips. Tap \"New Trip\" to create one.", textAlign: TextAlign.center),
+        ),
+      );
+    }
 
-        if (trips.isEmpty) {
-          return const Center(child: Text("No trips created yet"));
-        }
+    // One registration stream serves every card's count.
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _registrationsStream(),
+      builder: (context, regSnap) {
+        final allRegs = regSnap.data?.docs ?? [];
 
-        // One registration stream serves every card's count.
-        return StreamBuilder<QuerySnapshot>(
-          stream: _registrationsStream(),
-          builder: (context, regSnap) {
-            final allRegs = regSnap.data?.docs ?? [];
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: trips.map((doc) {
+            final data = doc.data();
+            final status = (data['status'] ?? 'upcoming').toString();
+            final style = _statusStyle(status);
+            final registrations = allRegs.where((r) => (r.data()['expeditionId'] ?? '') == doc.id).length;
+            final max = data['maxParticipants'];
+            final capacity = max is num ? " / ${max.toInt()}" : "";
+            final forWho = targetGenderLabel(data['targetGender']?.toString());
 
-            final sorted = trips.toList()
-              ..sort((a, b) {
-                final aDate = (a.data() as Map<String, dynamic>)['tripDate'];
-                final bDate = (b.data() as Map<String, dynamic>)['tripDate'];
-                if (aDate is! Timestamp || bDate is! Timestamp) return 0;
-                return aDate.compareTo(bDate);
-              });
-
-            return ListView(
-              padding: const EdgeInsets.all(16),
-              children: sorted.map((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                final status = (data['status'] ?? 'upcoming').toString();
-                final style = _statusStyle(status);
-
-                final registrations = allRegs
-                    .where((r) =>
-                        ((r.data() as Map<String, dynamic>)['expeditionId'] ??
-                            '') ==
-                        doc.id)
-                    .toList();
-
-                final max = data['maxParticipants'];
-                final capacity = max is num ? " / ${max.toInt()}" : "";
-
-                return _shell(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            return _shell(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              (data['title'] ?? 'Untitled').toString(),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 15,
-                              ),
-                            ),
-                          ),
-                          InkWell(
-                            onTap: () => _changeStatus(doc.id, status),
-                            child: _chip(style.label, style.color),
-                          ),
-                        ],
+                      Expanded(
+                        child: Text(
+                          (data['title'] ?? 'Untitled').toString(),
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                        ),
                       ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Icon(Icons.place,
-                              size: 15, color: context.g.mutedText),
-                          const SizedBox(width: 5),
-                          Expanded(
-                            child: Text(
-                              (data['location'] ?? 'No location').toString(),
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: context.g.mutedText,
-                              ),
-                            ),
-                          ),
-                        ],
+                      InkWell(
+                        onTap: () => _changeStatus(doc.id, status),
+                        child: _chip(style.label, style.color),
                       ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(Icons.event,
-                              size: 15, color: context.g.mutedText),
-                          const SizedBox(width: 5),
-                          Flexible(child: Text(
-                            _formatTs(data['tripDate']),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: context.g.mutedText,
-                            ),
-                          )),
-                          const SizedBox(width: 14),
-                          Icon(Icons.people,
-                              size: 15, color: context.g.mutedText),
-                          const SizedBox(width: 5),
-                          Flexible(child: Text(
-                            "${registrations.length}$capacity",
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: context.g.mutedText,
-                            ),
-                          ))],
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(Icons.place, size: 15, color: context.g.mutedText),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          (data['location'] ?? 'No location').toString(),
+                          style: TextStyle(fontSize: 12, color: context.g.mutedText),
+                        ),
                       ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 14,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      _meta(Icons.event, tripDateText(data['tripDate'])),
+                      _meta(Icons.people, "$registrations$capacity"),
+                      if (forWho.isNotEmpty) _meta(Icons.wc, "For ${forWho.toLowerCase()}", key: ValueKey('trip-for-${doc.id}')),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () => _showRegistrations(
-                            (data['title'] ?? 'Trip').toString(),
-                            registrations,
-                          ),
+                          key: ValueKey('registrations-${doc.id}'),
+                          onPressed: () => _showRegistrations(doc.id, (data['title'] ?? 'Trip').toString()),
                           icon: const Icon(Icons.list_alt, size: 17),
                           label: const Text("View Registrations"),
                           style: OutlinedButton.styleFrom(
@@ -566,122 +489,103 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                           ),
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        key: ValueKey('delete-trip-${doc.id}'),
+                        tooltip: "Delete trip",
+                        onPressed: () => _confirmDelete(doc.id, data, history: false),
+                        icon: Icon(Icons.delete_outline, color: context.g.danger),
+                      ),
                     ],
                   ),
-                );
-              }).toList(),
+                ],
+              ),
             );
-          },
+          }).toList(),
         );
       },
     );
   }
 
+  Widget _meta(IconData icon, String text, {Key? key}) {
+    return Row(
+      key: key,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 15, color: context.g.mutedText),
+        const SizedBox(width: 5),
+        Flexible(child: Text(text, style: TextStyle(fontSize: 12, color: context.g.mutedText))),
+      ],
+    );
+  }
+
   // ---------------------------------------------------------------------------
-  // Tab 2 — registrations & reflections
+  // Tab 2 - History
   // ---------------------------------------------------------------------------
 
-  Widget _buildRegistrations(String guide) {
-    return StreamBuilder<QuerySnapshot>(
+  Widget _buildHistory(List<QueryDocumentSnapshot<Map<String, dynamic>>> all) {
+    final past = all.where((d) => tripArchived(d.data())).toList()
+      ..sort((a, b) => newestFirst(a.data(), b.data()));
+
+    if (past.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text("No past trips yet. A trip appears here the day after its date.", textAlign: TextAlign.center),
+        ),
+      );
+    }
+
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _registrationsStream(),
       builder: (context, regSnap) {
-        if (regSnap.connectionState == ConnectionState.waiting) {
-          return const GuideWait();
-        }
-
-        final regs = regSnap.data?.docs ?? [];
-
-        if (regs.isEmpty) {
-          return const Center(child: Text("No registrations yet"));
-        }
-
-        // Trips are global content: a student of this admin may have joined a
-        // trip another admin created, so every trip title is read here.
-        return StreamBuilder<QuerySnapshot>(
-          stream: _firestore.collection('expeditions').snapshots(),
-          builder: (context, tripSnap) {
-            final titles = <String, String>{};
-            for (final doc in tripSnap.data?.docs ?? []) {
-              titles[doc.id] =
-                  ((doc.data() as Map<String, dynamic>)['title'] ?? 'Trip')
-                      .toString();
-            }
-
-            // Grouped by trip so a guide reads one expedition at a time.
-            final grouped = <String, List<QueryDocumentSnapshot>>{};
-            for (final reg in regs) {
-              final expId =
-                  ((reg.data() as Map<String, dynamic>)['expeditionId'] ?? '')
-                      .toString();
-              grouped.putIfAbsent(expId, () => []).add(reg);
-            }
-
-            return ListView(
-              padding: const EdgeInsets.all(16),
-              children: grouped.entries.map((entry) {
-                final tripTitle = titles[entry.key] ?? 'Unknown trip';
-
-                return Column(
+        final allRegs = regSnap.data?.docs ?? [];
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: past.map((doc) {
+            final data = doc.data();
+            final summary = summariseAttendance(
+                allRegs.where((r) => (r.data()['expeditionId'] ?? '') == doc.id).map((r) => r.data()));
+            final trip = (data['title'] ?? '').toString();
+            final place = (data['location'] ?? '').toString().trim();
+            final forWho = targetGenderLabel(data['targetGender']?.toString());
+            return _shell(
+              child: InkWell(
+                key: ValueKey('history-trip-${doc.id}'),
+                onTap: () => _openHistoryTrip(doc.id, data),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10, top: 4),
-                      child: Text(
-                        tripTitle,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(historyTitle(data), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                         ),
-                      ),
+                        IconButton(
+                          key: ValueKey('delete-history-${doc.id}'),
+                          tooltip: "Delete",
+                          onPressed: () => _confirmDelete(doc.id, data, history: true),
+                          icon: Icon(Icons.delete_outline, color: context.g.danger),
+                        ),
+                      ],
                     ),
-                    ...entry.value.map((reg) {
-                      final data = reg.data() as Map<String, dynamic>;
-                      final reflected = data['hasReflected'] == true;
-
-                      return _shell(
-                        child: InkWell(
-                          onTap: reflected ? () => _showReflection(data) : null,
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      (data['studentName'] ?? 'Unknown')
-                                          .toString(),
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      "Registered ${_formatTs(data['registeredAt'])}",
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: context.g.mutedText,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              _chip(
-                                reflected ? "Submitted" : "Pending",
-                                reflected ? context.g.success : context.g.warning,
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 10),
+                    if (place.isNotEmpty && trip.isNotEmpty)
+                      Text(trip, style: TextStyle(fontSize: 12, color: context.g.mutedText)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 14,
+                      runSpacing: 4,
+                      children: [
+                        _meta(Icons.people, "${summary.total} students"),
+                        _meta(Icons.check_circle_outline, "${summary.full} fully, ${summary.partial} partly"),
+                        if (forWho.isNotEmpty) _meta(Icons.wc, "For ${forWho.toLowerCase()}"),
+                      ],
+                    ),
                   ],
-                );
-              }).toList(),
+                ),
+              ),
             );
-          },
+          }).toList(),
         );
       },
     );
@@ -691,8 +595,6 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
-        final guide = _selectedGuide;
-
         return GuideScaffold(
           appBar: GuideAppBar(
             leading: IconButton(
@@ -701,11 +603,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
             ),
             title: Text(
               "Expeditions",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: colorProvider.secondColor,
-                fontSize: 20,
-              ),
+              style: TextStyle(fontWeight: FontWeight.bold, color: colorProvider.secondColor, fontSize: 20),
             ),
             bottom: TabBar(
               controller: _tabController,
@@ -714,31 +612,121 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
               indicatorColor: context.g.brass,
               tabs: const [
                 Tab(text: "Manage Trips"),
-                Tab(text: "Reflections"),
+                Tab(text: "History"),
               ],
-            )),
-          body: guide == null
+            ),
+          ),
+          body: _selectedGuide == null
               ? const GuideWait()
-              : TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _buildTrips(guide),
-                    _buildRegistrations(guide),
-                  ],
+              : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: _tripsStream,
+                  builder: (context, snap) {
+                    if (snap.hasError) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text("Couldn't load the trips just now.", textAlign: TextAlign.center),
+                              const SizedBox(height: 12),
+                              TextButton(
+                                onPressed: () => setState(() => _tripsStream = _openTripsStream()),
+                                child: const Text("Retry"),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                    if (!snap.hasData) return const GuideWait();
+                    final docs = snap.data!.docs;
+                    return TabBarView(
+                      controller: _tabController,
+                      children: [_buildTrips(docs), _buildHistory(docs)],
+                    );
+                  },
                 ),
-          floatingActionButton: (guide != null && _tabController.index == 0)
+          floatingActionButton: (_selectedGuide != null && _tabController.index == 0)
               ? FloatingActionButton.extended(
                   backgroundColor: context.g.brass,
                   onPressed: _createTripDialog,
                   icon: Icon(Icons.add, color: context.g.onPrimary),
-                  label: Text(
-                    "New Trip",
-                    style: TextStyle(color: context.g.onPrimary),
-                  ),
+                  label: Text("New Trip", style: TextStyle(color: context.g.onPrimary)),
                 )
               : null,
         );
       },
     );
+  }
+}
+
+/// One trip in History: the students with their FINAL status, read only. A reflection can be opened from a
+/// student's row. The trip's creator and HODs can delete the card (with a confirmation).
+class ExpeditionHistoryTripPage extends StatelessWidget {
+  const ExpeditionHistoryTripPage({
+    super.key,
+    required this.tripId,
+    required this.trip,
+    required this.onDelete,
+  });
+
+  final String tripId;
+  final Map<String, dynamic> trip;
+
+  /// Asks for confirmation and deletes (the manager owns that flow).
+  final Future<void> Function() onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.g;
+    return GuideScaffold(
+      appBar: GuideAppBar(
+        title: Text(historyTitle(trip), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+        actions: [
+          IconButton(
+            key: const ValueKey('delete-history-detail'),
+            tooltip: "Delete",
+            icon: Icon(Icons.delete_outline, color: g.danger),
+            onPressed: () async {
+              await onDelete();
+              if (context.mounted && Navigator.of(context).canPop()) {
+                // If the trip was deleted, its card is gone: leave this page too.
+                final gone = await _tripGone();
+                if (gone && context.mounted) Navigator.of(context).pop();
+              }
+            },
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            color: g.chipBackground,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Icon(Icons.lock_outline, size: 14, color: g.mutedText),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text("A past trip: read only. Statuses are final.", style: TextStyle(fontSize: 12, color: g.mutedText)),
+                ),
+              ],
+            ),
+          ),
+          Expanded(child: ExpeditionRegistrationsList(tripId: tripId, editable: false)),
+        ],
+      ),
+    );
+  }
+
+  Future<bool> _tripGone() async {
+    try {
+      final snap = await GuideDb.instance.collection('expeditions').doc(tripId).get();
+      return !snap.exists;
+    } catch (_) {
+      return false;
+    }
   }
 }

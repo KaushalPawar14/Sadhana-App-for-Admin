@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../Services/MissingReportNotification.dart';
+import '../utils/GuideDb.dart';
+import '../widgets/GuideDialog.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/PlanningQueries.dart';
@@ -38,7 +40,10 @@ class PriorityStudentsPage extends StatefulWidget {
 
 /// One named concern. Deliberately carries no weight or number — a flag is
 /// either present or it is not, and the guide reads the words.
-typedef _Flag = ({String label, Color colour});
+///
+/// `kind` names the TYPE of concern (never its wording or its day count, which change daily): it is what
+/// "Remove from priority list" remembers, so a removed student comes back only when a NEW kind of concern appears.
+typedef _Flag = ({String kind, String label, Color colour});
 
 /// A student with at least one concern, and the concerns themselves.
 typedef _Priority = ({String uid, String name, List<_Flag> flags});
@@ -57,6 +62,14 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
 
   List<_Priority> _priority = [];
   int _inScope = 0;
+
+  /// This admin's "removed from my priority list" records: student uid -> the concern kinds they had then.
+  Map<String, Set<String>> _dismissed = {};
+  int _hiddenCount = 0;
+
+  /// Multi-select: long-press a student to start, tap others to add.
+  final Set<String> _selected = {};
+  bool get _selecting => _selected.isNotEmpty;
 
   @override
   void initState() {
@@ -132,7 +145,11 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
       litByStudent.putIfAbsent(uid, () => []).add(data);
     }
 
+    // The students THIS admin already removed from their own priority list (a read failure just shows everyone).
+    final dismissed = await _readDismissals(profile.id);
+
     final result = <_Priority>[];
+    var hidden = 0;
 
     for (final student in students) {
       final flags = _flagsFor(
@@ -145,6 +162,13 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
 
       // No concerns means not a priority. Such a student is simply absent.
       if (flags.isEmpty) continue;
+
+      // Removed by this admin, and nothing NEW has come up since: stays off their list.
+      final removedKinds = dismissed[student.uid];
+      if (removedKinds != null && flags.every((f) => removedKinds.contains(f.kind))) {
+        hidden++;
+        continue;
+      }
 
       result.add((uid: student.uid, name: student.name, flags: flags));
     }
@@ -162,9 +186,112 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
       _isHod = profile.isHod;
       _rosterFailed = false;
       _priority = result;
+      _dismissed = dismissed;
+      _hiddenCount = hidden;
+      _selected.clear();
       _inScope = students.length;
       _loading = false;
     });
+  }
+
+  Future<Map<String, Set<String>>> _readDismissals(String adminId) async {
+    try {
+      final snap = await GuideDb.instance
+          .collection('priorityDismissals')
+          .where('adminId', isEqualTo: adminId)
+          .get();
+      return {
+        for (final d in snap.docs)
+          (d.data()['studentUid'] ?? '').toString(): {
+            for (final k in (d.data()['kinds'] as List? ?? const [])) k.toString(),
+          },
+      }..remove('');
+    } catch (_) {
+      return {};
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Remove from the priority list (multi-select)
+  // ---------------------------------------------------------------------------
+
+  void _toggle(String uid) {
+    setState(() {
+      if (!_selected.remove(uid)) _selected.add(uid);
+    });
+  }
+
+  /// Takes the selected students off THIS admin's priority list. It writes one small record per student
+  /// (`priorityDismissals/{adminId}__{studentUid}`: adminId, studentUid, kinds, dismissedAt) and nothing else:
+  /// the student, their reports, chats, meetings and assessments are never touched.
+  Future<void> _removeSelected() async {
+    final profile = AdminProfileProvider.require();
+    final chosen = _priority.where((p) => _selected.contains(p.uid)).toList();
+    if (chosen.isEmpty) return;
+    final n = chosen.length;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => GuideDialog(
+        title: Text(n == 1 ? "Remove 1 student from your priority list?" : "Remove $n students from your priority list?"),
+        content: const Text(
+          "This only takes them off your priority list. The students themselves and "
+          "everything about them (reports, chats, meetings, assessments) are NOT deleted or changed. "
+          "A student comes back to the list if a new kind of concern appears.",
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text("Cancel")),
+          TextButton(
+            key: const ValueKey('confirm-remove-priority'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(n == 1 ? "Remove 1 student" : "Remove $n students",
+                style: const TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final db = GuideDb.instance;
+      final batch = db.batch();
+      for (final p in chosen) {
+        batch.set(db.collection('priorityDismissals').doc('${profile.id}__${p.uid}'), {
+          'adminId': profile.id,
+          'studentUid': p.uid,
+          'kinds': [for (final f in p.flags) f.kind],
+          'dismissedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
+      if (!mounted) return;
+      setState(() => _selected.clear());
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(n == 1 ? "1 student removed from your priority list" : "$n students removed from your priority list"),
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Could not remove them. Nothing was changed.")));
+    }
+  }
+
+  /// Puts every student this admin removed back on their list (deletes only those small records).
+  Future<void> _restoreRemoved() async {
+    final profile = AdminProfileProvider.require();
+    try {
+      final db = GuideDb.instance;
+      final batch = db.batch();
+      for (final uid in _dismissed.keys) {
+        batch.delete(db.collection('priorityDismissals').doc('${profile.id}__$uid'));
+      }
+      await batch.commit();
+      await _load();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Could not restore them just now.")));
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -194,11 +321,12 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
     if (dated.isEmpty) {
       // Distinct from a lapse — this student has never been engaged at all,
       // which may simply mean they were added recently.
-      flags.add((label: "Never logged an interaction", colour: context.g.brass));
+      flags.add((kind: 'never_logged', label: "Never logged an interaction", colour: context.g.brass));
     } else {
       final days = daysOverdue(dated.first);
       if (days >= _staleAfterDays) {
         flags.add((
+          kind: 'stale_contact',
           label: "No interaction in $days days",
           colour: context.g.warning,
         ));
@@ -208,6 +336,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
     // --- B. Today's sadhana report ------------------------------------------
     if (missing.contains(student.name)) {
       flags.add((
+        kind: 'missing_report',
         label: "Has not submitted today's sadhana report",
         colour: context.g.warning,
       ));
@@ -224,6 +353,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
     }
     if (worstOverdue != null) {
       flags.add((
+        kind: 'overdue_meeting',
         label: "Meeting overdue by ${daysOverdue(worstOverdue)} days",
         colour: context.g.danger,
       ));
@@ -251,6 +381,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
         final value = raw.toInt();
         if (value > _lowAxis) return;
         flags.add((
+          kind: 'lit_$key',
           label: "$meaning ($key: $value of 5)",
           colour: context.g.brass,
         ));
@@ -284,6 +415,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
       final contactedSince = dated.any((d) => d.isAfter(dueSince!));
       if (!contactedSince) {
         flags.add((
+          kind: 'follow_up_due',
           label: "Follow-up was due "
               "${DateFormat('dd MMM').format(dueSince)}, no contact since",
           colour: Colors.brown,
@@ -304,36 +436,60 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
       builder: (context, colorProvider, child) {
         return GuideScaffold(
           appBar: GuideAppBar(
-            title: Text("Priority Students"),
+            leading: _selecting
+                ? IconButton(
+                    key: const ValueKey('cancel-selection'),
+                    tooltip: "Cancel selection",
+                    icon: Icon(Icons.close, color: colorProvider.secondColor),
+                    onPressed: () => setState(_selected.clear),
+                  )
+                : null,
+            title: Text(_selecting ? "${_selected.length} selected" : "Priority Students"),
             actions: [
-              IconButton(
-                tooltip: "Refresh",
-                icon: Icon(Icons.refresh, color: colorProvider.secondColor),
-                onPressed: _loading ? null : _load,
-              ),
+              if (!_selecting)
+                IconButton(
+                  tooltip: "Refresh",
+                  icon: Icon(Icons.refresh, color: colorProvider.secondColor),
+                  onPressed: _loading ? null : _load,
+                ),
             ]),
           body: _loading
               ? const GuideWait()
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    children: [
-                      _summaryCard(),
-                      const SizedBox(height: 18),
-                      if (_rosterFailed)
-                        _messageCard("Could not read the student list")
-                      else if (_priority.isEmpty)
-                        _messageCard(
-                          _inScope == 0
-                              ? "No students in scope yet"
-                              : "No concerns flagged right now",
-                        )
-                      else
-                        ..._priority.map(_studentCard),
-                    ],
-                  ),
+              : Column(
+                  children: [
+                    Expanded(
+                      child: RefreshIndicator(
+                        onRefresh: _load,
+                        child: ListView(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: [
+                            _summaryCard(),
+                            if (_hiddenCount > 0 && !_selecting) _restoreLine(),
+                            const SizedBox(height: 18),
+                            if (_rosterFailed)
+                              _messageCard("Could not read the student list")
+                            else if (_priority.isEmpty)
+                              _messageCard(
+                                _inScope == 0
+                                    ? "No students in scope yet"
+                                    : "No concerns flagged right now",
+                              )
+                            else ...[
+                              if (!_selecting)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: Text("Press and hold a student to select, then remove from your list.",
+                                      style: TextStyle(fontSize: 11, color: context.g.mutedText)),
+                                ),
+                              ..._priority.map(_studentCard),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_selecting) _selectionBar(),
+                  ],
                 ),
         );
       },
@@ -355,6 +511,46 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
     );
   }
 
+  /// "N removed by you - Restore": the way back (deletes only this admin's own small removal records).
+  Widget _restoreLine() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text("$_hiddenCount removed by you.", style: TextStyle(fontSize: 12, color: context.g.mutedText)),
+          TextButton(
+            key: const ValueKey('restore-removed'),
+            onPressed: _restoreRemoved,
+            child: const Text("Restore"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _selectionBar() {
+    final g = context.g;
+    return SafeArea(
+      top: false,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+        decoration: BoxDecoration(color: g.surface, boxShadow: g.cardShadow),
+        child: ElevatedButton.icon(
+          key: const ValueKey('remove-from-priority'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: g.brass,
+            minimumSize: const Size.fromHeight(48),
+          ),
+          onPressed: _removeSelected,
+          icon: Icon(Icons.playlist_remove, color: g.onPrimary),
+          label: Text("Remove from priority list", style: TextStyle(color: g.onPrimary)),
+        ),
+      ),
+    );
+  }
+
   Widget _messageCard(String text) {
     return Container(
       padding: const EdgeInsets.all(24),
@@ -373,18 +569,31 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
   }
 
   Widget _studentCard(_Priority item) {
-    return Container(
+    final picked = _selected.contains(item.uid);
+    return GestureDetector(
+      key: ValueKey('priority-${item.uid}'),
+      behavior: HitTestBehavior.opaque,
+      onLongPress: _selecting ? null : () => _toggle(item.uid),
+      onTap: _selecting ? () => _toggle(item.uid) : null,
+      child: Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: context.g.surface,
+        color: picked ? context.g.brass.withValues(alpha: .10) : context.g.surface,
         borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: picked ? context.g.brass : Colors.transparent, width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
+              if (_selecting)
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Icon(picked ? Icons.check_circle : Icons.radio_button_unchecked,
+                      size: 22, color: picked ? context.g.brass : context.g.mutedText),
+                ),
               Expanded(
                 child: Text(
                   item.name,
@@ -438,21 +647,24 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
             ),
           ),
 
-          const SizedBox(height: 6),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => StudentProfilePage(studentUid: item.uid),
+          if (!_selecting) ...[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => StudentProfilePage(studentUid: item.uid),
+                  ),
                 ),
+                icon: const Icon(Icons.person_outline, size: 16),
+                label: const Text("Open profile"),
               ),
-              icon: const Icon(Icons.person_outline, size: 16),
-              label: const Text("Open profile"),
             ),
-          ),
+          ],
         ],
+      ),
       ),
     );
   }
