@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:folk_guide_app/Home/FolkBoysWorkspace.dart';
 import 'package:folk_guide_app/theme/GuideTheme.dart';
 
 /// The text scales every new / changed widget is checked at.
@@ -32,7 +33,9 @@ Future<void> loadGuideFonts() async {
 }
 
 /// A 360 x 800 dp phone at [scale] text size.
-void phone(WidgetTester tester, double scale, {Size size = const Size(360, 800)}) {
+void phone(WidgetTester tester, double scale, {Size size = const Size(360, 800), bool resetBoardMemory = true}) {
+  // each test starts with a board that has never been shown (it remembers its last answers between visits)
+  if (resetBoardMemory) FolkBoysWorkspace.debugResetBoardMemory();
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = size;
   tester.platformDispatcher.textScaleFactorTestValue = scale;

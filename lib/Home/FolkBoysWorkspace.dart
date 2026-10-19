@@ -213,6 +213,10 @@ class FolkBoysWorkspace extends StatefulWidget {
 
   const FolkBoysWorkspace({super.key, required this.selectedGuide});
 
+  /// Forgets what the board remembers between visits (tests).
+  @visibleForTesting
+  static void debugResetBoardMemory() => _FolkBoysWorkspaceState._resetBoardMemory();
+
   @override
   State<FolkBoysWorkspace> createState() => _FolkBoysWorkspaceState();
 }
@@ -361,7 +365,65 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   /// Levels (keyed `uid_level`) whose whole book list is showing.
   final Set<String> _allBooksShown = {};
 
-  final ScrollController _hController = ScrollController();
+  /// Where the columns were scrolled to the last time (kept for the whole app session, so even a board that
+  /// is built again starts exactly where it was).
+  static double _lastHorizontalOffset = 0;
+
+  late final ScrollController _hController =
+      ScrollController(initialScrollOffset: _lastHorizontalOffset)
+        ..addListener(() {
+          if (_hController.hasClients) _lastHorizontalOffset = _hController.offset;
+        });
+
+  // ---------------------------------------------------------------------------
+  // The board never starts over (no blink when a page opened from it is closed)
+  // ---------------------------------------------------------------------------
+  //
+  // Every stream below used to be created inside `build`, so any rebuild of the board (and the board
+  // rebuilds whenever anything under it changes) dropped its listeners and opened new ones, and a board
+  // built afresh started from the loading ghost again. Now:
+  //  * a stream is created ONCE per slot (and again only when its key changes: another board);
+  //  * the last answer of each slot is kept for the whole session ([_lastData]) and is the first thing a
+  //    new listener shows, so the ghost appears only on the very first load of the app session; a refresh
+  //    updates the cards in place;
+  //  * the "reveal" fade plays once per session, not on every return ([_everRevealed]);
+  //  * each column's vertical scroll is stored under the column's own key (PageStorage).
+  final Map<String, ({Object key, Object stream})> _streams = {};
+
+  /// The last answer of every slot, per signed-in admin (an admin never sees another's).
+  static final Map<String, Object?> _lastData = {};
+  static bool _everRevealed = false;
+
+  static void _resetBoardMemory() {
+    _lastData.clear();
+    _everRevealed = false;
+    _lastHorizontalOffset = 0;
+  }
+
+  Widget _live<T>({
+    required String slot,
+    String key = '',
+    required Stream<T> Function() stream,
+    required AsyncWidgetBuilder<T> builder,
+  }) {
+    final memo = _streams[slot];
+    final Stream<T> s;
+    if (memo != null && memo.key == key) {
+      s = memo.stream as Stream<T>;
+    } else {
+      s = stream();
+      _streams[slot] = (key: key, stream: s);
+    }
+    final cacheKey = '${AdminProfileProvider.current?.id ?? ''}|$slot|$key';
+    return StreamBuilder<T>(
+      stream: s,
+      initialData: _lastData[cacheKey] as T?,
+      builder: (context, snap) {
+        if (snap.hasData) _lastData[cacheKey] = snap.data;
+        return builder(context, snap);
+      },
+    );
+  }
 
   static const double _edgeZone = 76;
   static const double _maxScrollStep = 14;
@@ -1258,8 +1320,9 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   Widget build(BuildContext context) {
     _colW = _columnWidthFor(MediaQuery.sizeOf(context).width);
     final guide = _guide;
-    return StreamBuilder<List<BoardDoc>>(
-      stream: BoardData.instance.boards(),
+    return _live<List<BoardDoc>>(
+      slot: 'topBoards',
+      stream: () => BoardData.instance.boards(),
       builder: (context, boardsSnap) {
         final allBoards = boardsSnap.data ?? const <BoardDoc>[];
         BoardDoc? activeCustomBoard;
@@ -2176,7 +2239,11 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       return GuideErrorOverGhost(
         ghost: ghost,
         message: 'Could not load the board. Check your connection and try again.',
-        onRetry: () => setState(() => _ensureFailed = false),
+        onRetry: () => setState(() {
+          // a failed stream is dead: Retry listens again from scratch
+          _streams.clear();
+          _ensureFailed = false;
+        }),
       );
     }
     return GuideGhostArea(child: ghost);
@@ -2190,8 +2257,11 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       );
 
   /// The loaded board, cross-faded in over the ghost it replaces.
-  Widget _boardReveal(Widget content) =>
-      GuideReveal(ghost: GuideBoardGhost(columnWidth: _colW), child: content);
+  Widget _boardReveal(Widget content) {
+    final animate = !_everRevealed;
+    _everRevealed = true;
+    return GuideReveal(ghost: GuideBoardGhost(columnWidth: _colW), animate: animate, child: content);
+  }
 
   /// A bottom sheet's list while it loads: ghost rows (or Retry if it failed).
   Widget _sheetWait(AsyncSnapshot<Object?> snap) {
@@ -2230,8 +2300,9 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
         reconcile: false,
       );
     }
-    return StreamBuilder<List<BoardDoc>>(
-      stream: _within(BoardData.instance.boards()),
+    return _live<List<BoardDoc>>(
+      slot: 'guideBoards',
+      stream: () => _within(BoardData.instance.boards()),
       builder: (context, boardsSnap) {
         if (!boardsSnap.hasData) return _boardWait(boardsSnap);
         final all = boardsSnap.data!;
@@ -2250,8 +2321,10 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
         }
         final boardId = board.id;
 
-        return StreamBuilder<List<BoardColumn>>(
-          stream: _within(BoardData.instance.columns(boardId)),
+        return _live<List<BoardColumn>>(
+          slot: 'guideColumns',
+          key: boardId,
+          stream: () => _within(BoardData.instance.columns(boardId)),
           builder: (context, colSnap) {
             if (!colSnap.hasData) return _boardWait(colSnap);
             return _boardBody(
@@ -2274,12 +2347,13 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     required List<BoardColumn> columns,
     required bool reconcile,
   }) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    return _live<QuerySnapshot<Map<String, dynamic>>>(
       // The students THIS viewer may see: `StudentScope`'s scoped stream (HOD: the
       // unfiltered collection, which is what lets the Unassigned lanes contain anything for
       // him; everyone else: only what the security rules let them read). See
       // [_studentsStream].
-      stream: _within(_studentsStream()),
+      slot: 'guideStudents',
+      stream: () => _within(_studentsStream()),
       builder: (context, userSnap) {
         if (!userSnap.hasData) return _boardWait(userSnap);
 
@@ -2414,8 +2488,9 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     String guide,
     String boardId,
   ) {
-    return StreamBuilder<List<BoardDoc>>(
-      stream: BoardData.instance.boards(),
+    return _live<List<BoardDoc>>(
+      slot: 'customBoards',
+      stream: () => BoardData.instance.boards(),
       builder: (context, boardsSnap) {
         if (!boardsSnap.hasData) return _boardWait(boardsSnap);
         BoardDoc? board;
@@ -2428,8 +2503,10 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
         if (board == null) return _boardWait(boardsSnap);
         final canEdit = canEditBoard(board: board, guide: guide, isHod: _isHod);
 
-        return StreamBuilder<List<BoardColumn>>(
-          stream: BoardData.instance.columns(boardId),
+        return _live<List<BoardColumn>>(
+          slot: 'customColumns',
+          key: boardId,
+          stream: () => BoardData.instance.columns(boardId),
           builder: (context, colSnap) {
             if (!colSnap.hasData) return _boardWait(colSnap);
             final columns = colSnap.data!;
@@ -2445,8 +2522,10 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             // eligibility changes, which is a simpler and more consistent
             // rule than the previous "eligible OR already placed" union
             // this replaced.
-            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: BoardData.instance.placements(boardId),
+            return _live<QuerySnapshot<Map<String, dynamic>>>(
+              slot: 'customPlacements',
+              key: boardId,
+              stream: () => BoardData.instance.placements(boardId),
               builder: (context, placeSnap) {
                 final placementColumnByUid = <String, String>{};
                 if (placeSnap.hasData) {
@@ -2471,11 +2550,12 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                   ));
                 }
 
-                return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                return _live<QuerySnapshot<Map<String, dynamic>>>(
                   // Scoped stream — a placed student the viewer may not see
                   // (e.g. one the HOD placed on a board shared with a guide)
                   // is simply not rendered; see [_studentsStream].
-                  stream: _studentsStream(),
+                  slot: 'customStudents',
+                  stream: () => _studentsStream(),
                   builder: (context, userSnap) {
                     if (!userSnap.hasData) return _boardWait(userSnap);
 
@@ -2668,6 +2748,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                   ),
                 )
               : ListView.builder(
+                  key: PageStorageKey<String>('custom-col-$boardId-${column.id}'),
                   physics: _scrollLocked ? const NeverScrollableScrollPhysics() : null,
                   padding: const EdgeInsets.only(top: 4, bottom: 6),
                   itemCount: boys.length + 1,
@@ -2935,6 +3016,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                   ),
                 )
               : ListView.builder(
+                  key: PageStorageKey<String>('col-$boardId-${column.column.id}'),
                   // Same drag fix as the outer horizontal list — this column's
                   // own vertical scroll is ALSO an ancestor of every card's
                   // `LongPressDraggable` and competes in the exact same way.

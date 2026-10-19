@@ -10,12 +10,14 @@ import 'GuideStates.dart';
 /// out and the content fades in over 250 ms, both in the same box, so nothing moves.
 /// Use it where the content appears from deep inside nested builders (the board),
 /// where an AnimatedSwitcher at the top cannot see the change. With "reduce
-/// animations" it is just the child.
+/// animations" it is just the child. [animate] false (a screen the user has already seen
+/// loaded, shown again) is just the child too: nothing fades in a second time.
 class GuideReveal extends StatefulWidget {
-  const GuideReveal({super.key, required this.ghost, required this.child});
+  const GuideReveal({super.key, required this.ghost, required this.child, this.animate = true});
 
   final Widget ghost;
   final Widget child;
+  final bool animate;
 
   @override
   State<GuideReveal> createState() => _GuideRevealState();
@@ -31,7 +33,7 @@ class _GuideRevealState extends State<GuideReveal> with SingleTickerProviderStat
     super.didChangeDependencies();
     if (_decided) return;
     _decided = true;
-    if (GuideMotion.reduced(context)) {
+    if (!widget.animate || GuideMotion.reduced(context)) {
       _done = true;
       return;
     }

@@ -346,7 +346,8 @@ class _CalendarPageState extends State<CalendarPage> {
     return StreamBuilder<DocumentSnapshot>(
       stream: GuideDb.instance.collection('users').doc(uid).snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        // the loading ghost only on the very first load: a snapshot that already holds data is shown while it refreshes
+        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
           return const Padding(
             padding: EdgeInsets.all(16),
             child: const GuideWait(compact: true),
@@ -433,7 +434,8 @@ class _CalendarPageState extends State<CalendarPage> {
           .doc(name)
           .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        // the loading ghost only on the very first load: a snapshot that already holds data is shown while it refreshes
+        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
           return const Padding(
             padding: EdgeInsets.all(16),
             child: const GuideWait(compact: true),
@@ -546,7 +548,8 @@ class _CalendarPageState extends State<CalendarPage> {
           .doc(name)
           .snapshots(),
       builder: (context, competitionSnap) {
-        if (competitionSnap.connectionState == ConnectionState.waiting) {
+        // the loading ghost only on the very first load: a snapshot that already holds data is shown while it refreshes
+        if (competitionSnap.connectionState == ConnectionState.waiting && !competitionSnap.hasData) {
           return const Padding(
             padding: EdgeInsets.all(16),
             child: const GuideWait(compact: true),
@@ -563,7 +566,8 @@ class _CalendarPageState extends State<CalendarPage> {
               .doc(name)
               .snapshots(),
           builder: (context, scorecardSnap) {
-            if (scorecardSnap.connectionState == ConnectionState.waiting) {
+            // the loading ghost only on the very first load: a snapshot that already holds data is shown while it refreshes
+        if (scorecardSnap.connectionState == ConnectionState.waiting && !scorecardSnap.hasData) {
               return const Padding(
                 padding: EdgeInsets.all(16),
                 child:

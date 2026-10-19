@@ -239,8 +239,9 @@ Future<void> pumpScreen(
   double scale = 1.0,
   bool dark = false,
   bool reduce = true,
+  bool resetBoardMemory = true,
 }) async {
-  phone(tester, scale);
+  phone(tester, scale, resetBoardMemory: resetBoardMemory);
   SharedPreferences.setMockInitialValues({
     'selected_guide': 'H',
     ThemeModeController.prefsKey: dark ? 'dark' : 'light',

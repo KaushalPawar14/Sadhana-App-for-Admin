@@ -31,6 +31,9 @@ class _ScoreScreenState extends State<ScoreScreen> {
   }
 
   // Function to fetch the report data for the selected date from Firestore
+  // asked once per visit, not on every rebuild (so coming back never shows the wait again)
+  Future<Map<String, dynamic>?>? _todays;
+
   Future<Map<String, dynamic>?> _fetchTodaysData() async {
     try {
       // Fetch the document from 'sadhana-reports' collection based on the username
@@ -89,9 +92,9 @@ class _ScoreScreenState extends State<ScoreScreen> {
         ),
         body: FutureBuilder<
             Map<String, dynamic>?>( // Use FutureBuilder to display data
-          future: _fetchTodaysData(),
+          future: _todays ??= _fetchTodaysData(),
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
+            if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
               return const GuideWait();
             }
             if (snapshot.hasError) {
