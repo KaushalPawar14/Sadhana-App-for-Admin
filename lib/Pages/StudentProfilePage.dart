@@ -408,17 +408,11 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
       return;
     }
 
-    // Part 2 item 5, revised by Master Task 2026-09-11 "Read reports from
-    // both collections so history survives a residence change" — crossing
-    // the FOLK <-> Hostel/Localite boundary still changes which collection
-    // FUTURE reports land in (past reports are never moved, Rule 14/15),
-    // but that no longer hides anything: every read site that shows this
-    // student's report history (calendar, ABCDE activity, submission
-    // status) now reads and merges BOTH collections
-    // (`utils/SadhanaReportSource.dart`), so nothing disappears. This is
-    // now a plain heads-up, not a warning — no warning needed at all for a
-    // Hostel <-> Localite switch, since both already share the same
-    // `hostel-sadhana` bucket and this note would have nothing to say.
+    // Reports are CATEGORY-SEPARATED (product-owner decision, replaces the 2026-09-11 "read both collections"
+    // rule): crossing the FOLK <-> Hostel/Localite boundary changes which collection counts. Nothing is deleted
+    // or moved (Rule 14/15), but until he is switched back his calendar, graphs, points and "left to submit"
+    // are read from the NEW category's collection only, so the dialog below says so. A Hostel <-> Localite
+    // switch is one category and shows no dialog.
     if (_reportBucketFor(currentRole) != _reportBucketFor(selected)) {
       if (!context.mounted) return;
       final confirmed = await showDialog<bool>(
@@ -426,10 +420,11 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
         builder: (dialogContext) => GuideDialog(
           title: const Text('Change residence?'),
           content: const Text(
-            "Reports submitted from now on will be filed under the new "
-            "residence. Nothing is lost — this student's full sadhana "
-            'history, from both before and after the switch, still shows '
-            'in their calendar and ABCDE activity. Continue?',
+            "From now on this student's reports are filed under the new "
+            "category, and only that category's reports are shown and "
+            "counted (calendar, graphs, points, 'left to submit'). Reports "
+            "filed under the old category stay saved and come back if you "
+            "switch him back. Continue?",
           ),
           actions: [
             TextButton(

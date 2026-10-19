@@ -143,6 +143,20 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
     _load();
   }
 
+  // The student's category changed: his chanting / reading series are read again from the new category's
+  // collection (the card never keeps the old category's figures).
+  @override
+  void didUpdateWidget(AbcdeActivityCard old) {
+    super.didUpdateWidget(old);
+    if (reportCollectionForRole(old.role) != reportCollectionForRole(widget.role)) {
+      setState(() {
+        _loading = true;
+        _failed = false;
+      });
+      _load();
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Reads
   // ---------------------------------------------------------------------------
@@ -182,10 +196,9 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
   Future<void> _loadDailySeries() async {
     if (widget.studentName.isEmpty) return;
 
-    // Master Task 2026-09-11 — merged across both residence collections so
-    // history filed before a residence switch still counts here. See
-    // utils/SadhanaReportSource.dart's own header for the one-per-date rule.
-    final merged = await fetchMergedDateReports(widget.studentName);
+    // Category-separated reports: only the collection of the student's CURRENT category counts.
+    // See utils/SadhanaReportSource.dart.
+    final merged = await fetchDateReports(widget.studentName, widget.role);
 
     final chantByDoc = <String, int>{};
     final readingByDoc = <String, int>{};

@@ -9,6 +9,7 @@ import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../theme/GuideColors.dart';
 import '../utils/GuideDb.dart';
+import '../utils/SadhanaReportSource.dart' show reportCollectionForRole;
 import '../utils/Residence.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideWait.dart';
@@ -112,6 +113,28 @@ class _GraphicalAnalysisSectionState extends State<GraphicalAnalysisSection> {
 
   DateTime get lastAllowedDate => DateTime.now();
 
+  // The student's category changed (a guide switched FOLK <-> Hostel / Localite): his reports are read from the
+  // other collection now, so everything is read again - the graphs never keep the old category's figures.
+  @override
+  void didUpdateWidget(GraphicalAnalysisSection old) {
+    super.didUpdateWidget(old);
+    if (reportCollectionForRole(old.role) != reportCollectionForRole(widget.role)) {
+      setState(() {
+        loading = true;
+        chantingAutoZero = [];
+        chantingRounds = [];
+        bookReadingData = [];
+        templeEntryData = [];
+        finishTimingData = [];
+        classHearingCount = {'Fully': 0, 'Partial': 0, 'Missed': 0};
+        dailyServicesCount = {'Fully': 0, 'Partial': 0, 'Missed': 0};
+      });
+      fetchChantingData();
+      fetchTempleEntryData();
+      fetchPieChartData();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -145,10 +168,8 @@ class _GraphicalAnalysisSectionState extends State<GraphicalAnalysisSection> {
   }
 
   String getCollectionName() {
-    // Localites (Master Task, 2026-09-03) behave exactly like Hostel here.
-    return (widget.role == 'Stay at Hostel' || widget.role == 'Stay at Localite')
-        ? 'hostel-sadhana'
-        : 'sadhana-reports';
+    // the collection of the student's CURRENT category (Localite is Hostel's category)
+    return reportCollectionForRole(widget.role);
   }
 
   /// This student's date reports. Read through the viewer's scope queries

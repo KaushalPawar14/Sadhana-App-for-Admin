@@ -16,8 +16,8 @@ class MissingReportService {
     return DateFormat('dd-MM-yyyy').format(DateTime.now());
   }
 
-  /// Names (the sadhana document ids) of the visible students with no report
-  /// for today in EITHER residence collection.
+  /// Names (the sadhana document ids) of the visible students with no report for today in the collection of
+  /// their CURRENT category.
   Future<List<String>> fetchMissingNames() async {
     final today = getTodayDateId();
     final students = await StudentScope(AdminProfileProvider.require())
@@ -27,9 +27,10 @@ class MissingReportService {
     for (final doc in students.docs) {
       final name = (doc.data()['name'] ?? '').toString();
       if (name.isEmpty) continue;
+      final role = (doc.data()['role'] ?? '').toString();
       checks.add(() async {
         try {
-          final report = await fetchMergedDateReport(name, today);
+          final report = await fetchDateReport(name, today, role);
           return report == null ? name : null;
         } catch (_) {
           // One failed read must not hide everybody else's missing report.

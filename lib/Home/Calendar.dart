@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -62,11 +64,48 @@ class _CalendarPageState extends State<CalendarPage> {
   /// date". That is deliberate.
   _Tab _tab = _Tab.calendar;
 
-  // Master Task 2026-09-11 — merged across both residence collections so
-  // history filed before a residence switch still shows here. See
-  // utils/SadhanaReportSource.dart's own header for the one-per-date rule.
+  // Category-separated reports: only the collection of the student's CURRENT category is read, and it follows
+  // the student's profile live (a category change, by this guide or another, recolours the calendar at once and
+  // switches the graphs / day details). See utils/SadhanaReportSource.dart.
+  late String _role = widget.role;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _roleSub;
+  Stream<Set<String>>? _datesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    final uid = widget.studentUid;
+    if (uid != null && uid.isNotEmpty) {
+      _roleSub = GuideDb.instance.collection('users').doc(uid).snapshots().listen((snap) {
+        final role = snap.data()?['role']?.toString();
+        if (role == null || !mounted) return;
+        if (reportCollectionForRole(role) != reportCollectionForRole(_role)) {
+          setState(() {
+            _role = role;
+            // the day on screen was read from the other category: forget it
+            _selectedDay = null;
+            _selectedDayData = null;
+            _datePressed = false;
+          });
+        } else if (role != _role) {
+          _role = role; // Hostel <-> Localite: the same category, nothing to reload
+        }
+      }, onError: (Object _) {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _roleSub?.cancel();
+    super.dispose();
+  }
+
   Stream<Set<String>> _availableDatesStream() {
-    return mergedAvailableDatesStream(widget.username);
+    return _datesStream ??= availableDatesStream(
+      widget.username,
+      role: widget.role,
+      studentUid: widget.studentUid,
+    );
   }
 
   String _formatDate(DateTime date) =>
@@ -110,7 +149,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
     try {
       String formattedDate = _formatDate(selectedDay);
-      final data = await fetchMergedDateReport(widget.username, formattedDate);
+      final data = await fetchDateReport(widget.username, formattedDate, _role);
 
       setState(() {
         _selectedDayData = data ?? {};
@@ -501,7 +540,7 @@ class _CalendarPageState extends State<CalendarPage> {
               _infoRow('Bhagavatam Classes', '$sbClass 🎧',
                   context.g.brass),
               // Daily services exist on the FOLK form only (none for Hostel / Localite).
-              if (hasDailyServices(widget.role))
+              if (hasDailyServices(_role))
                 _infoRow('Services Done', '$service 🙏', context.g.success),
             ],
           ),
@@ -680,7 +719,7 @@ class _CalendarPageState extends State<CalendarPage> {
                   const SizedBox(height: 4),
                   GraphicalAnalysisSection(
                     username: widget.username,
-                    role: widget.role,
+                    role: _role,
                   ),
                 ],
               ),

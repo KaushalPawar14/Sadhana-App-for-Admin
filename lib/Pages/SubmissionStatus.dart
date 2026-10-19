@@ -116,14 +116,11 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
         final uid = doc.id;
 
         checks.add(Future(() async {
-          // Master Task 2026-09-11 — checked against BOTH collections
-          // rather than picking one by current role, same reason as
-          // `MissingReportService.fetchMissingTokens()`'s own update: a
-          // same-day residence change must not make an already-submitted
-          // report look missing.
+          // Category-separated reports: only the collection of the student's CURRENT category counts
+          // (a report filed under the other category is not "submitted today").
           final entry = (name: name, role: role, uid: uid);
           try {
-            final report = await fetchMergedDateReport(name, today);
+            final report = await fetchDateReport(name, today, role);
             if (report != null) {
               submitted.add(entry);
             } else {
