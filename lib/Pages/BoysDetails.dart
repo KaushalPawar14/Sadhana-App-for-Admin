@@ -8,6 +8,7 @@ import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ManualStudents.dart';
+import '../utils/StudentNameGuard.dart';
 import '../utils/Snackbar.dart';
 import 'AdminManager.dart';
 import 'NotificationSettings.dart';
@@ -149,7 +150,8 @@ class _AdminControlPageState extends State<AdminControlPage> {
               // button.
               if (saving) return;
 
-              final name = nameController.text.trim();
+              // Trimmed like every other place a student is created (StudentNameGuard).
+              final name = normalizeStudentName(nameController.text);
               if (name.isEmpty) {
                 setDialogState(() => error = "Enter the student's name");
                 return;
