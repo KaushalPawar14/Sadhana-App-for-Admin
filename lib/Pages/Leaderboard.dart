@@ -35,6 +35,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
 
   GuideLoad _load = GuideLoad.loading;
   List<LeaderboardEntry> _entries = const [];
+  Map<BestField, List<LeaderboardEntry>> _fields = const {};
 
   /// Bumped on every request, so a slow answer for an old selection is ignored.
   int _request = 0;
@@ -63,13 +64,15 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
     final request = ++_request;
     setState(() => _load = GuideLoad.loading);
     try {
-      final entries = await LeaderboardData.instance.ranking(
-        category: _category,
-        gender: _gender,
-        period: _period,
-      );
+      final both = await Future.wait<Object>([
+        LeaderboardData.instance.ranking(category: _category, gender: _gender, period: _period),
+        LeaderboardData.instance.fieldBests(category: _category, gender: _gender, period: _period),
+      ]);
+      final entries = both[0] as List<LeaderboardEntry>;
+      final fields = both[1] as Map<BestField, List<LeaderboardEntry>>;
       if (!mounted || request != _request) return;
       setState(() {
+        _fields = fields;
         _entries = entries;
         _load = entries.isEmpty ? GuideLoad.empty : GuideLoad.content;
       });
@@ -190,6 +193,10 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
                       ],
                     ),
                   ),
+                  if (_load == GuideLoad.content && _fields.isNotEmpty) ...[
+                    const SizedBox(height: 22),
+                    _FieldBests(fields: _fields, period: _period),
+                  ],
                   const SizedBox(height: 22),
                   _BestSection(
                     future: _best,
@@ -247,6 +254,59 @@ class _Row extends StatelessWidget {
           Text(entry.score.toStringAsFixed(2), style: t.bodyStrong),
         ],
       ),
+    );
+  }
+}
+
+/// "Best by field": the best five of Chanting, Reading, Hearing and (FOLK only) Service for the period, by each
+/// field's own points (no multipliers).
+class _FieldBests extends StatelessWidget {
+  const _FieldBests({required this.fields, required this.period});
+
+  final Map<BestField, List<LeaderboardEntry>> fields;
+  final LeaderboardPeriod period;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.gText;
+    final g = context.g;
+    String pts(double p) => '${p == p.roundToDouble() ? p.toInt() : p.toStringAsFixed(1)} pts';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('BEST BY FIELD · ${period.label.toUpperCase()}', style: t.label),
+        const SizedBox(height: 8),
+        for (final f in BestField.values)
+          if (fields.containsKey(f))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: GuideCard(
+                key: ValueKey('field-${f.name}'),
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(f.title, style: t.cardTitle),
+                    const SizedBox(height: 6),
+                    if (fields[f]!.isEmpty)
+                      Text('No points here yet.', style: t.caption.copyWith(color: g.mutedText))
+                    else
+                      for (var i = 0; i < fields[f]!.length; i++)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          child: Row(
+                            children: [
+                              SizedBox(width: 24, child: Text('${i + 1}', style: t.bodyStrong.copyWith(color: g.mutedText))),
+                              Expanded(child: Text(fields[f]![i].name, style: t.body)),
+                              Text(pts(fields[f]![i].score), style: t.bodyStrong),
+                            ],
+                          ),
+                        ),
+                  ],
+                ),
+              ),
+            ),
+      ],
     );
   }
 }

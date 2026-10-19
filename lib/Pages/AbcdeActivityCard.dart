@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../utils/AbcdeActivity.dart';
+import '../utils/LeaderboardData.dart' show dottedField;
+import '../utils/Residence.dart' show hasDailyServices;
 import '../utils/SadhanaReportSource.dart';
 import '../utils/ServiceAssignments.dart';
 import '../utils/StudentScope.dart';
@@ -130,7 +132,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
   int _assignedActiveServices = 0;
   int _completedServices = 0;
   int _competentServices = 0;
-  int _lifetimeServiceDone = 0;
+  double _monthServicePoints = 0;
 
   // E
   int _tripsRegistered = 0;
@@ -336,9 +338,9 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
   /// a live assignment, matching how the Service Bank's own "Assigned" tab
   /// treats them.
   ///
-  /// `scorecard.totalServiceDone` is read exactly as before — a genuinely
-  /// separate, unrelated counter (see the Service Bank task's own Part 1);
-  /// nothing about replacing the assignment system touches it.
+  /// The old `scorecard.totalServiceDone` lifetime counter is gone (the scorecard collection was removed with
+  /// the old category leaderboards); the line beside the assignment counts is now this MONTH's service points from
+  /// the student's `competition` document (`monthly.pts_service`, no multipliers; FOLK form only).
   Future<void> _loadService() async {
     final assignmentsSnap =
         await (await _scopedFor('serviceAssignments', 'studentUid')).get();
@@ -354,11 +356,15 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
       if (a.competence?.level == kCompetenceYes) competent++;
     }
 
-    var lifetime = 0;
+    var monthPoints = 0.0;
     if (widget.studentName.isNotEmpty) {
-      final scorecard =
-          await _firestore.collection('scorecard').doc(widget.studentName).get();
-      lifetime = _asInt(scorecard.data()?['totalServiceDone']);
+      try {
+        final comp = await _firestore.collection('competition').doc(widget.studentName).get();
+        final v = comp.data() == null ? null : dottedField(comp.data()!, 'monthly.pts_service');
+        monthPoints = v is num ? v.toDouble() : 0;
+      } catch (_) {
+        // no competition document yet (or not readable): no points to show
+      }
     }
 
     if (!mounted) return;
@@ -366,7 +372,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
       _assignedActiveServices = active;
       _completedServices = completed;
       _competentServices = competent;
-      _lifetimeServiceDone = lifetime;
+      _monthServicePoints = monthPoints;
     });
   }
 
@@ -681,19 +687,19 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
   /// Service Bank task, Part 6 item 1 — real completion status now exists
   /// (`_assignedActiveServices`/`_completedServices`/`_competentServices`,
   /// from `serviceAssignments`), so the old "completion is not tracked"
-  /// caveat is removed — it would now be false. `_lifetimeServiceDone`
-  /// (`scorecard.totalServiceDone`) is shown exactly as before, on its own
-  /// line — a separate, unrelated counter, never blended with the
-  /// assignment counts above it (matches this card's own standing "never
-  /// aggregate" rule: two different D-relevant numbers, shown side by side,
-  /// not summed into one).
+  /// caveat is removed — it would now be false. `_monthServicePoints`
+  /// (`competition.monthly.pts_service`) is shown on its own line — a separate
+  /// counter, never blended with the assignment counts above it (matches this
+  /// card's own standing "never aggregate" rule: two different D-relevant
+  /// numbers, shown side by side, not summed into one).
   List<Widget> _serviceLines() {
     return [
       _value(_assignedActiveServices == 0
           ? "No services assigned"
           : "$_assignedActiveServices service${_assignedActiveServices == 1 ? '' : 's'} assigned "
               "($_completedServices completed, $_competentServices assessed competent)"),
-      _muted("$_lifetimeServiceDone lifetime service points"),
+      if (hasDailyServices(widget.role))
+        _muted("${_monthServicePoints == _monthServicePoints.roundToDouble() ? _monthServicePoints.toInt() : _monthServicePoints.toStringAsFixed(1)} service points this month"),
     ];
   }
 

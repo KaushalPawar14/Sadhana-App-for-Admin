@@ -82,6 +82,53 @@ List<LeaderboardEntry> rankCompetition(
   return out;
 }
 
+/// The four fields of "Best by field" (per-item points of the period, WITHOUT multipliers; the server keeps them on
+/// `competition/{name}` as `weekly|monthly.pts_chanting / pts_reading / pts_hearing / pts_service`).
+/// `hearing` is the Bhagavatam class plus the extra lecture. Daily services exist on the FOLK form only.
+enum BestField { chanting, reading, hearing, service }
+
+extension BestFieldX on BestField {
+  String get title => switch (this) {
+        BestField.chanting => 'Best Chanting',
+        BestField.reading => 'Best Reading',
+        BestField.hearing => 'Best Hearing',
+        BestField.service => 'Best Service',
+      };
+
+  bool get folkOnly => this == BestField.service;
+
+  String fieldName(LeaderboardPeriod period) => '${period == LeaderboardPeriod.weekly ? 'weekly' : 'monthly'}.pts_$name';
+}
+
+/// The top [count] of each field for [period]: students with points in that field only, best first, ties by name.
+/// Daily services are left out for Hostel & Localite.
+Map<BestField, List<LeaderboardEntry>> bestByField(
+  Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  LeaderboardPeriod period,
+  String category, {
+  int count = 5,
+}) {
+  double num0(Object? v) => v is num ? v.toDouble() : 0;
+  final out = <BestField, List<LeaderboardEntry>>{};
+  for (final f in BestField.values) {
+    if (f.folkOnly && category == kCategoryHostelLocalite) continue;
+    final rows = <LeaderboardEntry>[];
+    for (final d in docs) {
+      final data = d.data();
+      final points = num0(dottedField(data, f.fieldName(period)));
+      if (points <= 0) continue;
+      final named = (data['Name'] ?? '').toString().trim();
+      rows.add(LeaderboardEntry(name: named.isEmpty ? d.id : named, score: points, days: 0));
+    }
+    rows.sort((a, b) {
+      final c = b.score.compareTo(a.score);
+      return c != 0 ? c : a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    out[f] = rows.take(count).toList();
+  }
+  return out;
+}
+
 /// One of the two weekly Best performer winners of a ranking (decided on the server,
 /// `functions/bestPerformers.js`).
 class BestWinnerInfo {
@@ -146,6 +193,13 @@ abstract class LeaderboardData {
     required LeaderboardPeriod period,
   });
 
+  /// The best five of each field (per-item points, no multipliers) for [period] among the same students.
+  Future<Map<BestField, List<LeaderboardEntry>>> fieldBests({
+    required String category,
+    required String gender,
+    required LeaderboardPeriod period,
+  });
+
   /// The latest week's two winners for [gender], per category (`folk`, `hostel_localite`).
   /// A category with no results is absent from the map.
   Future<Map<String, BestPerformerSet>> bestPerformers({required String gender});
@@ -168,6 +222,19 @@ class FirestoreLeaderboardData implements LeaderboardData {
       extraEquals: {'category': category, 'gender': gender},
     );
     return rankCompetition(snap.docs, period);
+  }
+
+  @override
+  Future<Map<BestField, List<LeaderboardEntry>>> fieldBests({
+    required String category,
+    required String gender,
+    required LeaderboardPeriod period,
+  }) async {
+    final snap = await StudentScope.current().historyGet(
+      'competition',
+      extraEquals: {'category': category, 'gender': gender},
+    );
+    return bestByField(snap.docs, period, category);
   }
 
   @override

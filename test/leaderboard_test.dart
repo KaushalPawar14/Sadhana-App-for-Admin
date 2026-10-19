@@ -399,6 +399,9 @@ void bestPerformerTests() {
 class _BestFlaky implements LeaderboardData {
   int calls = 0;
   @override
+  Future<Map<BestField, List<LeaderboardEntry>>> fieldBests({required String category, required String gender, required LeaderboardPeriod period}) async => {};
+
+  @override
   Future<List<LeaderboardEntry>> ranking({required String category, required String gender, required LeaderboardPeriod period}) async =>
       const [LeaderboardEntry(name: 'Arjun', score: 5, days: 1)];
 
@@ -417,6 +420,9 @@ class _BestFlaky implements LeaderboardData {
 class _FlakyData implements LeaderboardData {
   int calls = 0;
   @override
+  Future<Map<BestField, List<LeaderboardEntry>>> fieldBests({required String category, required String gender, required LeaderboardPeriod period}) async => {};
+
+  @override
   Future<List<LeaderboardEntry>> ranking({required String category, required String gender, required LeaderboardPeriod period}) async {
     calls++;
     if (calls == 1) throw StateError('offline');
@@ -429,6 +435,9 @@ class _FlakyData implements LeaderboardData {
 
 class _SlowData implements LeaderboardData {
   final done = Completer<List<LeaderboardEntry>>();
+  @override
+  Future<Map<BestField, List<LeaderboardEntry>>> fieldBests({required String category, required String gender, required LeaderboardPeriod period}) async => {};
+
   @override
   Future<List<LeaderboardEntry>> ranking({required String category, required String gender, required LeaderboardPeriod period}) => done.future;
 

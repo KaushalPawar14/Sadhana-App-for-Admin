@@ -8,6 +8,7 @@ import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../utils/GuideDb.dart';
+import '../utils/LeaderboardData.dart' show dottedField;
 import '../widgets/GuideWait.dart';
 
 /// Holistic "suggested next action" (Phase 5, item 1 — final piece).
@@ -70,7 +71,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
 
   /// Assembles the evidence block sent to Gemini.
   ///
-  /// Reads only collections this profile page already displays — `scorecard`
+  /// Reads only collections this profile page already displays — `competition`
   /// and `booksRead` — plus the two Phase 5 collections. No new ABCDE
   /// collection is introduced, and none of these reads happen until the guide
   /// presses the button.
@@ -82,21 +83,26 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
     if (role.isNotEmpty) lines.add("Residence: $role");
     if (guideId.isNotEmpty) lines.add("Assigned guide: $guideId");
 
-    // --- Sadhana counters (as shown in the Total Points section) ------------
+    // --- Sadhana points of this month (the new point system, `competition/{name}`) ---------
     try {
-      final scorecard =
-          await _firestore.collection('scorecard').doc(widget.studentName).get();
-      final s = scorecard.data();
+      final comp = await _firestore.collection('competition').doc(widget.studentName).get();
+      final s = comp.data();
       if (s != null) {
+        double n(String f) {
+          final v = dottedField(s, 'monthly.$f');
+          return v is num ? v.toDouble() : 0;
+        }
+
+        String p(double v) => v == v.roundToDouble() ? '${v.toInt()}' : v.toStringAsFixed(1);
         lines.add(
-          "Lifetime sadhana counters — chanting rounds: ${s['totalChantRounds'] ?? 0}, "
-          "book reading: ${s['totalBookRead'] ?? 0}, "
-          "Bhagavatam classes: ${s['totalSBClass'] ?? 0}, "
-          "services done: ${s['totalServiceDone'] ?? 0}",
+          "This month's sadhana points — total (with multipliers): ${p(n('total_score'))}; "
+          "chanting: ${p(n('pts_chanting'))}, reading: ${p(n('pts_reading'))}, "
+          "hearing (Bhagavatam class + extra lecture): ${p(n('pts_hearing'))}, "
+          "services: ${p(n('pts_service'))}; days reported: ${p(n('days_count'))}",
         );
       }
     } catch (_) {
-      // A missing scorecard is normal for a new student.
+      // No competition document yet is normal for a new student.
     }
 
     // --- Book progress (as shown in the Book Progress section) --------------

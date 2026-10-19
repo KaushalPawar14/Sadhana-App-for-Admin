@@ -7,7 +7,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/CompetitionScore.dart';
 import '../utils/SadhanaReportSource.dart';
-import '../utils/ScorecardPoints.dart';
 import '../Pages/AllGraph.dart' show GraphicalAnalysisSection;
 import '../utils/Residence.dart';
 import '../theme/GuideTheme.dart';
@@ -444,137 +443,10 @@ class _CalendarPageState extends State<CalendarPage> {
   /// progress file: if `BookProgressSection` is deleted at the next cleanup,
   /// this becomes the single definition again.
 
-  /// Lifetime scorecard totals for this student.
-  ///
-  /// Moved here from `Profile.dart`'s "Total Points" section on 2026-08-14.
-  /// Reads the same document — `scorecard/{name}` — which works unchanged in
-  /// this context because that collection is keyed by the student's **name**,
-  /// and this screen already has `widget.username`. No new query shape, no uid
-  /// lookup needed.
-  ///
-  /// Rendered in **this screen's** visual language (the bold-coloured label
-  /// over a plain value used by `_infoRow`), not the profile page's card shell,
-  /// so it reads as part of this screen rather than transplanted into it.
-  ///
-  /// ⚠️ The "total" is the arithmetic sum of four differently-united counters
-  /// — japa rounds + reading minutes + classes + services. That was already
-  /// true on the profile page and is carried over unchanged, but it is not a
-  /// weighted score: the app's real weighted points live in
-  /// `competition/{name}.weekly.total_score`.
-  Widget _totalPointsSection(ColorProvider colorProvider) {
-    // The EXACT stored name is the document key (the Student app writes it untrimmed): a
-    // trimmed copy opened an empty document for a name with a stray space.
-    final name = widget.username;
-    if (name.trim().isEmpty) return const SizedBox.shrink();
-
-    return StreamBuilder<DocumentSnapshot>(
-      stream: GuideDb.instance
-          .collection('scorecard')
-          .doc(name)
-          .snapshots(),
-      builder: (context, snapshot) {
-        // the loading ghost only on the very first load: a snapshot that already holds data is shown while it refreshes
-        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: const GuideWait(compact: true),
-          );
-        }
-
-        final data = snapshot.data?.data() as Map<String, dynamic>?;
-        if (data == null) {
-          return Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              'No scorecard yet 🗒️',
-              style: TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.bold, color: context.g.mutedText),
-              textAlign: TextAlign.center,
-            ),
-          );
-        }
-
-        // Delegates to `utils/ScorecardPoints.dart` — the same arithmetic that
-        // used to be inline here, moved out on 2026-08-21 so the Guide
-        // Assignment board's card face reads the identical figure instead of
-        // carrying a second copy of this formula. Values are unchanged.
-        final totals = ScorecardTotals.fromData(data);
-
-        final chant = totals.chant;
-        final book = totals.book;
-        final sbClass = totals.sbClass;
-        final service = totals.service;
-        final total = totals.total;
-
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    'Total Points',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: colorProvider.secondColor,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '$total',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: context.g.brass,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 2),
-              // Same label/value rhythm as _infoRow, so these read as siblings
-              // of the per-day rows below rather than a foreign card.
-              _infoRow('Chanting Rounds', '$chant 📿', context.g.brass),
-              _infoRow('Book Reading', '$book 📖', context.g.warning),
-              _infoRow('Bhagavatam Classes', '$sbClass 🎧',
-                  context.g.brass),
-              // Daily services exist on the FOLK form only (none for Hostel / Localite).
-              if (hasDailyServices(_role))
-                _infoRow('Services Done', '$service 🙏', context.g.success),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  /// The Scores tab (this task) — every real score figure a guide might mean
-  /// by "the score", clearly distinguished and never combined into one
-  /// number:
-  ///  * The real, weighted weekly and monthly ranking scores
-  ///    (`competition/{name}`, via `utils/CompetitionScore.dart` — extracted
-  ///    in an earlier task, extended this task to also read `monthly.*`).
-  ///  * Total Points — the unweighted activity sum this screen's own
-  ///    pre-existing `points` tab already shows (`scorecard/{name}`, via
-  ///    `utils/ScorecardPoints.dart`), explicitly labelled as a raw count,
-  ///    not a ranking.
-  ///
-  /// Reuses `_infoRow`'s label/value visual rhythm (via [_scoreHeader], a
-  /// thin wrapper matching `_totalPointsSection`'s own header-row shape) and
-  /// this screen's existing "missing document -> null -> dash" convention —
-  /// no new computation, no new caveat wording beyond what was already
-  /// established for these exact figures on `Pages/StudentProfilePage.dart`
-  /// before this task removed it from there.
-  ///
-  /// ⚠️ **This duplicates the pre-existing `points` tab's own figure** —
-  /// Total Points is shown a second time here, deliberately, so a guide
-  /// comparing "the real ranking score" against "the raw activity count" can
-  /// see both without switching tabs. Kept, not folded, per this task's
-  /// explicit instruction not to remove `points` without the product owner's
-  /// say-so. Flagged in this task's own report as an open question: fold
-  /// `points` into this tab, or keep both as separate entry points to the
-  /// same number.
+  /// The Scores tab: the student's weekly and monthly points from `competition/{name}` (via
+  /// `utils/CompetitionScore.dart`), each with its breakdown (points per item, average multipliers).
+  /// The old raw "Total Points" tally (the `scorecard` collection) is gone: the scorecard was removed
+  /// with the old category leaderboards, and the per-item points replace it.
   Widget _scoresPanel(ColorProvider colorProvider) {
     // The EXACT stored name is the document key (the Student app writes it untrimmed): a
     // trimmed copy opened an empty document for a name with a stray space.
@@ -598,25 +470,6 @@ class _CalendarPageState extends State<CalendarPage> {
         final competitionData =
             competitionSnap.data?.data() as Map<String, dynamic>?;
         final competition = CompetitionTotals.fromSnapshotData(competitionData);
-
-        return StreamBuilder<DocumentSnapshot>(
-          stream: GuideDb.instance
-              .collection('scorecard')
-              .doc(name)
-              .snapshots(),
-          builder: (context, scorecardSnap) {
-            // the loading ghost only on the very first load: a snapshot that already holds data is shown while it refreshes
-        if (scorecardSnap.connectionState == ConnectionState.waiting && !scorecardSnap.hasData) {
-              return const Padding(
-                padding: EdgeInsets.all(16),
-                child:
-                    const GuideWait(compact: true),
-              );
-            }
-
-            final scorecardData =
-                scorecardSnap.data?.data() as Map<String, dynamic>?;
-            final scorecard = ScorecardTotals.fromSnapshotData(scorecardData);
 
             return Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
@@ -675,25 +528,6 @@ class _CalendarPageState extends State<CalendarPage> {
                   ),
                   if (competition != null && competition.monthlyDaysCount > 0)
                     _breakdown(competition.monthly, competition.hostelLocalite),
-                  const Divider(height: 28),
-                  _scoreHeader(
-                    colorProvider,
-                    label: "Total Points — raw activity count, not a ranking",
-                    value: scorecard == null ? '—' : '${scorecard.total}',
-                    valueColor: context.g.brass,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "Adds unrelated units together — japa rounds + reading "
-                    "minutes + Bhagavatam classes + services done — with no "
-                    "weighting between them. A lifetime activity tally, not "
-                    "a comparison between students.",
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      color: context.g.mutedText,
-                      height: 1.35,
-                    ),
-                  ),
                   // Graphical analysis — moved here from the old Folk
                   // Analysis tab's "Graphical Analysis" tile (a roster
                   // picker that then pushed this exact per-student content;
@@ -724,8 +558,6 @@ class _CalendarPageState extends State<CalendarPage> {
                 ],
               ),
             );
-          },
-        );
       },
     );
   }
