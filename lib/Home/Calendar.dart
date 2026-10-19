@@ -594,17 +594,19 @@ class _CalendarPageState extends State<CalendarPage> {
                         ? "No competition record yet for this name."
                         : "${competition.weeklyDaysCount} day"
                             "${competition.weeklyDaysCount == 1 ? '' : 's'} "
-                            "reported this week. Japa timing, temple "
-                            "attendance and sleep are all factored in. "
-                            "⚠️ Resets lazily — whenever any student's app "
-                            "first opens after the week turns over, not on "
-                            "a fixed schedule.",
+                            "reported this week. Points per item, times the "
+                            "day's multipliers (japa finish, sleep and "
+                            "${competition.hostelLocalite ? 'wake-up' : 'temple entry'}), "
+                            "set from the filed reports; the week starts "
+                            "fresh every Sunday.",
                     style: TextStyle(
                       fontSize: 11.5,
                       color: context.g.mutedText,
                       height: 1.35,
                     ),
                   ),
+                  if (competition != null && competition.weeklyDaysCount > 0)
+                    _breakdown(competition.weekly, competition.hostelLocalite),
                   const Divider(height: 28),
                   _scoreHeader(
                     colorProvider,
@@ -620,16 +622,16 @@ class _CalendarPageState extends State<CalendarPage> {
                         ? "No competition record yet for this name."
                         : "${competition.monthlyDaysCount} day"
                             "${competition.monthlyDaysCount == 1 ? '' : 's'} "
-                            "reported this month. Same weighting as the "
-                            "weekly score. ⚠️ Resets lazily too, on its own "
-                            "monthly cadence, independent of the weekly "
-                            "reset.",
+                            "reported this month. Same points and multipliers "
+                            "as the weekly score; fresh on the 1st.",
                     style: TextStyle(
                       fontSize: 11.5,
                       color: context.g.mutedText,
                       height: 1.35,
                     ),
                   ),
+                  if (competition != null && competition.monthlyDaysCount > 0)
+                    _breakdown(competition.monthly, competition.hostelLocalite),
                   const Divider(height: 28),
                   _scoreHeader(
                     colorProvider,
@@ -682,6 +684,30 @@ class _CalendarPageState extends State<CalendarPage> {
           },
         );
       },
+    );
+  }
+
+  /// Points per item (each already multiplied by that day's multipliers, so they
+  /// add up to the score above) and the average multipliers.
+  Widget _breakdown(PeriodBreakdown b, bool hostelLocalite) {
+    final style = TextStyle(fontSize: 12.5, color: context.g.mutedText, height: 1.4);
+    final items = b
+        .itemLines(hostelLocalite: hostelLocalite)
+        .map((l) => '${l.label} ${l.value}')
+        .join('  ·  ');
+    final multipliers = b
+        .multiplierLines(hostelLocalite: hostelLocalite)
+        .map((l) => '${l.label} ×${l.value}')
+        .join('  ·  ');
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Points: $items', style: style),
+          Text('Average multipliers: $multipliers', style: style),
+        ],
+      ),
     );
   }
 

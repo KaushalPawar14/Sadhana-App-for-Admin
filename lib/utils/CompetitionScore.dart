@@ -8,32 +8,17 @@
 /// `utils/ScorecardPoints.dart`'s own precedent: one small file per data
 /// source, not a shared "scores" grab-bag.
 ///
-/// ⚠️ **Computed CLIENT-SIDE, not server-side** — confirmed this task by
-/// reading `Students/.../lib/services/CompetitionService.dart`. A student's
-/// own device calls `CompetitionService.updateScores()` on every sadhana
-/// report submission, which `FieldValue.increment()`s these fields directly.
-/// There is no Cloud Function anywhere in `functions/` that touches
-/// `competition`.
-///
-/// ⚠️ **Both "weekly" and "monthly" reset, but not on a fixed schedule.**
-/// Confirmed this task (adding monthly) by reading
-/// `Students/.../lib/models/CompetitionResults.dart` in full: monthly has its
-/// OWN, separate lazy trigger — `checkAndRunMonthlyLazyTrigger`, called
-/// alongside `checkAndRunWeeklyLazyTrigger` from `Students/.../lib/main.dart`
-/// on every app start. It tracks the last-finalised month as a `"YYYY-MM"`
-/// string on `competition-results/monthly_meta.last_month_finalized`, and
-/// once ANY student's device is first to open the app after the month
-/// number changes, it zeroes every `monthly.*` field across the whole
-/// `competition` collection via its own `_resetMonthlyFields()` — the exact
-/// same lazy, client-triggered, no-fixed-schedule mechanism `_resetWeeklyFields()`
-/// already used for the weekly figures, just on a monthly cadence and a
-/// separate meta-doc. If no student opens the app promptly after a month
-/// turns over, the reset is simply late for everyone, same as weekly.
+/// ⚠️ **Computed SERVER-SIDE, from the student's reports** (the new point
+/// system, `functions/scoring.js`): every filed report re-scores the student's
+/// current week and month, and the totals are SET from the reports (never
+/// incremented), so they always match what was filed. Weekly (Sunday-Saturday)
+/// and monthly figures are zeroed at the end of their period by the server.
+/// The apps only read this document.
 ///
 /// ⚠️ **The field names are literal strings containing dots, NOT a nested
 /// map** — true for `monthly.*` exactly as it is for `weekly.*`.
-/// `CompetitionService.dart` writes via `.set({'weekly.total_score': ...,
-/// 'monthly.total_score': ...}, SetOptions(merge: true))` — `set()` (unlike
+/// The server writes via `.set({'weekly.total_score': ...,
+/// 'monthly.total_score': ...}, {merge: true})` — `set()` (unlike
 /// `update()`) does not interpret a dotted key as a field path, so Firestore
 /// stores flat top-level fields literally named `weekly.total_score` and
 /// `monthly.total_score`. Confirmed against a live document dump this task
@@ -62,11 +47,22 @@ class CompetitionTotals {
   final double monthlyTotalScore;
   final int monthlyDaysCount;
 
+  /// The same period's points per item and multipliers, for the breakdown.
+  final PeriodBreakdown weekly;
+  final PeriodBreakdown monthly;
+
+  /// Hostel & Localite students are scored on wake-up (not temple entry) and
+  /// have no daily services or extra lecture.
+  final bool hostelLocalite;
+
   const CompetitionTotals({
     required this.weeklyTotalScore,
     required this.weeklyDaysCount,
     required this.monthlyTotalScore,
     required this.monthlyDaysCount,
+    this.weekly = const PeriodBreakdown(),
+    this.monthly = const PeriodBreakdown(),
+    this.hostelLocalite = false,
   });
 
   factory CompetitionTotals.fromData(Map<String, dynamic> data) {
@@ -80,6 +76,9 @@ class CompetitionTotals {
       monthlyTotalScore:
           rawMonthlyScore is num ? rawMonthlyScore.toDouble() : 0,
       monthlyDaysCount: rawMonthlyDays is num ? rawMonthlyDays.toInt() : 0,
+      weekly: PeriodBreakdown.fromData(data, 'weekly'),
+      monthly: PeriodBreakdown.fromData(data, 'monthly'),
+      hostelLocalite: data['category'] == 'hostel_localite',
     );
   }
 
@@ -90,4 +89,78 @@ class CompetitionTotals {
     if (data == null) return null;
     return CompetitionTotals.fromData(data);
   }
+}
+
+/// One period's points per item (each already multiplied by that day's
+/// multipliers, so the items add up to the total) and its multipliers. The
+/// multipliers are stored as per-day SUMS; [average] turns one into the figure
+/// shown (sum / days, 1.00 with no days).
+class PeriodBreakdown {
+  final double total;
+  final int days;
+  final double sbClass;
+  final double service;
+  final double chanting;
+  final double reading;
+  final double extraLecture;
+  final double templeSum;
+  final double wakeupSum;
+  final double japaSum;
+  final double sleepSum;
+
+  const PeriodBreakdown({
+    this.total = 0,
+    this.days = 0,
+    this.sbClass = 0,
+    this.service = 0,
+    this.chanting = 0,
+    this.reading = 0,
+    this.extraLecture = 0,
+    this.templeSum = 0,
+    this.wakeupSum = 0,
+    this.japaSum = 0,
+    this.sleepSum = 0,
+  });
+
+  factory PeriodBreakdown.fromData(Map<String, dynamic> data, String prefix) {
+    double n(String k) {
+      final v = data['$prefix.$k'];
+      return v is num ? v.toDouble() : 0;
+    }
+
+    return PeriodBreakdown(
+      total: n('total_score'),
+      days: n('days_count').toInt(),
+      sbClass: n('bhagavatam_class'),
+      service: n('daily_service'),
+      chanting: n('chanting_rounds'),
+      reading: n('book_reading'),
+      extraLecture: n('extra_lecture'),
+      templeSum: n('temple_multiplier'),
+      wakeupSum: n('wakeup_multiplier'),
+      japaSum: n('japa_multiplier'),
+      sleepSum: n('sleeping_multiplier'),
+    );
+  }
+
+  String average(double sum) => days <= 0 ? '1.00' : (sum / days).toStringAsFixed(2);
+
+  /// "label: points" for each item the student's form has, in the form's order.
+  List<({String label, String value})> itemLines({required bool hostelLocalite}) => [
+        (label: 'SB class', value: sbClass.toStringAsFixed(1)),
+        if (!hostelLocalite) (label: 'Services', value: service.toStringAsFixed(1)),
+        (label: 'Chanting', value: chanting.toStringAsFixed(1)),
+        (label: 'Reading', value: reading.toStringAsFixed(1)),
+        if (!hostelLocalite) (label: 'Extra lecture', value: extraLecture.toStringAsFixed(1)),
+      ];
+
+  /// Average multipliers: temple (FOLK) or wake-up (Hostel & Localite), japa, sleep.
+  List<({String label, String value})> multiplierLines({required bool hostelLocalite}) => [
+        if (hostelLocalite)
+          (label: 'Wake-up', value: average(wakeupSum))
+        else
+          (label: 'Temple', value: average(templeSum)),
+        (label: 'Japa', value: average(japaSum)),
+        (label: 'Sleep', value: average(sleepSum)),
+      ];
 }
