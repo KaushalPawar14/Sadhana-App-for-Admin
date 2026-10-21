@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'CalendarQueries.dart' show kScopeMandatory;
 import 'GoalCompoundQueries.dart' show kGuideTargetsCollection;
 import 'SeenMarkers.dart';
+import 'StudentDoubts.dart';
 import 'StudentScope.dart';
 import 'GuideDb.dart';
 
@@ -112,6 +113,13 @@ class UnseenAggregates {
       _maxTimestamp(_scope.historyStream('flaggedChatMessages'), 'createdAt'),
       SeenMarkers.seenAt(guide, 'flaggedMessages'),
     );
+  }
+
+  /// Students' doubts: any doubt sent to this admin that is unanswered and not opened since it was asked (see
+  /// `StudentDoubts.isUnseen`). Clears when answered or opened, never because a push was dismissed.
+  static Stream<bool> studentDoubtsUnseen(String guide, bool isHod) {
+    if (debugDisable) return Stream.value(false);
+    return StudentDoubts.anyUnseen(guide, isHod);
   }
 
   static Stream<bool> calendarEventsUnseen(String guide) {

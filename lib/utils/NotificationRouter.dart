@@ -5,6 +5,7 @@ import '../Home/Calendar.dart';
 import '../Pages/AssociationManager.dart';
 import '../Pages/ExpeditionManager.dart';
 import '../Pages/FlaggedMessages.dart';
+import '../Pages/StudentDoubtsPage.dart';
 import '../Pages/CompoundGoalRoadmapPage.dart';
 import '../Pages/SubmissionStatus.dart';
 import '../Pages/GuideCalendarPage.dart';
@@ -188,6 +189,14 @@ void _dispatch(Map<String, dynamic> data) {
             studentName: studentName,
             messageId: messageId,
           ),
+        ));
+        break;
+
+      case 'guide_doubts':
+        // A student sent a doubt: the list, opening that doubt when the payload names it.
+        final doubtId = str('doubtId');
+        navState.push(MaterialPageRoute(
+          builder: (_) => StudentDoubtsPage(openDoubtId: doubtId.isEmpty ? null : doubtId),
         ));
         break;
 

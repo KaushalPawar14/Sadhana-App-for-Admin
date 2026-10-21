@@ -67,6 +67,7 @@ class _CurvedNavBarState extends State<CurvedNavBar> {
       UnseenAggregates.expeditionReflectionsUnseen(guide, isHod),
       UnseenAggregates.serviceAssignmentsUnseen(guide, isHod),
       UnseenAggregates.flaggedMessagesUnseen(guide, isHod),
+      UnseenAggregates.studentDoubtsUnseen(guide, isHod),
       UnseenAggregates.goalProposalsUnseen(guide),
     ]);
 

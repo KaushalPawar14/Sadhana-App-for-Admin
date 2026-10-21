@@ -55,8 +55,10 @@ class _CompetitionPageState extends State<CompetitionPage> {
           UnseenAggregates.serviceAssignmentsUnseen(guide, isHod),
           UnseenAggregates.expeditionReflectionsUnseen(guide, isHod),
         ]);
-        _priorityStudentsUnseen =
-            UnseenAggregates.flaggedMessagesUnseen(guide, isHod);
+        _priorityStudentsUnseen = UnseenAggregates.anyOf([
+          UnseenAggregates.flaggedMessagesUnseen(guide, isHod),
+          UnseenAggregates.studentDoubtsUnseen(guide, isHod),
+        ]);
         _guideTargetsUnseen = UnseenAggregates.goalProposalsUnseen(guide);
       });
     });
@@ -175,7 +177,7 @@ class _CompetitionPageState extends State<CompetitionPage> {
                 icon: Icons.flag_outlined,
                 title: 'Priority students',
                 subtitle: 'Who needs attention',
-                // A small hub over the two "who needs attention" screens.
+                // A small hub over the three "who needs attention" screens.
                 onTap: () => _open(const PriorityHubPage()),
                 unseen: _priorityStudentsUnseen,
               ),

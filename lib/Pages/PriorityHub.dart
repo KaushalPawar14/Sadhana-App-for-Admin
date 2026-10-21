@@ -3,12 +3,16 @@ import 'package:flutter/material.dart';
 import '../theme/GuideColors.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/StudentScope.dart';
+import '../utils/UnseenAggregates.dart';
+import '../utils/UnseenDot.dart';
 import '../utils/UnseenFeatureBadge.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
 import 'FlaggedMessages.dart';
 import 'PriorityStudents.dart';
+import 'StudentDoubtsPage.dart';
 import '../widgets/GuideEntry.dart';
 
 /// Priority Students hub — the two "who needs attention" screens, together.
@@ -28,8 +32,23 @@ import '../widgets/GuideEntry.dart';
 /// `FlaggedMessagesPage` surfaces chat distress. Neither is touched here, and
 /// this page deliberately shows **no** student data itself — it is navigation
 /// only, so nothing on it needs scoping.
-class PriorityHubPage extends StatelessWidget {
+class PriorityHubPage extends StatefulWidget {
   const PriorityHubPage({super.key});
+
+  @override
+  State<PriorityHubPage> createState() => _PriorityHubPageState();
+}
+
+class _PriorityHubPageState extends State<PriorityHubPage> {
+  /// "Is any student's doubt waiting for me" - hoisted once (never built in `build()`).
+  Stream<bool>? _doubtsUnseen;
+
+  @override
+  void initState() {
+    super.initState();
+    final me = AdminProfileProvider.current?.id ?? '';
+    if (me.isNotEmpty) _doubtsUnseen = UnseenAggregates.studentDoubtsUnseen(me, AdminProfileProvider.viewerIsHod);
+  }
 
   /// Opens a destination with the fade this hub has always used.
   void _open(BuildContext context, Widget destination) {
@@ -57,8 +76,8 @@ class PriorityHubPage extends StatelessWidget {
               children: [
                 GuideEntry(
                   child: Text(
-                    "Two ways of seeing who needs you — one from their activity, "
-                    "one from what they have written.",
+                    "Three ways of seeing who needs you — from their activity, "
+                    "from what they have written, and from the doubts they ask.",
                     style: t.body.copyWith(height: 1.55, color: context.g.mutedText),
                   ),
                 ),
@@ -97,6 +116,29 @@ class PriorityHubPage extends StatelessWidget {
                     ),
                   ),
                 ),
+                ),
+                GuideEntry(
+                  index: 3,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    // The doubts students sent to their guide while reading: the dot stays until each one is answered
+                    // (or opened), whatever happened to the push.
+                    child: StreamBuilder<bool>(
+                      stream: _doubtsUnseen,
+                      builder: (context, snap) => UnseenBadge(
+                        key: const ValueKey('doubts-hub-dot'),
+                        show: snap.data ?? false,
+                        offset: const Offset(10, 10),
+                        child: GuidePastelRow(
+                          pastel: GuidePastel.sage,
+                          icon: Icons.help_outline_rounded,
+                          title: "Students' doubts",
+                          description: "Questions students asked while reading",
+                          onTap: () => _open(context, const StudentDoubtsPage()),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
