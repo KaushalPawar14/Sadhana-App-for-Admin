@@ -247,7 +247,7 @@ void main() {
           expect(tester.takeException(), isNull);
           final wide = find.byType(GuideNavCard);
           final squares = find.byType(GuideGradientTile);
-          expect(wide, findsNWidgets(2));
+          expect(wide, findsNWidgets(3), reason: 'Add student, Add admin and (Guides and HODs only) Music curriculum');
           expect(squares, findsNWidgets(2));
           final addStudent = tester.getRect(find.ancestor(of: find.text('Add student'), matching: find.byType(GuideNavCard)));
           final addAdmin = tester.getRect(find.ancestor(of: find.text('Add admin'), matching: find.byType(GuideNavCard)));
@@ -256,6 +256,9 @@ void main() {
           // the order: Add student, then the squares, then Add admin
           expect(addStudent.bottom, lessThanOrEqualTo(sub.top));
           expect(sub.bottom, lessThanOrEqualTo(addAdmin.top));
+          final music = tester.getRect(find.ancestor(of: find.text('Music curriculum'), matching: find.byType(GuideNavCard)));
+          expect(addAdmin.bottom, lessThanOrEqualTo(music.top), reason: 'the curriculum card comes last');
+          expect(music.width, 320);
           expect(addStudent.width, 320);
           expect(addAdmin.width, 320);
           // two equal squares side by side

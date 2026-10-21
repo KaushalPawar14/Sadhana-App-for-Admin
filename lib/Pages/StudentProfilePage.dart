@@ -9,6 +9,7 @@ import '../utils/ColorProvider.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
 import 'AbcdeActivityCard.dart';
+import 'StudentMusicPage.dart';
 import 'HolisticSuggestion.dart';
 import 'InteractionLogger.dart';
 import 'LitAssessment.dart';
@@ -597,6 +598,18 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                             role: role,
                             lifetimeRounds:
                                 _asInt(data['lifetimeRounds']),
+                          ),
+
+                          const SizedBox(height: 25),
+
+                          // MUSIC — the student's progress through the music curriculum. The student and every admin who
+                          // can see them may tick (no approval); `canTick` mirrors the scope rule, the server enforces it.
+                          _sectionTitle(colorProvider, "Music"),
+                          const SizedBox(height: 10),
+                          StudentMusicCard(
+                            studentUid: widget.studentUid,
+                            studentName: name,
+                            canTick: canAct,
                           ),
 
                           const SizedBox(height: 25),

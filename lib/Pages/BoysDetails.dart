@@ -17,6 +17,7 @@ import '../utils/GuideDb.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
 import '../widgets/GuideEntry.dart';
+import 'MusicCurriculumPage.dart';
 // `AdminRegisterUserPage` is no longer imported here: its "Add Hostelers" tile
 // was removed on 2026-08-14. **The screen file was deliberately kept** — it
 // registers a student wholesale into `users/{uid}`, which is the only path in
@@ -469,6 +470,24 @@ class _AdminControlPageState extends State<AdminControlPage> {
                   ),
                 ),
               ),
+              // The music curriculum editor: HODs and Guides only (Enablers see and tick, they do not edit).
+              if (MusicCurriculumPage.mayEdit(AdminProfileProvider.current)) ...[
+                gap,
+                step(
+                  3,
+                  GuideNavCard(
+                    key: const ValueKey('music-curriculum-card'),
+                    pastel: GuidePastel.clay,
+                    icon: Icons.library_music_outlined,
+                    title: "Music curriculum",
+                    description: "Instruments, links and checkpoints",
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const MusicCurriculumPage()),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
