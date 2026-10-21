@@ -16,10 +16,11 @@ import '../widgets/GuideWait.dart';
 
 /// Students' doubts - the third "who needs you" category in Priority students.
 ///
-/// Lists the doubts students sent to their guide while reading (`bookDoubts`, mode "guide"): the student, a preview of the
-/// question, the book and when - unanswered ones on top, newest first, an orange dot on each one this admin has not opened.
-/// Tapping one opens it: the highlighted paragraph, the question and (while unanswered) an answer field with Send. Sending
-/// saves the answer on the student's doubt, marks it answered and the server tells the student.
+/// Lists the UNANSWERED doubts students sent to their guide while reading (`bookDoubts`, mode "guide"): the student, a
+/// preview of the question, the book and when - newest first, an orange dot on each one this admin has not opened.
+/// Tapping one opens it: the highlighted paragraph, the question and an answer field with Send. Sending saves the answer
+/// on the student's doubt (it stays in the student's Notes), marks it answered and the server tells the student; the doubt
+/// then leaves this list, live, for every admin who could see it, and its dots clear.
 ///
 /// Scope: each admin sees only the doubts of students they may see (HOD all) - [StudentDoubts.stream] asks the usual
 /// scope-field queries and the rules check it again.
@@ -37,6 +38,7 @@ class _StudentDoubtsPageState extends State<StudentDoubtsPage> {
   late final Stream<List<StudentDoubt>> _doubts = StudentDoubts.stream();
   Stream<Set<String>>? _unseen;
   bool _openedFromLink = false;
+  bool _gone = false;
 
   String get _me => AdminProfileProvider.current?.id ?? '';
 
@@ -75,16 +77,21 @@ class _StudentDoubtsPageState extends State<StudentDoubtsPage> {
           if (link != null && !_openedFromLink) {
             _openedFromLink = true;
             final hit = doubts.where((d) => d.id == link);
-            if (hit.isNotEmpty) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) _open(hit.first);
-              });
-            }
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              if (hit.isNotEmpty) {
+                _open(hit.first);
+              } else if (!_gone) {
+                // already answered (by you or another admin), or not one of yours
+                _gone = true;
+                showSnackbar(context, 'That doubt has already been answered', Colors.green, Icons.check_circle_outline);
+              }
+            });
           }
           if (doubts.isEmpty) {
-            return _Message(key: const ValueKey('doubts-empty'), text: 'No student has sent you a doubt yet. When one does, it appears here.');
+            return _Message(key: const ValueKey('doubts-empty'), text: 'No doubts are waiting for you. When a student sends one, it appears here; once answered it leaves the list.');
           }
-          final waiting = doubts.where((d) => !d.answered).length;
+          final waiting = doubts.length;
           return StreamBuilder<Set<String>>(
             stream: _unseen,
             builder: (context, unseenSnap) {
@@ -93,9 +100,9 @@ class _StudentDoubtsPageState extends State<StudentDoubtsPage> {
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                 children: [
                   GuideSummaryBanner(
-                    tone: waiting == 0 ? GuideTone.good : GuideTone.warn,
-                    icon: waiting == 0 ? Icons.check_circle_outline : Icons.help_outline_rounded,
-                    title: waiting == 0 ? 'All doubts answered' : (waiting == 1 ? '1 doubt waiting for you' : '$waiting doubts waiting for you'),
+                    tone: GuideTone.warn,
+                    icon: Icons.help_outline_rounded,
+                    title: waiting == 1 ? '1 doubt waiting for you' : '$waiting doubts waiting for you',
                     lines: [
                       AdminProfileProvider.viewerIsHod ? 'All students (HOD view)' : 'Your students',
                     ],
@@ -141,7 +148,7 @@ class _DoubtCard extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: Semantics(
         button: true,
-        label: "${doubt.studentName}, ${doubt.answered ? 'answered' : 'waiting for an answer'}: ${doubt.preview}",
+        label: "${doubt.studentName}, waiting for an answer: ${doubt.preview}",
         excludeSemantics: true,
         child: GestureDetector(
           key: ValueKey('doubt-${doubt.id}'),
@@ -168,8 +175,6 @@ class _DoubtCard extends StatelessWidget {
                     Expanded(
                       child: Text(doubt.studentName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                     ),
-                    const SizedBox(width: 8),
-                    _StatusPill(answered: doubt.answered),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -190,27 +195,8 @@ class _DoubtCard extends StatelessWidget {
   }
 }
 
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.answered});
-  final bool answered;
-
-  @override
-  Widget build(BuildContext context) {
-    final g = context.g;
-    final colour = answered ? g.success : g.warning;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-      decoration: BoxDecoration(color: colour.withValues(alpha: .14), borderRadius: BorderRadius.circular(20)),
-      child: Text(
-        answered ? 'Answered' : 'Waiting',
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: g.isDark ? colour : Color.lerp(colour, g.text, .45)!),
-      ),
-    );
-  }
-}
-
-/// The doubt, the way a guide answers it: the paragraph with the student's passage highlighted, the question and (when
-/// unanswered) an answer field. Returns true when an answer was sent.
+/// The doubt, the way a guide answers it: the paragraph with the student's passage highlighted, the question and an
+/// answer field. Returns true when an answer was sent.
 Future<bool?> showDoubtAnswerDialog(BuildContext context, StudentDoubt doubt) =>
     showDialog<bool>(context: context, builder: (_) => _DoubtAnswerDialog(doubt: doubt));
 
@@ -302,30 +288,24 @@ class _DoubtAnswerDialogState extends State<_DoubtAnswerDialog> {
           const SizedBox(height: 6),
           Text(d.question, key: const ValueKey('doubt-question'), style: const TextStyle(fontSize: 14, height: 1.45, fontWeight: FontWeight.w600)),
           const SizedBox(height: 14),
-          if (d.answered) ...[
-            Text('YOUR ANSWER${(d.answeredByName ?? '').isEmpty ? '' : ' · ${d.answeredByName}'}', style: label),
-            const SizedBox(height: 6),
-            Text(d.answer!, key: const ValueKey('doubt-answer-text'), style: const TextStyle(fontSize: 14, height: 1.45)),
-          ] else ...[
-            Text('YOUR ANSWER', style: label),
-            const SizedBox(height: 6),
-            TextField(
-              key: const ValueKey('doubt-answer-field'),
-              controller: _answer,
-              enabled: !_sending,
-              minLines: 3,
-              maxLines: 8,
-              maxLength: 4000,
-              textCapitalization: TextCapitalization.sentences,
-              onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(hintText: 'Write your answer for the student'),
+          Text('YOUR ANSWER', style: label),
+          const SizedBox(height: 6),
+          TextField(
+            key: const ValueKey('doubt-answer-field'),
+            controller: _answer,
+            enabled: !_sending,
+            minLines: 3,
+            maxLines: 8,
+            maxLength: 4000,
+            textCapitalization: TextCapitalization.sentences,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(hintText: 'Write your answer for the student'),
+          ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(_error!, key: const ValueKey('doubt-send-error'), style: TextStyle(fontSize: 12, color: g.danger)),
             ),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(_error!, key: const ValueKey('doubt-send-error'), style: TextStyle(fontSize: 12, color: g.danger)),
-              ),
-          ],
         ],
       ),
       actions: [
@@ -333,10 +313,9 @@ class _DoubtAnswerDialogState extends State<_DoubtAnswerDialog> {
           key: const ValueKey('doubt-close'),
           style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
           onPressed: _sending ? null : () => Navigator.pop(context, false),
-          child: Text(d.answered ? 'Close' : 'Cancel'),
+          child: const Text('Cancel'),
         ),
-        if (!d.answered)
-          GuidePrimaryButton(
+        GuidePrimaryButton(
             key: const ValueKey('doubt-send'),
             label: 'Send',
             expand: false,

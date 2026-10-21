@@ -11,7 +11,9 @@ import 'StudentScope.dart';
 /// STUDENTS' DOUBTS: a student reading a book can send a doubt to their guide (`bookDoubts/{id}`, written by the Student
 /// app; mode "guide"). Each admin sees only the doubts of students they may see (the usual scope: HOD all, Guide his team
 /// + unassigned males, Enablers their own + unassigned of their gender) - the same scope-field queries every other list
-/// uses, and the server rules enforce it again. An answer is ONE update on that document (answer, answeredBy "guide",
+/// uses, and the server rules enforce it again. Only UNANSWERED doubts are listed: the moment any admin answers one it
+/// leaves every list (live) and its dots clear; the answer stays saved on the student's doubt, in their Notes.
+/// An answer is ONE update on that document (answer, answeredBy "guide",
 /// answeredByName, answeredAt, status "answered"); the server then tells the student.
 ///
 /// The orange dot trail follows the doubts themselves, not any push: a doubt is "unseen" while it is unanswered and this
@@ -79,14 +81,11 @@ class StudentDoubt {
     );
   }
 
-  /// Unanswered first, then newest first.
+  /// Newest first.
   static List<StudentDoubt> sorted(Iterable<StudentDoubt> doubts) {
     final out = doubts.toList();
     int ms(StudentDoubt d) => d.askedAt?.millisecondsSinceEpoch ?? 1 << 50; // a just-written doubt (no server time yet) is the newest
-    out.sort((a, b) {
-      if (a.answered != b.answered) return a.answered ? 1 : -1;
-      return ms(b).compareTo(ms(a));
-    });
+    out.sort((a, b) => ms(b).compareTo(ms(a)));
     return out;
   }
 }
@@ -101,12 +100,13 @@ class StudentDoubts {
   @visibleForTesting
   static bool debugDisable = false;
 
-  /// Every doubt of every student this admin may see (merged, scope-field queries; no composite index).
+  /// Every UNANSWERED doubt sent to a guide, of every student this admin may see (merged, scope-field queries; no
+  /// composite index). The answered ones are dropped here, so a doubt leaves the list and every dot as soon as it is answered.
   static Stream<List<StudentDoubt>> stream() => _scope.historyStream('bookDoubts').map(_read);
 
   static List<StudentDoubt> _read(QuerySnapshot<Map<String, dynamic>> snap) => [
         for (final d in snap.docs)
-          if (StudentDoubt.fromDoc(d.id, d.data()) case final doubt?) doubt,
+          if (StudentDoubt.fromDoc(d.id, d.data()) case final doubt? when !doubt.answered) doubt,
       ];
 
   /// Whether [d] shows an orange dot to an admin whose per-doubt markers are [cursors]: unanswered, and not opened since asked.

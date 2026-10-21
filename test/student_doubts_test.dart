@@ -136,11 +136,19 @@ void main() {
       expect(StudentDoubt.fromDoc('a', {'mode': 'guide', 'question': 'Q'})!.studentName, 'A student');
     });
 
-    test('unanswered first, then newest first', () {
-      StudentDoubt mk(String id, Timestamp at, {String? answer}) =>
-          StudentDoubt.fromDoc(id, {'mode': 'guide', 'question': id, 'askedAt': at, if (answer != null) ...{'status': 'answered', 'answer': answer}})!;
-      final order = StudentDoubt.sorted([mk('old', t1), mk('answeredNew', t4, answer: 'x'), mk('new', t3), mk('mid', t2)]).map((d) => d.id).toList();
-      expect(order, ['new', 'mid', 'old', 'answeredNew']);
+    test('newest first', () {
+      StudentDoubt mk(String id, Timestamp at) => StudentDoubt.fromDoc(id, {'mode': 'guide', 'question': id, 'askedAt': at})!;
+      final order = StudentDoubt.sorted([mk('old', t1), mk('new', t4), mk('mid', t2)]).map((d) => d.id).toList();
+      expect(order, ['new', 'mid', 'old']);
+    });
+
+    test('only UNANSWERED doubts are listed: an answered one is never in the stream (the answer stays on the document)', () async {
+      final db = await world();
+      await doubt(db, 'done', uid: 's1', name: 'Arjun Kumar', question: 'Answered one', askedAt: t4, answer: 'Yes.');
+      expect(await idsFor(db, profile('H', 'HOD')), {'d1', 'd2', 'd3', 'd4', 'd5', 'd6'});
+      final kept = (await db.collection('bookDoubts').doc('done').get()).data()!;
+      expect(kept['answer'], 'Yes.', reason: 'saved on the student doubt, so it stays in their Notes');
+      expect(kept['status'], 'answered');
     });
 
     test('a dot: unanswered and not opened since asked; a re-ask after opening shows again; answered never', () {
@@ -172,7 +180,7 @@ void main() {
 
   // ---------------------------------------------------------------------------------------------- the list
   group('the list', () {
-    testWidgets('HOD: every doubt, unanswered on top and newest first; the summary counts the waiting ones', (tester) async {
+    testWidgets('HOD: every waiting doubt, newest first; an answered one is not listed; the summary counts the waiting ones', (tester) async {
       final db = await world();
       await doubt(db, 'd7', uid: 's1', name: 'Arjun Kumar', question: 'Already answered one', askedAt: t4, answer: 'Yes.');
       await openPage(tester, db: db);
@@ -181,10 +189,10 @@ void main() {
       expect(find.text("Students' doubts"), findsOneWidget);
       expect(find.text('6 doubts waiting for you'), findsOneWidget);
       double y(String id) => tester.getTopLeft(find.byKey(ValueKey('doubt-$id'))).dy;
-      // the waiting ones, newest first (d3 / d4 / d5 / d6 at t3 first, then d2 at t2, d1 at t1); the answered d7 last
+      // newest first (d3 / d4 / d5 / d6 at t3 first, then d2 at t2, d1 at t1)
       expect(y('d2'), lessThan(y('d1')));
       expect(y('d3'), lessThan(y('d2')));
-      expect(y('d1'), lessThan(y('d7')), reason: 'answered goes below every waiting doubt, although it is the newest');
+      expect(find.byKey(const ValueKey('doubt-d7')), findsNothing, reason: 'answered: not listed, although it is the newest');
     });
 
     testWidgets('a card: the student, a preview, the book and when, the status', (tester) async {
@@ -194,7 +202,6 @@ void main() {
       expect(find.descendant(of: card, matching: find.text('Arjun Kumar')), findsOneWidget);
       expect(find.descendant(of: card, matching: find.text('Why is the soul eternal?')), findsOneWidget);
       expect(find.descendant(of: card, matching: find.text('Bhagavad-gita As It Is')), findsOneWidget);
-      expect(find.descendant(of: card, matching: find.text('Waiting')), findsOneWidget);
     });
 
     testWidgets('Guide G: only his own scope is listed', (tester) async {
@@ -273,6 +280,8 @@ void main() {
       expect(d['question'], 'Who is the Lord?');
       expect(find.byKey(const ValueKey('doubt-dialog')), findsNothing);
       expect(find.text('Answer sent to Chaitanya Das'), findsOneWidget);
+      expect(find.byKey(const ValueKey('doubt-d3')), findsNothing, reason: 'answered: it has left the list');
+      expect(find.text('5 doubts waiting for you'), findsOneWidget);
       await tester.pump(const Duration(seconds: 4)); // the banner leaves
       await tester.pumpAndSettle();
     });
@@ -289,17 +298,52 @@ void main() {
       expect(() => StudentDoubts.answer(doubtId: 'd1', text: '  ', me: profile('G', 'GUIDE')), throwsArgumentError);
     });
 
-    testWidgets('an answered doubt shows the answer and who gave it, with no field', (tester) async {
-      final db = await world();
-      await doubt(db, 'd7', uid: 's1', name: 'Arjun Kumar', question: 'Answered one', askedAt: t4, answer: 'Yes, indeed.');
-      await openPage(tester, db: db);
-      await tester.scrollUntilVisible(find.byKey(const ValueKey('doubt-d7')), 200, scrollable: find.byType(Scrollable).first);
-      await tester.tap(find.byKey(const ValueKey('doubt-d7')));
+    testWidgets('answering removes the doubt from the list at once and clears its dot; the answer stays saved on the doubt', (tester) async {
+      await openPage(tester, realMarkers: true);
+      tester.view.physicalSize = const Size(360, 4000);
+      await letDataArrive(tester);
+      expect(find.byKey(const ValueKey('doubt-dot-d3')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('doubt-d3')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('doubt-answer-text')), findsOneWidget);
-      expect(find.text('Yes, indeed.'), findsOneWidget);
-      expect(find.byKey(const ValueKey('doubt-answer-field')), findsNothing);
-      expect(find.byKey(const ValueKey('doubt-send')), findsNothing);
+      await tester.enterText(find.byKey(const ValueKey('doubt-answer-field')), 'The Lord is Krishna.');
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('doubt-send')));
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+      await letDataArrive(tester);
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('doubt-d3')), findsNothing);
+      expect(find.byKey(const ValueKey('doubt-dot-d3')), findsNothing);
+      expect(find.text('5 doubts waiting for you'), findsOneWidget);
+      final saved = (await GuideDb.instance.collection('bookDoubts').doc('d3').get()).data()!;
+      expect(saved['answer'], 'The Lord is Krishna.', reason: 'still on the student doubt (their Notes)');
+    });
+
+    testWidgets('another admin answering a doubt removes it live from a list that is already open; the last one empties it', (tester) async {
+      final db = FakeFirebaseFirestore();
+      await doubt(db, 'a', uid: 's1', name: 'Arjun Kumar', question: 'First?', askedAt: t2);
+      await doubt(db, 'b', uid: 's1', name: 'Arjun Kumar', question: 'Second?', askedAt: t1);
+      await openPage(tester, db: db);
+      expect(find.text('2 doubts waiting for you'), findsOneWidget);
+      await db.collection('bookDoubts').doc('a').update({'status': 'answered', 'answer': 'By another admin', 'answeredBy': 'guide', 'answeredByName': 'G Das', 'answeredAt': t3});
+      await settleLoad(tester);
+      expect(find.byKey(const ValueKey('doubt-a')), findsNothing);
+      expect(find.text('1 doubt waiting for you'), findsOneWidget);
+      await db.collection('bookDoubts').doc('b').update({'status': 'answered', 'answer': 'Also answered', 'answeredBy': 'guide', 'answeredByName': 'G Das', 'answeredAt': t3});
+      await settleLoad(tester);
+      expect(find.byKey(const ValueKey('doubts-empty')), findsOneWidget);
+    });
+
+    testWidgets('a notification about a doubt that was already answered says so instead of opening it', (tester) async {
+      final db = await world();
+      await doubt(db, 'gone', uid: 's1', name: 'Arjun Kumar', question: 'Answered one', askedAt: t4, answer: 'Yes.');
+      await openPage(tester, db: db, openId: 'gone');
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(find.text('That doubt has already been answered'), findsOneWidget);
+      expect(find.byKey(const ValueKey('doubt-dialog')), findsNothing);
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
     });
 
     testWidgets('a failed send keeps the dialog and the typed answer, and says so', (tester) async {
