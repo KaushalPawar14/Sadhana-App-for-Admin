@@ -7,6 +7,8 @@ import '../utils/AdminProfile.dart';
 import '../utils/BoardQueries.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/Snackbar.dart';
+import '../widgets/StudentCommitmentsCard.dart';
+import 'StudentNotificationSettings.dart';
 import '../utils/StudentScope.dart';
 import 'AbcdeActivityCard.dart';
 import 'StudentMusicPage.dart';
@@ -579,6 +581,49 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                               dob: data['dob'] is Timestamp
                                   ? (data['dob'] as Timestamp).toDate()
                                   : null,
+                            ),
+                          ),
+
+                          // COMMITMENTS — the same two fields the Student
+                          // app itself writes (commitmentRounds /
+                          // readingCommitmentMinutes). The server's own
+                          // rescoreOnCommitmentChange trigger re-scores the
+                          // week and month when they change, whoever changed
+                          // them, so points follow with no new server code.
+                          StudentCommitmentsCard(
+                            studentUid: widget.studentUid,
+                            studentName: name,
+                            commitmentRounds:
+                                data['commitmentRounds'] is num &&
+                                        _asInt(data['commitmentRounds']) > 0
+                                    ? _asInt(data['commitmentRounds'])
+                                    : null,
+                            readingCommitmentMinutes:
+                                data['readingCommitmentMinutes'] is num
+                                    ? _asInt(data['readingCommitmentMinutes'])
+                                    : null,
+                            canEdit: canAct,
+                          ),
+
+                          // NOTIFICATION SETTINGS — the student's own six
+                          // switches, same keys, editable by their guide.
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      StudentNotificationSettingsPage(
+                                    studentUid: widget.studentUid,
+                                    studentName: name,
+                                    canEdit: canAct,
+                                  ),
+                                ),
+                              ),
+                              icon: const Icon(
+                                  Icons.notifications_outlined, size: 18),
+                              label: const Text('Notification settings'),
                             ),
                           ),
 
