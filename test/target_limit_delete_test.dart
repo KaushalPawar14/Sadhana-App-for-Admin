@@ -177,7 +177,8 @@ void _messageTests() {
         'Your sign-in has lapsed — sign in again (unauthenticated)');
     expect(
         deleteFailureMessage(fnError('permission-denied')),
-        'This target is not yours to delete (permission-denied)');
+        'Refused — either the target is not yours, or the app is shut out '
+        'of this function (permission-denied)');
     expect(
         deleteFailureMessage(
             fnError('not-found')),

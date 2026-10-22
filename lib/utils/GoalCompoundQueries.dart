@@ -651,7 +651,7 @@ Future<void> abandonCompoundTarget(String guideId, String targetId) =>
 ///
 ///   unavailable / internal / deadline-exceeded  the function did not answer
 ///   unauthenticated                             the sign-in lapsed
-///   permission-denied                           not this admin's to delete
+///   permission-denied                           not ours, or the door is shut
 ///   not-found                                   already gone
 String deleteFailureMessage(Object error) {
   if (error is FirebaseFunctionsException) {
@@ -659,7 +659,9 @@ String deleteFailureMessage(Object error) {
       'unavailable' || 'internal' || 'deadline-exceeded' =>
         'The server did not answer',
       'unauthenticated' => 'Your sign-in has lapsed — sign in again',
-      'permission-denied' => 'This target is not yours to delete',
+      'permission-denied' =>
+        'Refused — either the target is not yours, or the app is shut out '
+            'of this function',
       'not-found' => 'That target no longer exists',
       _ => null,
     };
