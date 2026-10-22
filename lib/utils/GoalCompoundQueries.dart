@@ -641,6 +641,42 @@ Future<String> createCompoundTargetShell({
 Future<void> abandonCompoundTarget(String guideId, String targetId) =>
     compoundTargetRef(guideId, targetId).update({'status': kCompoundStatusAbandoned});
 
+/// Why a delete (or an abandon) failed, in words a guide can act on — and
+/// never a generic "could not do that just now".
+///
+/// A generic line is worse than useless here: it reads as "the delete is
+/// broken" when the usual cause is the callable being unreachable, which is a
+/// different problem with a different fix. So the code is always shown, with a
+/// plain sentence for the ones that mean something specific:
+///
+///   unavailable / internal / deadline-exceeded  the function did not answer
+///   unauthenticated                             the sign-in lapsed
+///   permission-denied                           not this admin's to delete
+///   not-found                                   already gone
+String deleteFailureMessage(Object error) {
+  if (error is FirebaseFunctionsException) {
+    final plain = switch (error.code) {
+      'unavailable' || 'internal' || 'deadline-exceeded' =>
+        'The server did not answer',
+      'unauthenticated' => 'Your sign-in has lapsed — sign in again',
+      'permission-denied' => 'This target is not yours to delete',
+      'not-found' => 'That target no longer exists',
+      _ => null,
+    };
+    final detail = (error.message ?? '').trim();
+    return plain != null
+        ? '$plain (${error.code})'
+        : 'Delete failed: ${error.code}'
+            '${detail.isEmpty ? '' : ' — $detail'}';
+  }
+  if (error is FirebaseException) {
+    final detail = (error.message ?? '').trim();
+    return 'Delete failed: ${error.code}'
+        '${detail.isEmpty ? '' : ' — $detail'}';
+  }
+  return 'Delete failed: $error';
+}
+
 /// Deletes a target and its phases for good, through
 /// `functions/goals.js`'s `deleteCompoundTarget`.
 ///

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/utils/GoalCompoundQueries.dart';
@@ -138,8 +139,76 @@ void main() {
     expect(second, isNotEmpty);
   });
 
+  _messageTests();
+
   test('a metric that is not chanting or books is still refused outright',
       () async {
     await expectLater(create('association'), throwsA(isA<ArgumentError>()));
+  });
+}
+
+// ---------------------------------------------------------------------------
+// The delete failure message — the bug the HOD hit on 22 Oct 2026
+// ---------------------------------------------------------------------------
+// The callable was unreachable (its container would not start), so every
+// attempt threw and the screen said "Could not delete the target just now."
+// That reads as "the delete is broken" when the delete was fine, and it hid
+// the one fact that identified the real cause: the error code.
+
+/// The exception the callable throws. Its constructor is @protected, so it
+/// is built here once rather than at every call site.
+FirebaseFunctionsException fnError(String code, [String message = 'x']) =>
+    // ignore: invalid_use_of_protected_member
+    FirebaseFunctionsException(code: code, message: message);
+
+void _messageTests() {
+  test('an unreachable function says so, with its code', () {
+    for (final code in ['unavailable', 'internal', 'deadline-exceeded']) {
+      final msg = deleteFailureMessage(
+          fnError(code, 'INTERNAL'));
+      expect(msg, 'The server did not answer ($code)');
+      expect(msg, isNot(contains('just now')));
+    }
+  });
+
+  test('each code that means something specific says what it means', () {
+    expect(
+        deleteFailureMessage(fnError('unauthenticated')),
+        'Your sign-in has lapsed — sign in again (unauthenticated)');
+    expect(
+        deleteFailureMessage(fnError('permission-denied')),
+        'This target is not yours to delete (permission-denied)');
+    expect(
+        deleteFailureMessage(
+            fnError('not-found')),
+        'That target no longer exists (not-found)');
+  });
+
+  test('an unknown code still shows the code AND the server sentence', () {
+    final msg = deleteFailureMessage(fnError('resource-exhausted', 'Quota exceeded'));
+    expect(msg, contains('resource-exhausted'));
+    expect(msg, contains('Quota exceeded'));
+  });
+
+  test('a plain Firestore error is reported too, never swallowed', () {
+    final msg = deleteFailureMessage(
+        FirebaseException(plugin: 'cloud_firestore', code: 'permission-denied'));
+    expect(msg, contains('permission-denied'));
+  });
+
+  test('even a non-Firebase error is shown rather than hidden', () {
+    expect(deleteFailureMessage(StateError('boom')), contains('boom'));
+  });
+
+  test('no failure is ever reported with the old generic wording', () {
+    final errors = <Object>[
+      fnError('internal', 'INTERNAL'),
+      FirebaseException(plugin: 'cloud_firestore', code: 'aborted'),
+      StateError('boom'),
+    ];
+    for (final e in errors) {
+      expect(deleteFailureMessage(e), isNot(contains('just now')));
+      expect(deleteFailureMessage(e), isNot(contains('Could not delete')));
+    }
   });
 }

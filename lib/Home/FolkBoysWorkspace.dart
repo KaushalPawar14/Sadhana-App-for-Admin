@@ -3202,7 +3202,14 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
               // comments, profile — each a 48 dp target.
               Row(
                 children: [
-                  if (group != null) GuideGroupPill(group: group),
+                  // Flexible, not a bare pill: the three icon buttons beside it are a
+                  // fixed 48 dp each, so at a large text scale — or while a predictive
+                  // back gesture renders this card at ~90% of its width — the pill's
+                  // natural width no longer fits and this Row overflowed (4.9 px at
+                  // text 1.6). The pill's own Text already ellipsises, so letting it
+                  // shrink is all that is needed; the Spacer still pushes the icons to
+                  // the right whenever there is room for them.
+                  if (group != null) Flexible(child: GuideGroupPill(group: group)),
                   const Spacer(),
                   GuideCardIconButton(
                     icon: Icons.calendar_month_outlined,
