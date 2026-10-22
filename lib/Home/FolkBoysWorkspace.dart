@@ -3602,14 +3602,18 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   /// their commitment dates... show who set it"), replacing the removed
   /// automatic-deadline/extension display entirely.
   ///
-  /// Task, 2026-09-15 — the row's own separate "Mark finished" tick
-  /// (`IconButton`, `Icons.check_circle_outline`) is REMOVED: it duplicated
-  /// the "Mark as completed" action already inside the tap-the-title assign
-  /// dialog ([_openAssignBookDialog]), and cost every row extra height for
-  /// no longer reason. Tapping the title (for any non-finished book) is now
-  /// the ONLY way to mark a book finished from this card —
-  /// [_confirmMarkBookFinished] itself is unchanged and still called from
-  /// that dialog.
+  /// Completion lives on the CHECKPOINT CIRCLE, not in the assign dialog.
+  /// Tapping the circle of an unfinished book asks "Mark this book
+  /// finished?" ([_confirmMarkBookFinished], the same single write as
+  /// before); tapping a finished one asks "Mark as not completed?"
+  /// ([_confirmMarkBookNotFinished]). The circle is tappable in every level's
+  /// list, including for a finished book, whose ROW stays untappable — the
+  /// circle's own detector is a child of the row's, so it takes the tap and
+  /// the assign dialog never opens behind the confirmation. Tapping the
+  /// title still opens the assign dialog for an unfinished book.
+  ///
+  /// The "Mark as completed" button that used to be inside that dialog is
+  /// gone; both directions now go through the circle.
   Widget _bookStatusRow({
     required _Boy boy,
     required BookConfigEntry book,
@@ -3644,8 +3648,30 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Row(
             children: [
-              Icon(icon, size: 18, color: colour),
-              const SizedBox(width: 10),
+              // The checkpoint circle is its own tap target: it marks the
+              // book completed, and un-marks it again. It sits INSIDE the
+              // row's own GestureDetector, so the child wins the tap and the
+              // assign dialog is not opened behind the confirmation. It is
+              // tappable for a finished book too, which the row itself is not.
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  _markBookSeen(boy, _bookDocId(boy, book));
+                  if (isFinished) {
+                    _confirmMarkBookNotFinished(
+                        boy: boy, book: book, entry: entry);
+                  } else {
+                    _confirmMarkBookFinished(
+                        boy: boy, book: book, entry: entry);
+                  }
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 8),
+                  child: Icon(icon, size: 18, color: colour),
+                ),
+              ),
+              const SizedBox(width: 4),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -3689,6 +3715,76 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     );
   }
 
+  /// The other half of the checkpoint circle: a book marked completed by
+  /// mistake, put back.
+  ///
+  /// ONE write, the mirror of [_confirmMarkBookFinished]: `endDate` and
+  /// `endedBy` are DELETED (not blanked — `statusForBookEntry` treats an empty
+  /// string as unfinished, but a deleted field is what a book that was never
+  /// finished actually looks like), and `isCurrentBook` is left FALSE.
+  ///
+  /// Leaving it false is the safe choice, and it is deliberate: the undefined
+  /// combination `isCurrentBook == false` with no `endDate` is already defined
+  /// by `statusForBookEntry` as `notStarted` — "the record asserts no progress,
+  /// so the caller claims none". Setting it true instead would silently credit
+  /// the student with reading a book their own report never claimed, and would
+  /// risk a second current book. `startDate` is untouched, so a book that had a
+  /// real start date keeps it.
+  ///
+  /// The "finished is never current" invariant holds here by construction: this
+  /// write removes the end date and sets nothing current.
+  Future<void> _confirmMarkBookNotFinished({
+    required _Boy boy,
+    required BookConfigEntry book,
+    required Map<String, dynamic>? entry,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => GuideDialog(
+        title: const Text("Mark as not completed?"),
+        content: Text(
+          "${book.title.isEmpty ? '(untitled)' : book.title} will go back to "
+          "not completed for ${boy.name}. It does not become their current "
+          "book.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("Mark not completed"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await GuideDb.instance
+          .collection('booksRead')
+          .doc('${boy.uid}_${book.level}_${book.key}')
+          .set({
+        'uid': boy.uid,
+        'level': book.level,
+        'bookKey': book.key,
+        'bookTitle': book.title,
+        'endDate': FieldValue.delete(),
+        'endedBy': FieldValue.delete(),
+        'isCurrentBook': false,
+      }, SetOptions(merge: true));
+
+      if (!mounted) return;
+      showSnackbar(context, "Book marked not completed", Colors.green,
+          Icons.check_circle);
+    } catch (_) {
+      if (!mounted) return;
+      showSnackbar(
+          context, "Could not update the book", Colors.red, Icons.error);
+    }
+  }
   /// Master Task Part 4 item 1 — confirms, then marks a book finished in
   /// ONE write: `endDate = today`, `isCurrentBook = false` and (Part 2 of
   /// the challenge/book-completion/deep-linking task) `endedBy = 'guide'`
@@ -3888,30 +3984,10 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                       ),
                     ),
                   ),
-                  // Part 2 item 1 — originally only offered for the
-                  // student's CURRENT book. Master Task 2026-09-10, Part 5
-                  // item 1 widens this to ANY book reaching this dialog
-                  // (this dialog only ever opens for a non-finished book —
-                  // see the row's own `onTap: isFinished ? null : ...`
-                  // gate — so a not-yet-started book can be marked
-                  // complete here too, not only a current one).
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () =>
-                          Navigator.pop(dialogContext, 'mark_finished'),
-                      icon: Icon(Icons.check_circle_outline,
-                          size: 18, color: dialogContext.g.success),
-                      label: Text(
-                        "Mark as completed",
-                        style: TextStyle(color: dialogContext.g.success),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: dialogContext.g.success.withValues(alpha: .6)),
-                      ),
-                    ),
-                  ),
+                  // The "Mark as completed" button that used to sit here is
+                  // gone: the checkpoint circle on the row itself now does
+                  // that job (and undoes it), so this dialog is once again
+                  // only about assigning a commitment date.
                 ],
               ),
               actions: [
@@ -3933,14 +4009,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     );
 
     if (!mounted) return;
-
-    // Part 2 item 2 — reuses `_confirmMarkBookFinished` verbatim (its own
-    // confirmation dialog, its own single `endDate`+`isCurrentBook` write)
-    // rather than a second implementation of "mark finished" here.
-    if (confirmed == 'mark_finished') {
-      await _confirmMarkBookFinished(boy: boy, book: book, entry: entry);
-      return;
-    }
 
     if (confirmed is! DateTime) return;
 
