@@ -223,6 +223,72 @@ void main() {
     expect(find.text('No interactions logged in the last 90 days'), findsOneWidget);
   });
 
+  testWidgets('the count updates LIVE — no reopening the profile',
+      (tester) async {
+    final db = await prepareApp(tester);
+    await pumpScreen(
+      tester,
+      const Scaffold(
+        body: SingleChildScrollView(
+          child: AbcdeActivityCard(
+            studentUid: 's2',
+            studentName: 'Bhima Sen',
+            role: 'Stay at Hostel',
+            lifetimeRounds: 400,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('No interactions logged in the last 90 days'),
+        findsOneWidget);
+
+    // an interaction saved elsewhere, while this card stays on screen
+    await db.collection('interactionLogs').add({
+      'studentUid': 's2',
+      'studentName': 'Bhima Sen',
+      'guideId': 'G',
+      'interactionDate': Timestamp.fromDate(DateTime.now()),
+      'rawDictation': 'Spoke after class.',
+    });
+    await tester.pumpAndSettle();
+
+    expect(find.text('No interactions logged in the last 90 days'), findsNothing);
+    expect(find.textContaining('1 interaction in the last 90 days'),
+        findsOneWidget);
+  });
+
+  testWidgets('a new MEETING updates the A limb live too', (tester) async {
+    final db = await prepareApp(tester);
+    await pumpScreen(
+      tester,
+      const Scaffold(
+        body: SingleChildScrollView(
+          child: AbcdeActivityCard(
+            studentUid: 's2',
+            studentName: 'Bhima Sen',
+            role: 'Stay at Hostel',
+            lifetimeRounds: 400,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('No meeting held yet'), findsOneWidget);
+
+    await db.collection('associations').add({
+      'studentUid': 's2',
+      'studentName': 'Bhima Sen',
+      'guideId': 'G',
+      'status': 'completed',
+      'confirmedDate':
+          Timestamp.fromDate(DateTime.now().subtract(const Duration(days: 1))),
+    });
+    await tester.pumpAndSettle();
+
+    expect(find.text('No meeting held yet'), findsNothing);
+  });
+
   // -------------------------------------------------------------------------
   // nothing was written into associations
   // -------------------------------------------------------------------------

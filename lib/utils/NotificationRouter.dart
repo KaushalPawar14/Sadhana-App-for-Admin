@@ -5,6 +5,7 @@ import '../Home/Calendar.dart';
 import '../Pages/AssociationManager.dart';
 import '../Pages/ExpeditionManager.dart';
 import '../Pages/FlaggedMessages.dart';
+import '../Pages/PriorityStudents.dart';
 import '../Pages/StudentDoubtsPage.dart';
 import '../Pages/CompoundGoalRoadmapPage.dart';
 import '../Pages/SubmissionStatus.dart';
@@ -197,6 +198,15 @@ void _dispatch(Map<String, dynamic> data) {
         final doubtId = str('doubtId');
         navState.push(MaterialPageRoute(
           builder: (_) => StudentDoubtsPage(openDoubtId: doubtId.isEmpty ? null : doubtId),
+        ));
+        break;
+
+      case 'guide_priority':
+        // The nightly check found a NEW reason a student needs attention.
+        // The list itself is the right place to land: the card there shows
+        // EVERY reason that is currently true, not only the one that fired.
+        navState.push(MaterialPageRoute(
+          builder: (_) => const PriorityStudentsPage(),
         ));
         break;
 

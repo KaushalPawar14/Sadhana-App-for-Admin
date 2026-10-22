@@ -192,6 +192,11 @@ void main() {
       expect(find.text('Bhima Sen'), findsNothing);
       await tester.pump(const Duration(seconds: 5));
       await top(tester);
+      // Cards now carry the automatic sadhana reasons too, so they are taller
+      // and the restore line can sit below the fold: bring it into view rather
+      // than tapping where it used to be.
+      await tester.ensureVisible(find.byKey(const ValueKey('restore-removed')));
+      await tester.pump();
       await tester.tap(find.byKey(const ValueKey('restore-removed')));
       await settleLoad(tester);
       expect(await dismissalIds(db), isEmpty);
@@ -201,8 +206,10 @@ void main() {
 
     testWidgets('a student returns when a NEW kind of concern appears; stays away while nothing new', (tester) async {
       await open(tester, 'H', seed: (db) async {
-        // s4 was removed when their only concern was "never logged"; s5 was removed with a different concern
-        await db.collection('priorityDismissals').doc('H__s4').set({'adminId': 'H', 'studentUid': 's4', 'kinds': ['never_logged', 'stale_contact', 'missing_report'], 'dismissedAt': Timestamp.now()});
+        // s4 was removed when their only concern was "never logged"; s5 was removed with a different concern.
+        // `no_report` is in s4's list because the seeded roster files no reports at all, so every student now
+        // carries that automatic reason — s4 must still count as "nothing NEW since I removed them".
+        await db.collection('priorityDismissals').doc('H__s4').set({'adminId': 'H', 'studentUid': 's4', 'kinds': ['never_logged', 'stale_contact', 'missing_report', 'no_report'], 'dismissedAt': Timestamp.now()});
         await db.collection('priorityDismissals').doc('H__s5').set({'adminId': 'H', 'studentUid': 's5', 'kinds': ['missing_report'], 'dismissedAt': Timestamp.now()});
       });
       expect(find.text('1 removed by you.'), findsOneWidget);

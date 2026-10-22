@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -139,10 +141,50 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
   int _reflectionsSubmitted = 0;
   DateTime? _mostRecentTrip;
 
+  /// Live subscriptions for the A limb only.
+  ///
+  /// The other limbs are one-shot reads taken when the card is built, which
+  /// is right for them: a guide cannot change a student's reports, books or
+  /// services from inside this app while looking at this card. Associations
+  /// and interactions they CAN change — an interaction saved from the
+  /// Associations screen has to show here without reopening the profile — so
+  /// those two are watched and recomputed when they change.
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _assocSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _interSub;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _watchAssociationSources();
+  }
+
+  /// Recomputes the A limb whenever a meeting or an interaction about this
+  /// student is written, by anyone. Both queries are the scoped ones the
+  /// one-shot read already uses, so a guide never watches a student they may
+  /// not see. Failures are swallowed: a card that cannot watch still shows
+  /// the figures its first read produced.
+  Future<void> _watchAssociationSources() async {
+    try {
+      final assoc = await _scopedFor('associations', 'studentUid');
+      final inter = await _scopedFor('interactionLogs', 'studentUid');
+      if (!mounted) return;
+      _assocSub = assoc.snapshots().listen((_) {
+        if (mounted) _loadAssociation();
+      });
+      _interSub = inter.snapshots().listen((_) {
+        if (mounted) _loadAssociation();
+      });
+    } catch (_) {
+      // no live updates; the first read's figures stand
+    }
+  }
+
+  @override
+  void dispose() {
+    _assocSub?.cancel();
+    _interSub?.cancel();
+    super.dispose();
   }
 
   // The student's category changed: his chanting / reading series are read again from the new category's

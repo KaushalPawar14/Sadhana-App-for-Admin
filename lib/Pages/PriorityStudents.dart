@@ -8,7 +8,13 @@ import '../utils/GuideDb.dart';
 import '../widgets/GuideDialog.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
+import '../utils/AbcdeActivity.dart'
+    show sadhanaDateKey, latestDayWithPossibleData;
 import '../utils/PlanningQueries.dart';
+import '../utils/PriorityReasons.dart';
+import '../utils/SadhanaReportSource.dart' show fetchDateReports;
+import '../utils/SeenMarkers.dart';
+import '../utils/StudentScope.dart';
 import 'StudentProfilePage.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
@@ -82,6 +88,13 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
 
     final profile = AdminProfileProvider.require();
     final guide = profile.displayName;
+    // Opening this list is "seen" for the automatic priority reasons, the
+    // same as the flagged-messages list is for its own dot. Keyed by the
+    // admin's ID (what `SeenMarkers.seenAt` is read with), never the display
+    // name the rest of this method uses for wording.
+    if (profile.id.isNotEmpty) {
+      SeenMarkers.markSeen(profile.id, 'priorityReasons');
+    }
     final students = await scopedStudents();
 
     if (students == null) {
@@ -145,6 +158,39 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
       litByStudent.putIfAbsent(uid, () => []).add(data);
     }
 
+    // The full roster documents: the reasons need each student's residence
+    // (which report collection is theirs) and their own commitments, which
+    // `scopedStudents()` does not carry. Same scoped query, read once.
+    final roster = <String, Map<String, dynamic>>{};
+    try {
+      final snap = await StudentScope.current().studentsGet();
+      for (final d in snap.docs) {
+        roster[d.id] = d.data();
+      }
+    } catch (_) {/* no reasons rather than no screen */}
+
+    // Each student's own category's reports. One read per student, in
+    // parallel — there is no collection-group query over `dates` (the ids are
+    // `dd-MM-yyyy`, which does not sort chronologically, and the rules can only
+    // prove a per-student scoped read). Retention keeps about two months, so
+    // each read is small. A failure for one student costs that student's
+    // reasons, never the screen.
+    final reasonsByStudent = <String, List<PriorityReason>>{};
+    await Future.wait(students.map((student) async {
+      final data = roster[student.uid];
+      if (data == null) return;
+      try {
+        final reports = await fetchDateReports(student.name, (data['role'] ?? '').toString());
+        final reasons = priorityReasonsFor(
+          days: _windowFor(reports),
+          role: (data['role'] ?? '').toString(),
+          chantCommitment: _asCommitment(data['commitmentRounds']),
+          readingCommitment: _asCommitment(data['readingCommitmentMinutes']),
+        );
+        if (reasons.isNotEmpty) reasonsByStudent[student.uid] = reasons;
+      } catch (_) {}
+    }));
+
     // The students THIS admin already removed from their own priority list (a read failure just shows everyone).
     final dismissed = await _readDismissals(profile.id);
 
@@ -158,6 +204,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
         associations: assocByStudent[student.uid] ?? const [],
         lit: litByStudent[student.uid] ?? const [],
         missing: missing,
+        reasons: reasonsByStudent[student.uid] ?? const [],
       );
 
       // No concerns means not a priority. Such a student is simply absent.
@@ -298,14 +345,56 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
   // The checklist
   // ---------------------------------------------------------------------------
 
+  /// A commitment field as a whole number; anything else is 0, which the
+  /// reason rules read as "not set" (chanting then falls back to the
+  /// standard 16, reading skips its reason entirely).
+  static int _asCommitment(Object? v) =>
+      v is num && v.isFinite && v > 0 ? v.toInt() : 0;
+
+  /// The 30 calendar days the reasons look at, most recent first.
+  ///
+  /// The window ENDS AT YESTERDAY (`latestDayWithPossibleData`), not today:
+  /// a student who simply has not filed yet this morning is not three days
+  /// behind. The server's nightly check uses the same end day, so the app and
+  /// the notification never disagree by a day.
+  static List<ReportDay> _windowFor(Map<String, Map<String, dynamic>> reports) {
+    final last = latestDayWithPossibleData(DateTime.now());
+    return [
+      for (var i = 0; i < 30; i++)
+        () {
+          final day = last.subtract(Duration(days: i));
+          return ReportDay(day, reports[sadhanaDateKey(day)]);
+        }(),
+    ];
+  }
+
   List<_Flag> _flagsFor({
     required ({String uid, String name}) student,
     required List<Map<String, dynamic>> logs,
     required List<Map<String, dynamic>> associations,
     required List<Map<String, dynamic>> lit,
     required Set<String> missing,
+    required List<PriorityReason> reasons,
   }) {
     final flags = <_Flag>[];
+
+    // --- The automatic sadhana reasons -------------------------------------
+    //
+    // Each is three days in a row of the same thing going wrong, read from the
+    // student's OWN category's reports and their own commitments
+    // (`utils/PriorityReasons.dart`). They carry their own stable `kind`, so
+    // "Remove from priority list" treats a NEW kind of slip as new — and a
+    // reason simply stops being produced the moment it stops being true, which
+    // is what makes the card clear itself.
+    for (final r in reasons) {
+      flags.add((
+        kind: r.key,
+        label: r.text,
+        colour: r.kind == PriorityReasonKind.noReport
+            ? context.g.danger
+            : context.g.warning,
+      ));
+    }
 
     // --- A. Contact staleness ------------------------------------------------
     //

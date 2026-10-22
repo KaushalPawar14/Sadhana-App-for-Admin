@@ -122,6 +122,19 @@ class UnseenAggregates {
     return StudentDoubts.anyUnseen(guide, isHod);
   }
 
+  /// Priority reasons: a NEW reason the nightly check found and told this
+  /// admin about (`functions/priorityCheck.js` stamps `notifiedAt` only when
+  /// it actually notified). Clears when the admin opens Priority students,
+  /// the same way every other dot here clears — not because a push was
+  /// dismissed. Nothing shows until the server has run at least once.
+  static Stream<bool> priorityReasonsUnseen(String guide, bool isHod) {
+    if (debugDisable) return Stream.value(false);
+    return SeenMarkers.unseenFrom(
+      _maxTimestamp(_scope.historyStream('priorityReasons'), 'notifiedAt'),
+      SeenMarkers.seenAt(guide, 'priorityReasons'),
+    );
+  }
+
   static Stream<bool> calendarEventsUnseen(String guide) {
     if (debugDisable) return Stream.value(false);
     return SeenMarkers.unseenFrom(

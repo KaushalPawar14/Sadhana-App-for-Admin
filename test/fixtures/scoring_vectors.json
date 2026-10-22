@@ -1,0 +1,59 @@
+{
+  "_about": "Shared test vectors for the point system. Read by functions/test/scoring.test.js AND by the Student app's test/scoring_vectors_test.dart (which checks the app's display helpers). A number is changed here, in functions/scoring.js and in the FAQ together or not at all.",
+  "tiers": {
+    "japa": [["04:00", 1.5], ["10:00", 1.5], ["10:01", 1.25], ["14:00", 1.25], ["14:01", 1.15], ["18:00", 1.15], ["18:01", 1.0], ["23:30", 1.0]],
+    "sleepFolk": [["21:00", 1.5], ["22:00", 1.5], ["22:01", 1.25], ["22:30", 1.25], ["22:31", 1.15], ["23:00", 1.15], ["23:01", 1.0], ["23:59", 1.0], ["00:30", 1.0], ["01:00", 1.0]],
+    "temple": [["04:00", 1.5], ["05:35", 1.5], ["05:36", 1.25], ["05:45", 1.25], ["05:46", 1.15], ["06:00", 1.15], ["06:01", 1.0], ["09:00", 1.0]],
+    "wakeup": [["04:30", 1.5], ["05:30", 1.5], ["05:31", 1.25], ["06:00", 1.25], ["06:01", 1.15], ["06:30", 1.15], ["06:31", 1.0], ["08:00", 1.0]],
+    "sleepHostel": [["22:00", 1.5], ["22:30", 1.5], ["22:31", 1.25], ["23:00", 1.25], ["23:01", 1.15], ["23:30", 1.15], ["23:31", 1.0], ["23:59", 1.0], ["00:15", 1.0]]
+  },
+  "chanting": [[16, 16, 50], [8, 16, 25], [64, 16, 200], [0, 16, 0], [1, 1, 50], [10, 8, 62.5], [20, 4, 250]],
+  "reading": [[30, 30, 50], [15, 30, 25], [90, 30, 150], [0, 30, 0], [1, 0, 50], [45, 0, 50], [0, 0, 0], [10, 20, 25]],
+  "graded": [[2, 50], [1, 25], [0, 0]],
+  "extra": [[2, 50], [1, 25], [0, 0]],
+  "typo": [[65, 16, true], [64, 16, false], [200, 0, false], [121, 30, true], [120, 30, false], [0, 16, false]],
+  "days": [
+    {
+      "name": "FOLK, everything at its best",
+      "form": "folk", "chantCommitment": 16, "readCommitment": 30,
+      "report": {"classHearing": 2, "dailyServices": 1, "extraLecture": 2, "chantRounds": 16, "bookReading": 30, "templeEntry": "05:35", "sleepTiming": "22:00", "finishTiming": "10:00"},
+      "base": 225, "multiplier": 3.375, "total": 759.375
+    },
+    {
+      "name": "FOLK, no bonuses",
+      "form": "folk", "chantCommitment": 16, "readCommitment": 30,
+      "report": {"classHearing": 1, "dailyServices": 0, "extraLecture": 0, "chantRounds": 8, "bookReading": 0, "templeEntry": "07:00", "sleepTiming": "23:30", "finishTiming": "20:00"},
+      "base": 50, "multiplier": 1, "total": 50
+    },
+    {
+      "name": "FOLK, no cap: 64 rounds on a 16 commitment, reading 90 on 30",
+      "form": "folk", "chantCommitment": 16, "readCommitment": 30,
+      "report": {"classHearing": 0, "dailyServices": 0, "chantRounds": 64, "bookReading": 90, "templeEntry": "09:00", "sleepTiming": "23:59", "finishTiming": "19:00"},
+      "base": 350, "multiplier": 1, "total": 350
+    },
+    {
+      "name": "FOLK, reading commitment 0: any reading is a flat 50",
+      "form": "folk", "chantCommitment": 16, "readCommitment": 0,
+      "report": {"classHearing": 0, "dailyServices": 0, "chantRounds": 0, "bookReading": 5, "templeEntry": "09:00", "sleepTiming": "23:59", "finishTiming": "19:00"},
+      "base": 50, "multiplier": 1, "total": 50
+    },
+    {
+      "name": "Hostel & Localite, wake-up + sleep + japa all by the middle tier, reading commitment 0",
+      "form": "hostel", "chantCommitment": 16, "readCommitment": 0,
+      "report": {"classHearing": 2, "chantRounds": 32, "bookReading": 60, "wakeUpTime": "06:00", "sleepTiming": "22:45", "finishTiming": "13:00"},
+      "base": 200, "multiplier": 1.953125, "total": 390.625
+    },
+    {
+      "name": "Hostel & Localite ignores fields only the FOLK form has; sleep after midnight is 1.0",
+      "form": "hostel", "chantCommitment": 16, "readCommitment": 30,
+      "report": {"classHearing": 0, "chantRounds": 8, "bookReading": 15, "dailyServices": 2, "extraLecture": 2, "templeEntry": "05:00", "wakeUpTime": "07:00", "sleepTiming": "00:30", "finishTiming": "19:00"},
+      "base": 50, "multiplier": 1, "total": 50
+    },
+    {
+      "name": "Hostel & Localite, best of everything",
+      "form": "hostel", "chantCommitment": 16, "readCommitment": 30,
+      "report": {"classHearing": 2, "chantRounds": 16, "bookReading": 30, "wakeUpTime": "05:30", "sleepTiming": "22:30", "finishTiming": "10:00"},
+      "base": 150, "multiplier": 3.375, "total": 506.25
+    }
+  ]
+}
