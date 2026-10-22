@@ -570,6 +570,40 @@ int compoundWeeksRemaining(DateTime endDate, {DateTime? from}) {
 /// this — the actual phase plan is generated AND written server-side (the
 /// only place the real per-student standing data and the OpenAI call belong;
 /// see `functions/goals.js`'s `generateCompoundPlan`).
+/// A guide already has an active target of this metric.
+///
+/// Thrown rather than returned so no caller can create a second one by
+/// ignoring a boolean. [message] is written for the guide and shown as it is.
+class CompoundTargetLimitException implements Exception {
+  const CompoundTargetLimitException(this.metric, this.message);
+  final String metric;
+  final String message;
+  @override
+  String toString() => message;
+}
+
+/// The guide's ACTIVE target of [metric], if they have one.
+///
+/// "Active" is the only status that blocks a new target: a completed or
+/// abandoned one is history, and a guide must be able to start again.
+Future<CompoundTarget?> activeTargetOfMetric(
+    String guideId, String metric) async {
+  final snap = await compoundTargetsRef(guideId)
+      .where('metric', isEqualTo: metric)
+      .where('status', isEqualTo: kCompoundStatusActive)
+      .limit(1)
+      .get();
+  if (snap.docs.isEmpty) return null;
+  final doc = snap.docs.first;
+  return CompoundTarget.from(guideId, doc.id, doc.data());
+}
+
+/// The sentence a guide sees when they already have one.
+String targetLimitMessage(String metric) =>
+    metric == 'books'
+        ? 'Delete your current book reading target first'
+        : 'Delete your current chanting target first';
+
 Future<String> createCompoundTargetShell({
   required String guideId,
   required String metric,
@@ -579,6 +613,14 @@ Future<String> createCompoundTargetShell({
 }) async {
   if (!validCompoundMetric(metric)) {
     throw ArgumentError('Compound targets support only chanting or books.');
+  }
+
+  // ONE active target per metric (Master 1, A1). Checked here rather than
+  // only in the screen, so every path to a new target goes past it — the
+  // setup page, a retry after a failed plan, or anything added later.
+  final existing = await activeTargetOfMetric(guideId, metric);
+  if (existing != null) {
+    throw CompoundTargetLimitException(metric, targetLimitMessage(metric));
   }
 
   final targetDoc = compoundTargetsRef(guideId).doc();
@@ -598,6 +640,26 @@ Future<String> createCompoundTargetShell({
 
 Future<void> abandonCompoundTarget(String guideId, String targetId) =>
     compoundTargetRef(guideId, targetId).update({'status': kCompoundStatusAbandoned});
+
+/// Deletes a target and its phases for good, through
+/// `functions/goals.js`'s `deleteCompoundTarget`.
+///
+/// A callable rather than a client delete because the phases are a
+/// subcollection — deleting the target document alone would leave them
+/// orphaned — and because who may delete one is the server's decision
+/// (`requireGoalAccess`: the target's own guide, or a HOD).
+///
+/// Returns how many phase documents went with it, for the confirmation.
+Future<int> callDeleteCompoundTarget({
+  required String guideId,
+  required String targetId,
+}) async {
+  final result = await FirebaseFunctions.instanceFor(region: kFunctionsRegion)
+      .httpsCallable('deleteCompoundTarget')
+      .call<Map<String, dynamic>>({'guideId': guideId, 'targetId': targetId});
+  final n = result.data['phasesDeleted'];
+  return n is num ? n.toInt() : 0;
+}
 
 /// Calls `functions/goals.js`'s `generateCompoundPlan` callable — the ONLY
 /// place the real AI call happens (server-side, per `PhasePlanService.dart`'s
