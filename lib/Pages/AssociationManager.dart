@@ -10,6 +10,7 @@ import '../utils/SeenMarkers.dart';
 import '../utils/SelectableDelete.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
+import 'InteractionLogger.dart';
 import 'OverdueAssociations.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
@@ -313,6 +314,90 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
   // ---------------------------------------------------------------------------
   // Guide-initiated meeting
   // ---------------------------------------------------------------------------
+
+  /// "Add interaction" — the guide's own notes about a student, which used
+  /// to be a separate feature reached from the Student profile.
+  ///
+  /// Interactions are GUIDE-APP ONLY and keep their own collection
+  /// (`interactionLogs`) and document shape, untouched: nothing is migrated,
+  /// nothing is written into `associations`, and the Student app — which never
+  /// read `interactionLogs` and still does not — is unaffected. Only the way
+  /// in moved, so every existing reader (This Week's follow-ups, the calendar,
+  /// Priority students, the weekly digests, the AI extraction) keeps working
+  /// on exactly the data it always read.
+  ///
+  /// This screen is roster-wide, so it asks WHICH student first — the same
+  /// scoped list `_openCreateMeetingSheet` uses — then opens the unchanged
+  /// `InteractionLoggerPage`, which owns the form, the save and its own
+  /// "Interaction saved" confirmation.
+  Future<void> _openAddInteractionSheet(String guide) async {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> students;
+    try {
+      final snap = await StudentScope.current().studentsGet();
+      students = snap.docs.toList()
+        ..sort((a, b) => (a.data()['name'] ?? '')
+            .toString()
+            .toLowerCase()
+            .compareTo((b.data()['name'] ?? '').toString().toLowerCase()));
+    } catch (_) {
+      if (mounted) {
+        showSnackbar(context, "Could not load students", Colors.red, Icons.error);
+      }
+      return;
+    }
+    if (!mounted) return;
+    if (students.isEmpty) {
+      showSnackbar(context, "No students to log an interaction for",
+          Colors.orange, Icons.info_outline);
+      return;
+    }
+
+    final chosen = await showDialog<QueryDocumentSnapshot<Map<String, dynamic>>>(
+      context: context,
+      builder: (dialogContext) => GuideDialog(
+        title: const Text("Add interaction"),
+        // A scrolling COLUMN, not a shrink-wrapped ListView: the dialog
+        // measures its content's intrinsic height, and a shrink-wrapping
+        // viewport cannot report one (it would have to build every child).
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final d in students)
+                  ListTile(
+                    dense: true,
+                    title: Text((d.data()['name'] ?? '').toString()),
+                    onTap: () => Navigator.pop(dialogContext, d),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text("Cancel"),
+          ),
+        ],
+      ),
+    );
+
+    if (chosen == null || !mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => InteractionLoggerPage(
+          studentUid: chosen.id,
+          studentName: (chosen.data()['name'] ?? '').toString(),
+        ),
+      ),
+    );
+    // Coming back, the history list below is a live stream, so a newly saved
+    // interaction is already there; this only refreshes the rest of the screen.
+    if (mounted) setState(() {});
+  }
 
   Future<void> _openCreateMeetingSheet(String guide) async {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> students;
@@ -1088,10 +1173,9 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
           return status == 'completed' || status == 'cancelled';
         }).toList();
 
-        if (upcoming.isEmpty && history.isEmpty) {
-          return const Center(child: Text("Nothing here yet"));
-        }
-
+        // No early return when there are no meetings: a student can have
+        // interaction notes and no meetings at all, and those still belong on
+        // this tab. The empty case is handled inside the list instead.
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
@@ -1116,9 +1200,111 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                   .map((d) =>
                       _historyCard(d.id, d.data() as Map<String, dynamic>)),
             ],
+            // Interactions live here too now — the guide's own notes, in the
+            // same place as everything else that happened with a student.
+            _interactionsSection(
+              nothingElseHere: upcoming.isEmpty && history.isEmpty,
+            ),
           ],
         );
       },
+    );
+  }
+
+  /// The interaction notes this admin may see, newest first, under their own
+  /// heading in the history tab. Read straight from `interactionLogs` through
+  /// the same scope stream every other history collection uses, so an admin
+  /// sees exactly the notes about the students they may see.
+  /// [nothingElseHere] is true when the tab has no meetings at all, so this
+  /// section owns the "nothing yet" message instead of the caller.
+  Widget _interactionsSection({bool nothingElseHere = false}) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: StudentScope.current().historyStream('interactionLogs'),
+      builder: (context, snapshot) {
+        final docs = (snapshot.data?.docs ?? []).toList()
+          ..sort((a, b) {
+            final ad = _interactionWhen(a.data() as Map<String, dynamic>);
+            final bd = _interactionWhen(b.data() as Map<String, dynamic>);
+            if (ad == null || bd == null) return 0;
+            return bd.compareTo(ad); // newest first
+          });
+        if (docs.isEmpty) {
+          return nothingElseHere
+              ? const Padding(
+                  padding: EdgeInsets.only(top: 40),
+                  child: Center(child: Text("Nothing here yet")),
+                )
+              : const SizedBox.shrink();
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 20),
+            Text(
+              "Interactions (${docs.length})",
+              style: const TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            for (final d in docs)
+              _interactionCard(d.id, d.data() as Map<String, dynamic>),
+          ],
+        );
+      },
+    );
+  }
+
+  /// When an interaction happened: its own `interactionDate`, falling back to
+  /// `createdAt`. Older records carry only the latter, so sorting and the date
+  /// line must not depend on `interactionDate` being there.
+  static DateTime? _interactionWhen(Map<String, dynamic> data) {
+    for (final key in ['interactionDate', 'createdAt']) {
+      final v = data[key];
+      if (v is Timestamp) return v.toDate();
+    }
+    return null;
+  }
+
+  /// One interaction note. Tapping it opens the SAME detail page the
+  /// Interactions list always used, so editing and deleting are unchanged.
+  Widget _interactionCard(String docId, Map<String, dynamic> data) {
+    final g = context.g;
+    final when = _interactionWhen(data);
+    // `approvedSummary` is a MAP (the same one `InteractionLogger._logCard`
+    // reads), never a string — `.toString()` on it would print the raw map.
+    // The fallback to `extractedDraft` is that card's too: a stray
+    // pre-redesign record has neither populated.
+    final source = (data['approvedSummary'] ?? data['extractedDraft'])
+        as Map<String, dynamic>?;
+    final action = (source?['recommendedNextAction'] ?? '').toString().trim();
+    final dictation = (data['rawDictation'] ?? '').toString().trim();
+    final body = action.isNotEmpty ? action : dictation;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        leading: Icon(Icons.record_voice_over, color: g.brass),
+        title: Text((data['studentName'] ?? '').toString()),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (when != null)
+              Text(DateFormat('dd MMM yyyy').format(when),
+                  style: context.gText.caption),
+            if (body.isNotEmpty)
+              Text(body, maxLines: 2, overflow: TextOverflow.ellipsis),
+          ],
+        ),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => InteractionDetailPage(
+              docId: docId,
+              studentName: (data['studentName'] ?? '').toString(),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1204,18 +1390,39 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                     _buildUpcomingAndHistory(guide),
                   ],
                 ),
-          // Creating a meeting only belongs on the pending tab.
-          floatingActionButton: (guide != null && _tabController.index == 0)
-              ? FloatingActionButton.extended(
-                  backgroundColor: context.g.brass,
-                  onPressed: () => _openCreateMeetingSheet(guide),
-                  icon: Icon(Icons.add, color: context.g.onPrimary),
-                  label: Text(
-                    "New Meeting",
-                    style: TextStyle(color: context.g.onPrimary),
-                  ),
-                )
-              : null,
+          // Creating a MEETING still only belongs on the pending tab; adding an
+          // INTERACTION is relevant on both, so it sits above it on either.
+          floatingActionButton: guide == null
+              ? null
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    FloatingActionButton.extended(
+                      heroTag: 'addInteraction',
+                      backgroundColor: context.g.surface,
+                      onPressed: () => _openAddInteractionSheet(guide),
+                      icon: Icon(Icons.record_voice_over, color: context.g.brass),
+                      label: Text(
+                        "Add interaction",
+                        style: TextStyle(color: context.g.brass),
+                      ),
+                    ),
+                    if (_tabController.index == 0) ...[
+                      const SizedBox(height: 10),
+                      FloatingActionButton.extended(
+                        heroTag: 'newMeeting',
+                        backgroundColor: context.g.brass,
+                        onPressed: () => _openCreateMeetingSheet(guide),
+                        icon: Icon(Icons.add, color: context.g.onPrimary),
+                        label: Text(
+                          "New Meeting",
+                          style: TextStyle(color: context.g.onPrimary),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
         );
       },
     );

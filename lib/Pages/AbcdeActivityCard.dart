@@ -247,8 +247,14 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
     });
   }
 
+  /// A (associations) counts MEETINGS and, since interactions moved into
+  /// Associations, the guide's own interaction notes as well — as a separate
+  /// line item, never summed into the meeting counts. `interactionLogs` keeps
+  /// its own collection and shape; only this card's reading of it is new.
   Future<void> _loadAssociation() async {
     final snapshot = await (await _scopedFor('associations', 'studentUid')).get();
+    final interactions =
+        await (await _scopedFor('interactionLogs', 'studentUid')).get();
 
     final now = DateTime.now();
     final ninetyDaysAgo = now.subtract(const Duration(days: 90));
@@ -283,8 +289,26 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
       }
     }
 
+    // Interactions in the same 90-day window, by their own date.
+    var interactions90d = 0;
+    DateTime? lastInteraction;
+    for (final doc in interactions.docs) {
+      final raw = doc.data()['interactionDate'];
+      final when = raw is Timestamp ? raw.toDate() : null;
+      if (when == null) continue;
+      if (when.isAfter(ninetyDaysAgo) && !when.isAfter(now)) interactions90d++;
+      if (!when.isAfter(now) &&
+          (lastInteraction == null || when.isAfter(lastInteraction))) {
+        lastInteraction = when;
+      }
+    }
+
     if (!mounted) return;
     setState(() {
+      _interactions90d = interactions90d;
+      _daysSinceLastInteraction = lastInteraction == null
+          ? null
+          : wholeDaysBetween(lastInteraction, now);
       _daysSinceLastMeeting =
           lastHeld == null ? null : wholeDaysBetween(lastHeld, now);
       _nextMeeting = nextUpcoming;
@@ -653,6 +677,12 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
 
   // --- A ---------------------------------------------------------------------
 
+  /// How many interaction notes fall in the 90-day window, and how long ago
+  /// the most recent one was. Kept separate from the meeting figures above:
+  /// a note a guide wrote is not a meeting that was held.
+  int _interactions90d = 0;
+  int? _daysSinceLastInteraction;
+
   List<Widget> _associationLines() {
     final lines = <Widget>[];
 
@@ -678,6 +708,21 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
     if (_nextMeeting != null) {
       lines.add(_muted(
           "Next: ${DateFormat('dd MMM yyyy').format(_nextMeeting!)}"));
+    }
+
+    // Interactions: their own line, never added to the meeting counts.
+    if (_interactions90d == 0) {
+      lines.add(_muted("No interactions logged in the last 90 days"));
+    } else {
+      final ago = _daysSinceLastInteraction;
+      final last = ago == null
+          ? ''
+          : (ago == 0
+              ? ', last today'
+              : ', last $ago day${ago == 1 ? '' : 's'} ago');
+      lines.add(_muted(
+          "$_interactions90d interaction${_interactions90d == 1 ? '' : 's'} "
+          "in the last 90 days$last"));
     }
     return lines;
   }

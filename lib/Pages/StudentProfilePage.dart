@@ -13,7 +13,6 @@ import '../utils/StudentScope.dart';
 import 'AbcdeActivityCard.dart';
 import 'StudentMusicPage.dart';
 import 'HolisticSuggestion.dart';
-import 'InteractionLogger.dart';
 import 'LitAssessment.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
@@ -657,18 +656,10 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                             canTick: canAct,
                           ),
 
-                          const SizedBox(height: 25),
-
-                          // INTERACTIONS — gated (Part 4).
-                          _sectionTitle(colorProvider, "Interactions"),
-                          const SizedBox(height: 10),
-                          _gatedAction(
-                            allowed: canAct,
-                            child: InteractionLogSection(
-                              studentUid: widget.studentUid,
-                              studentName: name,
-                            ),
-                          ),
+                          // INTERACTIONS are no longer entered here:
+                          // they live in Associations now (one place for
+                          // everything that happened with a student), and
+                          // this page's own ABCDE card counts them under A.
 
                           const SizedBox(height: 25),
 
@@ -821,90 +812,3 @@ class DobCard extends StatelessWidget {
   }
 }
 
-// -----------------------------------------------------------------------------
-// InteractionLogSection — moved here from Profile.dart (item 3). Generic UI
-// plumbing only: the real logic (delete, permissions, FCM) lives untouched in
-// Pages/InteractionLogger.dart, which this still navigates to unchanged.
-// -----------------------------------------------------------------------------
-
-/// "Log Interaction" entry point.
-///
-/// Lives here rather than a shared file because this page already receives
-/// the student's real uid, so `interactionLogs.studentUid` can be set
-/// directly — no name lookup, and no ambiguity when two students share a
-/// name.
-class InteractionLogSection extends StatelessWidget {
-  final String studentUid;
-  final String studentName;
-
-  const InteractionLogSection({
-    super.key,
-    required this.studentUid,
-    required this.studentName,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 10),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: context.g.surface,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: context.g.cardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: context.g.brass.withValues(alpha: .15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.record_voice_over,
-                  color: context.g.brass,
-                  size: 26,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  "Record what happened in your own words. It's saved "
-                  "immediately — AI fills in the details, and you can edit "
-                  "them afterward from the Interactions list.",
-                  style: TextStyle(color: context.g.mutedText, fontSize: 13),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => InteractionLoggerPage(
-                    studentUid: studentUid,
-                    studentName: studentName,
-                  ),
-                ),
-              ),
-              icon: const Icon(Icons.edit_note, size: 18),
-              label: const Text("Log Interaction"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: context.g.brass,
-                foregroundColor: context.g.onPrimary,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
