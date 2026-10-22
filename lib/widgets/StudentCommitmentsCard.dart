@@ -74,6 +74,12 @@ class StudentCommitmentsCard extends StatefulWidget {
 /// own `DEFAULT_CHANT_COMMITMENT`.
 const int kDefaultChantCommitment = 16;
 
+/// A day's worth of minutes — the ceiling the deployed Firestore rules enforce
+/// on `readingCommitmentMinutes` (`readingCommitmentOk`). Kept here so the form
+/// refuses the same numbers the server would, with a sentence that explains
+/// itself instead of a permission error.
+const int kMaxReadingCommitmentMinutes = 1440;
+
 /// "Chanting: 16 rounds · Reading: 30 min", with "not set" where there is no
 /// value rather than a made-up zero.
 String commitmentsLine(int? rounds, int? readingMinutes) {
@@ -241,8 +247,15 @@ class _CommitmentDialogState extends State<_CommitmentDialog> {
       _roundsError = (r == null || r < 1)
           ? 'Enter a whole number of rounds, at least 1'
           : null;
-      _readingError =
-          (m == null) ? 'Enter a whole number of minutes, 0 or more' : null;
+      // The ceiling is the deployed rules' own (`readingCommitmentOk`:
+      // `is int && >= 0 && <= 1440`). Without this a guide could type a number
+      // the form accepted and the server then refused with permission-denied,
+      // which reads as "you are not allowed" rather than "that is too many".
+      _readingError = (m == null)
+          ? 'Enter a whole number of minutes, 0 or more'
+          : (m > kMaxReadingCommitmentMinutes
+              ? 'A day is $kMaxReadingCommitmentMinutes minutes'
+              : null);
     });
     if (_roundsError != null || _readingError != null) return;
     Navigator.pop(context, _CommitmentChoice(r!, m!));

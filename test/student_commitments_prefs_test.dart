@@ -138,6 +138,39 @@ void main() {
     expect(saved['readingCommitmentMinutes'], 0);
   });
 
+  testWidgets('reading minutes above a day are refused by the form, because '
+      'the deployed rules refuse them too', (tester) async {
+    final db = FakeFirebaseFirestore();
+    await db.collection('users').doc('u1').set({'name': 'Yash'});
+    await pumpCard(tester, db, rounds: 16, reading: 30);
+
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).at(1), '2000');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('1440 minutes'), findsOneWidget);
+    final saved = (await db.collection('users').doc('u1').get()).data()!;
+    expect(saved.containsKey('readingCommitmentMinutes'), isFalse);
+  });
+
+  testWidgets('exactly a day is accepted', (tester) async {
+    final db = FakeFirebaseFirestore();
+    await db.collection('users').doc('u1').set({'name': 'Yash'});
+    await pumpCard(tester, db, rounds: 16, reading: 30);
+
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).at(1), '1440');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 4));
+
+    final saved = (await db.collection('users').doc('u1').get()).data()!;
+    expect(saved['readingCommitmentMinutes'], kMaxReadingCommitmentMinutes);
+  });
+
   // -------------------------------------------------------------------------
   // notification switches
   // -------------------------------------------------------------------------
