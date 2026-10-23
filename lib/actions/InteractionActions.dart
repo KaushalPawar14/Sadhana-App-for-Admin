@@ -159,3 +159,91 @@ Future<SavedInteraction> saveInteraction({
     litPrefill: litPrefill,
   );
 }
+
+/// Saves what a guide changed on an interaction's detail screen: the whole
+/// summary (as the screen holds it, dates as ISO strings) and the interaction
+/// date. A null date removes the field, as the screen always did.
+Future<void> saveInteractionEdits(
+  String docId, {
+  required Map<String, dynamic> summary,
+  required DateTime? interactionDate,
+}) async {
+  await GuideDb.instance.collection('interactionLogs').doc(docId).update({
+    'approvedSummary': interactionDraftForFirestore(summary),
+    'status': 'approved',
+    'interactionDate': interactionDate == null
+        ? FieldValue.delete()
+        : Timestamp.fromDate(interactionDate),
+  });
+}
+
+/// Changes only the named fields of an interaction's summary, keeping the rest.
+///
+/// What the AI agent uses to edit an interaction without having to hold the whole
+/// summary: it reads the document, lays [changes] over its `approvedSummary`, and
+/// saves the result through [saveInteractionEdits] — the very write the detail
+/// screen makes. Date fields in [changes] may be ISO strings.
+///
+/// @return the merged summary that was saved
+Future<Map<String, dynamic>> editInteractionFields(
+  String docId, {
+  required Map<String, dynamic> changes,
+  DateTime? interactionDate,
+}) async {
+  final ref = GuideDb.instance.collection('interactionLogs').doc(docId);
+  final snap = await ref.get();
+  final data = snap.data();
+  if (data == null) throw StateError('That interaction no longer exists.');
+
+  final current = Map<String, dynamic>.from(
+      (data['approvedSummary'] as Map?)?.cast<String, dynamic>() ?? const {});
+  // The screen holds dates as ISO strings; do the same so one code path handles both.
+  for (final k in const ['interactionDateTime', 'followUpDate']) {
+    final v = current[k];
+    if (v is Timestamp) current[k] = v.toDate().toIso8601String();
+  }
+  final merged = {...current, ...changes};
+
+  final existingDate = data['interactionDate'];
+  final when = interactionDate ??
+      (existingDate is Timestamp ? existingDate.toDate() : null);
+  await saveInteractionEdits(docId, summary: merged, interactionDate: when);
+  return merged;
+}
+
+/// Runs the AI over an interaction's original dictation again and saves the result.
+///
+/// The guide's own choices (how they connected, when, the follow-up date) stay
+/// authoritative over the AI's guesses, exactly as in the first save. Throws
+/// [GeminiException] with a message the guide can read if the AI cannot; the
+/// original dictation is only deleted once the new details are saved.
+///
+/// @return the details that were saved
+Future<Map<String, dynamic>> reExtractInteraction(
+  String docId, {
+  required String rawDictation,
+  required String studentName,
+  String? interactionType,
+  DateTime? interactionDateTime,
+  DateTime? followUpDate,
+  Future<Map<String, dynamic>> Function(String rawText, String studentName)? extract,
+}) async {
+  final draft = await (extract ??
+      (r, n) => GeminiService().extractInteraction(rawText: r, studentName: n))(
+    rawDictation,
+    studentName,
+  );
+  draft['interactionType'] = interactionType ?? draft['interactionType'];
+  draft['interactionDateTime'] =
+      interactionDateTime?.toIso8601String() ?? draft['interactionDateTime'];
+  if (followUpDate != null) {
+    draft['followUpDate'] = followUpDate.toIso8601String();
+  }
+
+  final forFirestore = interactionDraftForFirestore(draft);
+  await GuideDb.instance.collection('interactionLogs').doc(docId).update({
+    'approvedSummary': forFirestore,
+    'rawDictation': FieldValue.delete(),
+  });
+  return forFirestore;
+}

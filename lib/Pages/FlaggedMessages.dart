@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../actions/FlaggedActions.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/SeenMarkers.dart';
@@ -38,8 +39,6 @@ class FlaggedMessagesPage extends StatefulWidget {
 }
 
 class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
-  final FirebaseFirestore _firestore = GuideDb.instance;
-
   String? _guide;
   bool get _isHod => AdminProfileProvider.viewerIsHod;
   bool _loading = true;
@@ -146,10 +145,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
 
   Future<void> _markReviewed(String docId, bool reviewed) async {
     try {
-      await _firestore
-          .collection('flaggedChatMessages')
-          .doc(docId)
-          .update({'reviewed': reviewed});
+      await markFlaggedReviewed(docId, reviewed);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

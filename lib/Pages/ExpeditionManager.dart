@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../Services/HierarchyApi.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
+import '../actions/TripActions.dart';
 import '../utils/ExpeditionModel.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
@@ -308,24 +309,19 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
     }
 
     try {
-      await _firestore.collection('expeditions').add({
-        'title': title.trim(),
-        'description': description.trim(),
-        'location': location.trim(),
-        // The start stays `tripDate`, which every older reader already uses; the new `endDate` is the last
-        // day (the same date for a one-day trip). The trip moves to History the day after IT.
-        'tripDate': Timestamp.fromDate(tripDate!),
-        'endDate': Timestamp.fromDate(endDate!),
-        'registrationDeadline': deadline == null ? null : Timestamp.fromDate(deadline!),
-        'createdBy': _selectedGuide ?? '',
-        'createdAt': FieldValue.serverTimestamp(),
-        'maxParticipants': int.tryParse(maxParticipants.trim()),
-        'status': 'upcoming',
-        // Who the trip is for, and where it is in its life: active until the day after the trip's END date,
-        // when the server sets `archived: true` and it moves to History.
-        'targetGender': targetGender,
-        'archived': false,
-      });
+      // One shared write (actions/TripActions.dart): the AI agent creates a trip through
+      // exactly this.
+      await createTrip(
+        createdBy: _selectedGuide ?? '',
+        title: title,
+        description: description,
+        location: location,
+        start: tripDate!,
+        end: endDate!,
+        registrationDeadline: deadline,
+        maxParticipants: int.tryParse(maxParticipants.trim()),
+        targetGender: targetGender!,
+      );
 
       if (!mounted) return;
       showSnackbar(context, "Expedition created", Colors.green, Icons.check_circle);
@@ -363,7 +359,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
     if (next == null || next == current) return;
 
     try {
-      await _firestore.collection('expeditions').doc(docId).update({'status': next});
+      await setTripStatus(docId, next);
       if (!mounted) return;
       showSnackbar(context, "Status updated", Colors.blue, Icons.check_circle);
     } catch (_) {

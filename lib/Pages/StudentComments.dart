@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../actions/CommentActions.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
@@ -90,8 +91,7 @@ import '../widgets/GuideWait.dart';
 /// Students never see any of this: nothing in the Student app references
 /// `studentComments`, and this file lives in the Guide app only.
 
-/// The collection name, in one place.
-const String kStudentCommentsCollection = 'studentComments';
+// The collection name now lives with the shared write (actions/CommentActions.dart).
 
 /// Opens the thread for one student.
 ///
@@ -218,16 +218,15 @@ class _StudentCommentsDialogState extends State<_StudentCommentsDialog> {
     setState(() => _sending = true);
 
     try {
-      await _messagesRef.add({
-        'text': text,
-        'authorId': guide,
-        'authorRole': _isHod ? 'HOD' : 'guide',
-        // The admin id is permanent; the display name is what a reader needs.
-        // Both are stored so a later rename does not have to rewrite history.
-        'authorName':
-            AdminProfileProvider.current?.displayName ?? guide,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      // One shared write (actions/CommentActions.dart): the AI agent posts a comment
+      // through exactly this.
+      await postStudentComment(
+        studentUid: widget.studentUid,
+        text: text,
+        authorId: guide,
+        authorName: AdminProfileProvider.current?.displayName ?? guide,
+        authorIsHod: _isHod,
+      );
       _controller.clear();
       if (mounted) setState(() => _sending = false);
       _scrollToBottom();

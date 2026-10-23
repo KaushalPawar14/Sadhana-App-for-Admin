@@ -694,11 +694,6 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
 // Shared helpers
 // -----------------------------------------------------------------------------
 
-/// Converts the in-memory summary (ISO date strings) into the Firestore shape
-/// (Timestamps), keeping every other key as-is.
-Map<String, dynamic> _draftForFirestore(Map<String, dynamic> draft) =>
-    interactionDraftForFirestore(draft);
-
 DateTime? _dateFrom(Object? value) {
   if (value is Timestamp) return value.toDate();
   final text = (value ?? '').toString().trim();
@@ -927,14 +922,11 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
   Future<void> _saveChanges() async {
     setState(() => _saving = true);
     try {
-      final summary = _draftForFirestore(_currentSummary());
-      await _firestore.collection('interactionLogs').doc(widget.docId).update({
-        'approvedSummary': summary,
-        'status': 'approved',
-        'interactionDate': _interactionDateTime == null
-            ? FieldValue.delete()
-            : Timestamp.fromDate(_interactionDateTime!),
-      });
+      await saveInteractionEdits(
+        widget.docId,
+        summary: _currentSummary(),
+        interactionDate: _interactionDateTime,
+      );
       if (!mounted) return;
       showSnackbar(context, "Saved", Colors.green, Icons.check_circle);
     } catch (_) {
@@ -958,24 +950,16 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
     setState(() => _extracting = true);
 
     try {
-      final draft = await GeminiService().extractInteraction(
-        rawText: _rawDictation,
+      // The guide's already-chosen type and dates stay authoritative over the AI's
+      // guesses, same rule as the initial save (see reExtractInteraction).
+      final forFirestore = await reExtractInteraction(
+        widget.docId,
+        rawDictation: _rawDictation,
         studentName: widget.studentName,
+        interactionType: _interactionType,
+        interactionDateTime: _interactionDateTime,
+        followUpDate: _followUpDate,
       );
-      // The guide's already-chosen type and dates are authoritative, same
-      // rule as the initial save.
-      draft['interactionType'] = _interactionType ?? draft['interactionType'];
-      draft['interactionDateTime'] =
-          _interactionDateTime?.toIso8601String() ?? draft['interactionDateTime'];
-      if (_followUpDate != null) {
-        draft['followUpDate'] = _followUpDate!.toIso8601String();
-      }
-
-      final forFirestore = _draftForFirestore(draft);
-      await _firestore.collection('interactionLogs').doc(widget.docId).update({
-        'approvedSummary': forFirestore,
-        'rawDictation': FieldValue.delete(),
-      });
       if (!mounted) return;
       setState(() {
         _rawDictation = '';

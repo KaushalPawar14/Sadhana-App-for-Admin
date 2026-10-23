@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/GuideTheme.dart';
+import '../actions/TripActions.dart';
 import '../utils/ExpeditionExperience.dart';
 import '../utils/ExpeditionModel.dart';
 import '../utils/Snackbar.dart';
@@ -182,7 +183,7 @@ class _StudentRow extends StatelessWidget {
     );
     if (next == null || next == current || !context.mounted) return;
     try {
-      await doc.reference.update({'attendance': next});
+      await setTripAttendance(doc.id, next);
       if (!context.mounted) return;
       showSnackbar(context, attendanceLabel(next), Colors.blue, Icons.check_circle);
     } catch (_) {

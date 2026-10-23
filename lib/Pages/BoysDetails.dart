@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../Services/UpdateFCM.dart';
 import '../theme/GuideColors.dart';
@@ -6,6 +5,7 @@ import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
+import '../actions/StudentActions.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ManualStudents.dart';
 import '../utils/StudentNameGuard.dart';
@@ -13,7 +13,6 @@ import '../utils/Snackbar.dart';
 import 'AdminManager.dart';
 import 'NotificationSettings.dart';
 import 'SubmissionStatus.dart';
-import '../utils/GuideDb.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
 import '../widgets/GuideEntry.dart';
@@ -175,18 +174,6 @@ class _AdminControlPageState extends State<AdminControlPage> {
               });
 
               try {
-                // Part 3 item 5 — warn before saving and refuse the
-                // duplicate outright, rather than a confirm-to-override.
-                final existing = await findUserByMobileNumber(normalizedMobile);
-                if (existing != null) {
-                  setDialogState(() {
-                    saving = false;
-                    error = 'This mobile number already belongs to '
-                        '"${existing['name'] ?? 'another student'}" — '
-                        'cannot add a duplicate.';
-                  });
-                  return;
-                }
 
                 final roundsText = roundsController.text.trim();
                 final rounds =
@@ -198,24 +185,18 @@ class _AdminControlPageState extends State<AdminControlPage> {
                 final guideForNewStudent =
                     _isHod ? assignedGuide : _selectedGuide;
 
-                final id = generateManualStudentId();
-                await GuideDb.instance
-                    .collection('users')
-                    .doc(id)
-                    .set({
-                  'name': name,
-                  'mobileNumber': normalizedMobile,
-                  'role': residence,
-                  'gender': gender,
-                  if (guideForNewStudent != null &&
-                      guideForNewStudent.isNotEmpty)
-                    'guideId': guideForNewStudent,
-                  if (rounds != null && rounds > 0) 'commitmentRounds': rounds,
-                  'isManualEntry': true,
-                  'addedByGuideId': _selectedGuide,
-                  'addedAt': Timestamp.now(),
-                  'createdAt': Timestamp.now(),
-                });
+                // One shared write (actions/StudentActions.dart): it also refuses a
+                // mobile number that already belongs to someone — outright, not a
+                // confirm-to-override. The AI agent adds a student through this.
+                await addManualStudent(
+                  name: name,
+                  mobile: normalizedMobile,
+                  residence: residence!,
+                  gender: gender,
+                  addedBy: _selectedGuide ?? '',
+                  guideId: guideForNewStudent,
+                  rounds: rounds,
+                );
 
                 // Captured in the OUTER scope, read only AFTER this dialog
                 // has fully closed — see this method's own header for why
@@ -223,6 +204,11 @@ class _AdminControlPageState extends State<AdminControlPage> {
                 // `setDialogState` again.
                 addedStudentName = name;
                 if (dialogContext.mounted) Navigator.pop(dialogContext);
+              } on DuplicateMobileException catch (e) {
+                setDialogState(() {
+                  saving = false;
+                  error = e.toString();
+                });
               } catch (_) {
                 setDialogState(() {
                   saving = false;

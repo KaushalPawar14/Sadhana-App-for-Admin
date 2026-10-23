@@ -10,6 +10,7 @@ import '../theme/GuideColors.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
+import '../actions/BookActions.dart';
 import '../utils/BoardData.dart';
 import '../utils/BoardQueries.dart';
 import '../utils/BookProgressData.dart';
@@ -29,7 +30,6 @@ import '../widgets/GuideChips.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
 import 'Calendar.dart';
-import '../utils/GuideDb.dart';
 import '../widgets/GuideDialog.dart';
 
 /// FOLK Boys board workspace — the board CANVAS reached by tapping the one
@@ -3770,18 +3770,12 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     if (confirmed != true || !mounted) return;
 
     try {
-      await GuideDb.instance
-          .collection('booksRead')
-          .doc('${boy.uid}_${book.level}_${book.key}')
-          .set({
-        'uid': boy.uid,
-        'level': book.level,
-        'bookKey': book.key,
-        'bookTitle': book.title,
-        'endDate': FieldValue.delete(),
-        'endedBy': FieldValue.delete(),
-        'isCurrentBook': false,
-      }, SetOptions(merge: true));
+      await markBookNotFinished(
+        studentUid: boy.uid,
+        level: book.level,
+        bookKey: book.key,
+        title: book.title,
+      );
 
       if (!mounted) return;
       showSnackbar(context, "Book marked not completed", Colors.green,
@@ -3855,28 +3849,14 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
 
     if (confirmed != true || !mounted) return;
 
-    final today = DateTime.now().toIso8601String().split('T')[0];
-
     try {
-      await GuideDb.instance
-          .collection('booksRead')
-          .doc('${boy.uid}_${book.level}_${book.key}')
-          .set({
-        'uid': boy.uid,
-        'level': book.level,
-        'bookKey': book.key,
-        'bookTitle': book.title,
-        'endDate': today,
-        'isCurrentBook': false,
-        // Master Task Part 2 item 3 — read by the Student app
-        // (`BookPageList.dart`) to show "Marked complete by your guide"
-        // instead of leaving a student wondering why a book they never
-        // finished themselves shows as completed.
-        'endedBy': 'guide',
-        // Part 5 item 2 — only for a book with no prior `startDate`; an
-        // already-started book keeps its real start date untouched.
-        if (!hasStarted) 'startDate': today,
-      }, SetOptions(merge: true));
+      await markBookFinished(
+        studentUid: boy.uid,
+        level: book.level,
+        bookKey: book.key,
+        title: book.title,
+        hasStarted: hasStarted,
+      );
 
       if (!mounted) return;
       showSnackbar(context, "Book marked finished", Colors.green,
@@ -4019,48 +3999,18 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
 
     if (confirmed is! DateTime) return;
 
-    final commitmentDate = confirmed.toIso8601String().split('T')[0];
-    // Master Task Part 4 item 2 — the day the guide ASSIGNS the book, not
-    // the commitment/due date the guide just picked (which the student
-    // reads as a future deadline, `commitmentDate` above). Same
-    // `yyyy-MM-dd` string format the student app's own `startDate` already
-    // uses (`Students/.../BookPageList.dart`'s `picked.toIso8601String()
-    // .split('T')[0]`), so both write paths agree on the field's shape.
-    final startDate = DateTime.now().toIso8601String().split('T')[0];
-
     try {
-      // A transaction, so the doc is read at the moment of writing: a book
-      // that is already completed (an end date, or marked finished by the
-      // student or a guide) is never made the student's CURRENT book.
-      final bookRef = GuideDb.instance
-          .collection('booksRead')
-          .doc('${boy.uid}_${book.level}_${book.key}');
-      final assigned = await GuideDb.instance
-          .runTransaction<bool>((tx) async {
-        final latest = (await tx.get(bookRef)).data();
-        final endDate = latest?['endDate'];
-        final endedBy = latest?['endedBy'];
-        final completed =
-            (endDate != null && endDate.toString().trim().isNotEmpty) ||
-                latest?['finishedViaButton'] == true ||
-                (endedBy != null && endedBy.toString().trim().isNotEmpty);
-        if (completed) return false;
-        tx.set(
-            bookRef,
-            {
-              'uid': boy.uid,
-              'level': book.level,
-              'bookKey': book.key,
-              'bookTitle': book.title,
-              'isCurrentBook': true,
-              'startDate': startDate,
-              'commitmentDate': commitmentDate,
-              'commitmentSetAt': FieldValue.serverTimestamp(),
-              'commitmentSetBy': 'guide',
-            },
-            SetOptions(merge: true));
-        return true;
-      });
+      // One shared write (actions/BookActions.dart): the AI agent assigns a book
+      // through exactly this. A transaction, so a book that is already completed
+      // is never made the student's CURRENT book.
+      final assigned = await assignBook(
+        guideId: _guide,
+        studentUid: boy.uid,
+        level: book.level,
+        bookKey: book.key,
+        title: book.title,
+        commitment: confirmed,
+      );
 
       if (!assigned) {
         if (!mounted) return;
@@ -4072,42 +4022,11 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
         return;
       }
 
-      // The admin who set the commitment has seen it: it must not light their own dot.
-      BoardData.instance.markBooksSeen(_guide, boy.uid, ['${boy.uid}_${book.level}_${book.key}']);
-
-      await _notifyStudentOfBookAssignment(
-        studentUid: boy.uid,
-        bookTitle: book.title,
-        commitmentDate: commitmentDate,
-      );
-
       if (!mounted) return;
       showSnackbar(context, "Book assigned", Colors.green, Icons.check_circle);
     } catch (_) {
       if (!mounted) return;
       showSnackbar(context, "Could not assign the book", Colors.red, Icons.error);
-    }
-  }
-
-  /// Part 3 item 2 — the "book assigned" push now goes through the server
-  /// (`HierarchyApi.sendStudentNotification`, kind `book_assigned`): the
-  /// student's FCM token is never read by the app, and the server builds the
-  /// same title/body this method used to send itself.
-  Future<void> _notifyStudentOfBookAssignment({
-    required String studentUid,
-    required String bookTitle,
-    required String commitmentDate,
-  }) async {
-    try {
-      await HierarchyApi.instance.sendStudentNotification({
-        'kind': 'book_assigned',
-        'studentUid': studentUid,
-        'bookTitle': bookTitle,
-        'commitmentDate': commitmentDate,
-      });
-    } catch (_) {
-      // A failed notification must never undo the assignment write, which
-      // has already landed by the time this runs.
     }
   }
 

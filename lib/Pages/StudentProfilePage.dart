@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../actions/StudentActions.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/BoardQueries.dart';
 import '../utils/ColorProvider.dart';
@@ -444,10 +445,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
     }
 
     try {
-      await GuideDb.instance
-          .collection('users')
-          .doc(widget.studentUid)
-          .set({'role': selected}, SetOptions(merge: true));
+      await setStudentResidence(widget.studentUid, selected);
       if (context.mounted) {
         showSnackbar(
             context, 'Residence updated', context.g.success, Icons.check_circle);
@@ -739,10 +737,7 @@ class DobCard extends StatelessWidget {
     if (picked == null) return;
 
     try {
-      await GuideDb.instance.collection('users').doc(userId).set(
-        {'dob': Timestamp.fromDate(picked)},
-        SetOptions(merge: true),
-      );
+      await setStudentDob(userId, picked);
       if (context.mounted) {
         showSnackbar(context, "Date of birth saved", Colors.green,
             Icons.check_circle);

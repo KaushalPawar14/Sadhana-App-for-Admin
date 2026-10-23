@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../Services/HierarchyApi.dart';
 import '../utils/AdminProfile.dart';
+import '../actions/CompetitionActions.dart';
 import '../utils/ChallengeRange.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/Snackbar.dart';
@@ -73,55 +73,11 @@ class _ChantingChallengeManagerPageState
 
   /// The same date-id format the sadhana collections use, so the Cloud
   /// Function matches on a plain string with no parsing or timezone ambiguity.
-  String _dateKey(DateTime date) => DateFormat('dd-MM-yyyy').format(date);
-
   // ---------------------------------------------------------------------------
   // Create + notify
   // ---------------------------------------------------------------------------
 
-  /// Notifies every student on this challenge's roster.
-  ///
-  /// The server builds the roster for the signed-in admin's role (a Guide's
-  /// team, an enabler's own students, or — for a HOD — the picked guides'
-  /// students / everyone) and applies each student's own notification
-  /// preference. The app no longer reads student tokens or preferences.
-  ///
-  /// [selectedGuideIds] is the HOD's picked-guides set (Part 2) — empty for
-  /// everyone else, and for a HOD explicitly choosing "all students".
-  Future<(int sent, int total)> _notifyRoster(
-    String name,
-    int targetRounds,
-    DateTime startDate,
-    DateTime targetDate,
-    Set<String> selectedGuideIds,
-  ) async {
-    final r = await HierarchyApi.instance.sendStudentNotification({
-      'kind': 'chanting_challenge',
-      'name': name,
-      'targetRounds': targetRounds,
-      'startDate': DateFormat('yyyy-MM-dd').format(startDate),
-      'targetDate': DateFormat('yyyy-MM-dd').format(targetDate),
-      if (_isHod) 'ownerIds': selectedGuideIds.toList(),
-    });
-
-    final sent = (r['sent'] as num?)?.toInt() ?? 0;
-    final total = (r['total'] as num?)?.toInt() ?? 0;
-    final optedOut = (r['optedOut'] as num?)?.toInt() ?? 0;
-
-    // `total` is the notifiable roster, so a student who opted out is not
-    // counted as a failure in the "sent to X of Y" summary — they were
-    // never a target. `optedOut` is logged rather than surfaced: a guide does
-    // not need to know which students muted a category.
-    if (optedOut > 0) {
-      debugPrint("Challenge notification: $optedOut student(s) opted out");
-    }
-
-    return (sent, total);
-  }
-
   Future<void> _openCreateSheet() async {
-    final guide = _selectedGuide;
-
     // Fresh each time the sheet opens, so a selection from a previous
     // challenge never lingers into the next one.
     _selectedGuideIds.clear();
@@ -374,7 +330,6 @@ class _ChantingChallengeManagerPageState
     final targetRounds = int.parse(rounds.trim());
     final date = targetDate!;
     final first = startDate!;
-    final profile = AdminProfileProvider.require();
 
     setState(() => _sending = true);
 
@@ -383,57 +338,18 @@ class _ChantingChallengeManagerPageState
     final selectedGuideIds = Set<String>.from(_selectedGuideIds);
 
     try {
-      await _firestore.collection('chantingChallenges').add({
-        'name': name.trim(),
-        'targetRounds': targetRounds,
-        // The span the Cloud Function counts rounds over. A single day is
-        // the same date twice.
-        'startDateKey': _dateKey(first),
-        'startDate': Timestamp.fromDate(first),
-        'endDateKey': _dateKey(date),
-        'endDate': Timestamp.fromDate(date),
-        // Still written, and still meaning "the day this is aimed at" — now
-        // the LAST day. The expiry sweep, the result window and every Student
-        // app build older than ranges read these, so they keep working
-        // untouched; for a single day they are exactly what they always were.
-        'targetDateKey': _dateKey(date),
-        'targetDate': Timestamp.fromDate(date),
-        // The creator's own id (the screen lists a non-HOD's challenges by it).
-        'guideId': guide,
-        'createdBy': guide,
-        'createdAt': FieldValue.serverTimestamp(),
-        'status': 'active',
-        // Seeded explicitly so the trigger's transaction always has a number
-        // to add its delta to, rather than treating a missing field as zero.
-        'currentTotal': 0,
-        // Additive (Rule 12 — justified in functions/challenges.js, the
-        // field's first read site). Only ever set on an HOD-created
-        // challenge; a guide's own challenge never carries either field, so
-        // `checkChallengesFor`'s two new OR clauses simply never match it —
-        // the guide-created path is otherwise untouched.
-        // A report counts toward a challenge when the student's guideId is in
-        // `guideIds` (functions/challenges.js), so a Guide's Male Enablers
-        // must be listed next to him. A HOD keeps his picked guides / all.
-        'guideIds': profile.isHod
-            ? selectedGuideIds.toList()
-            : profile.isGuide
-                ? [guide, ...profile.myMaleEnablers.map((a) => a.id)]
-                : [guide],
-        if (_isHod && selectedGuideIds.isEmpty) 'allStudents': true,
-      });
-
-      var sent = 0;
-      var total = 0;
-      var notifyFailed = false;
-      try {
-        final res = await _notifyRoster(
-            name.trim(), targetRounds, first, date, selectedGuideIds);
-        sent = res.$1;
-        total = res.$2;
-      } catch (_) {
-        // The challenge itself is saved; only the push failed.
-        notifyFailed = true;
-      }
+      // One shared write (actions/CompetitionActions.dart): the AI agent starts a
+      // competition through exactly this — the document, and telling the students.
+      final created = await createChantingChallenge(
+        name: name,
+        targetRounds: targetRounds,
+        start: first,
+        end: date,
+        selectedGuideIds: selectedGuideIds,
+      );
+      final sent = created.sent;
+      final total = created.total;
+      final notifyFailed = created.notifyFailed;
 
       if (!mounted) return;
       setState(() => _sending = false);
@@ -529,17 +445,7 @@ class _ChantingChallengeManagerPageState
       // Firestore's 500-write batch limit, so no chunking is needed
       // (unlike `StudentDeletion.dart`'s own helper, which has to handle
       // an unbounded query result across a student's entire history).
-      final contribSnap = await StudentScope.current().historyGet(
-        'chantingChallengeContributions',
-        extraEquals: {'challengeId': docId},
-      );
-
-      final batch = _firestore.batch();
-      for (final doc in contribSnap.docs) {
-        batch.delete(doc.reference);
-      }
-      batch.delete(_firestore.collection('chantingChallenges').doc(docId));
-      await batch.commit();
+      await deleteChantingChallenge(docId);
 
       if (!mounted) return;
       showSnackbar(
@@ -558,12 +464,7 @@ class _ChantingChallengeManagerPageState
   /// the record does not claim two contradictory things at once.
   Future<void> _setStatus(String docId, String status) async {
     try {
-      await _firestore.collection('chantingChallenges').doc(docId).update({
-        'status': status,
-        'closedAt': status == 'missed'
-            ? FieldValue.serverTimestamp()
-            : FieldValue.delete(),
-      });
+      await setChallengeStatus(docId, status);
       if (!mounted) return;
       showSnackbar(context, status == 'active' ? "Reopened" : "Closed as missed",
           context.g.success, Icons.check_circle);

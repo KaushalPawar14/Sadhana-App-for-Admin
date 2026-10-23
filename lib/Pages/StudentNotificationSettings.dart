@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/GuideTheme.dart';
+import '../actions/StudentActions.dart';
 import '../utils/Snackbar.dart';
 import '../widgets/GuideSurface.dart';
 
@@ -110,9 +111,8 @@ class _StudentNotificationSettingsPageState
     if (_busy.contains(key)) return;
     setState(() => _busy.add(key));
     try {
-      await _db.collection('users').doc(widget.studentUid).set({
-        'notificationPrefs': {key: value},
-      }, SetOptions(merge: true));
+      // One shared write (actions/StudentActions.dart), merged one key at a time.
+      await setStudentNotificationPref(widget.studentUid, key, value, db: _db);
     } on FirebaseException catch (e) {
       if (!mounted) return;
       showSnackbar(

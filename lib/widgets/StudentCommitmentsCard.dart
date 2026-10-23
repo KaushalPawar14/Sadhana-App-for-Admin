@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/GuideTheme.dart';
+import '../actions/StudentActions.dart';
 import '../utils/Snackbar.dart';
 import 'GuideDialog.dart';
 
@@ -107,11 +108,14 @@ class _StudentCommitmentsCardState extends State<StudentCommitmentsCard> {
     setState(() => _saving = true);
     try {
       // Only the two fields, merged — never a whole-document write, which
-      // would clobber anything a newer Student app version added.
-      await _db.collection('users').doc(widget.studentUid).set({
-        'commitmentRounds': result.rounds,
-        'readingCommitmentMinutes': result.readingMinutes,
-      }, SetOptions(merge: true));
+      // would clobber anything a newer Student app version added. One shared write
+      // (actions/StudentActions.dart): the AI agent sets commitments through this.
+      await setStudentCommitments(
+        widget.studentUid,
+        rounds: result.rounds,
+        readingMinutes: result.readingMinutes,
+        db: _db,
+      );
       if (!mounted) return;
       showSnackbar(context, 'Commitments saved', Colors.green, Icons.check_circle);
     } on FirebaseException catch (e) {

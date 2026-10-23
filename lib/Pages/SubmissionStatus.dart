@@ -3,11 +3,9 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../Home/Calendar.dart';
-import '../Services/HierarchyApi.dart';
-import '../Services/MissingReportNotification.dart';
+import '../actions/SubmissionActions.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
-import '../utils/SadhanaReportSource.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
@@ -20,7 +18,7 @@ import '../widgets/GuideWait.dart';
 /// One scoped student's own submission status for today — just enough to
 /// show them in either list and, if tapped, open their own
 /// [CalendarPage] (Master Task Part 5 item 4).
-typedef _StudentSubmission = ({String name, String role, String uid});
+typedef _StudentSubmission = SubmissionEntry;
 
 /// Submission status overview (Phase 6, half 1, item 1; reworked and moved
 /// here to be the ONE place this lives — Master Task Part 5).
@@ -99,53 +97,11 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
     final guide = profile.displayName;
     final isHod = profile.isHod;
 
-    List<_StudentSubmission> notSubmitted = [];
-    List<_StudentSubmission> submitted = [];
-    final unchecked = <_StudentSubmission>[];
-
-    try {
-      final snap = await StudentScope(profile).studentsGet();
-
-      final today = MissingReportService().getTodayDateId();
-
-      final checks = <Future<void>>[];
-      for (final doc in snap.docs) {
-        final name = (doc.data()['name'] ?? '').toString();
-        if (name.isEmpty) continue;
-        final role = (doc.data()['role'] ?? '').toString();
-        final uid = doc.id;
-
-        checks.add(Future(() async {
-          // Category-separated reports: only the collection of the student's CURRENT category counts
-          // (a report filed under the other category is not "submitted today").
-          final entry = (name: name, role: role, uid: uid);
-          try {
-            final report = await fetchDateReport(name, today, role);
-            if (report != null) {
-              submitted.add(entry);
-            } else {
-              notSubmitted.add(entry);
-            }
-          } catch (_) {
-            // ONE student's failed read must not blank the whole list (it used to make
-            // everyone vanish, i.e. "zero left to submit"). That student is reported
-            // separately instead of being guessed into either group.
-            unchecked.add(entry);
-          }
-        }));
-      }
-
-      await Future.wait(checks);
-      notSubmitted.sort((a, b) => a.name.compareTo(b.name));
-      submitted.sort((a, b) => a.name.compareTo(b.name));
-    } catch (_) {
-      // A failed read must not blank the screen with a WRONG answer (e.g.
-      // claiming "everyone submitted") — both lists stay empty, same
-      // fail-closed spirit the old code had: a guide sees nothing rather
-      // than another guide's data or a guess.
-      notSubmitted = [];
-      submitted = [];
-    }
+    // One shared check (actions/SubmissionActions.dart): the AI agent reads the same status.
+    final status = await loadSubmissionStatus();
+    final notSubmitted = status.notSubmitted;
+    final submitted = status.submitted;
+    final unchecked = status.unchecked;
 
     if (!mounted) return;
     setState(() {
@@ -166,19 +122,7 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
   /// Never throws: a failed send returns 0 so a bulk run continues through the
   /// rest of the list. The server accepts at most 200 students per call, so
   /// callers pass chunks.
-  Future<int> _sendReminders(List<String> uids) async {
-    if (uids.isEmpty) return 0;
-    try {
-      final r = await HierarchyApi.instance.sendStudentNotification(
-        uids.length == 1
-            ? {'kind': 'submission_nudge', 'studentUid': uids.first}
-            : {'kind': 'submission_nudge', 'studentUids': uids},
-      );
-      return (r['sent'] as num?)?.toInt() ?? 0;
-    } catch (_) {
-      return 0;
-    }
-  }
+  Future<int> _sendReminders(List<String> uids) => sendSubmissionReminders(uids);
 
   /// Nudges one student.
   Future<void> _remind(_StudentSubmission student) async {
@@ -238,17 +182,13 @@ class _SubmissionStatusPageState extends State<SubmissionStatusPage> {
       _bulkSent = 0;
     });
 
-    const chunkSize = 200;
-    for (var i = 0; i < targets.length; i += chunkSize) {
-      final chunk = targets.sublist(
-          i, i + chunkSize > targets.length ? targets.length : i + chunkSize);
-      final sent = await _sendReminders(chunk);
+    await sendSubmissionReminders(targets, onProgress: (done, sent) {
       if (!mounted) return;
       setState(() {
-        _bulkDone += chunk.length;
-        _bulkSent += sent;
+        _bulkDone = done;
+        _bulkSent = sent;
       });
-    }
+    });
 
     if (!mounted) return;
 

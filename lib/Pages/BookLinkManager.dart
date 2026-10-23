@@ -2,8 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../actions/BookLinkActions.dart';
 import '../utils/ColorProvider.dart';
-import '../utils/DropboxLink.dart';
 import '../utils/Snackbar.dart';
 import 'PodcastLinkManager.dart';
 import '../theme/GuideTheme.dart';
@@ -82,17 +82,12 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
   /// new collection: it is the same `books` collection, the same document
   /// shape, one more sibling — the minimal extension of what already exists.
   static String linksDocId(String level, String language) =>
-      language == 'en' ? '${level}_links' : '${level}_links_$language';
+      bookLinksDocId(level, language);
 
   /// Kept in sync by hand with the Student app's own
   /// `BooksSelectionScreen.kSupportedLanguages` (no shared package between
   /// the two apps to hold a single copy).
-  static const Map<String, String> kSupportedLanguages = {
-    'en': 'English',
-    'hi': 'हिन्दी',
-    'gu': 'ગુજરાતી',
-    'te': 'తెలుగు',
-  };
+  static const Map<String, String> kSupportedLanguages = kBookLinkLanguages;
 
   /// Returns the `book_n` entries of a level document, numerically sorted.
   /// Any key that is not exactly `book_<digits>` is ignored so a stray field
@@ -191,13 +186,15 @@ class _BookLinkManagerPageState extends State<BookLinkManagerPage> {
 
     if (result == null) return; // cancelled
 
-    final normalizedUrl = normalizeDropboxUrl(result);
-
     try {
-      await GuideDb.instance
-          .collection('books')
-          .doc(linksDocId(level, _language))
-          .set({fieldKey: normalizedUrl}, SetOptions(merge: true));
+      // One shared write (actions/BookLinkActions.dart): the AI agent sets a link
+      // through exactly this, and the URL is normalised there.
+      await setBookLink(
+        level: level,
+        bookKey: fieldKey,
+        url: result,
+        language: _language,
+      );
 
       if (!mounted) return;
       showSnackbar(
