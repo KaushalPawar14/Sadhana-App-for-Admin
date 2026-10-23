@@ -5,6 +5,15 @@ import '../Pages/GuideSignIn.dart';
 import 'GuideAuthGate.dart';
 import '../widgets/GuideDialog.dart';
 
+/// Signs this admin out of the phone: Google and Firebase together (`GuideAuthGate.signOut`), then the
+/// cached guide name goes. The screen's confirm dialog and the AI agent's confirmation card both end here;
+/// what to show next (the sign-in screen) is the caller's.
+Future<void> signOutThisPhone() async {
+  await GuideAuthGate.signOut();
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.remove('selected_guide');
+}
+
 /// Asks "Are you sure you want to logout?" and, on yes, signs the admin out and
 /// returns to the sign-in screen. (Moved unchanged from the old bottom bar so the
 /// Home screen's logout button does exactly what the old FOLK Boys tab's did.)
@@ -26,11 +35,7 @@ Future<void> confirmAndLogout(BuildContext context) async {
   );
 
   if (confirm ?? false) {
-    // Google + Firebase sign-out together (`GuideAuthGate.signOut`), then the
-    // cached guide name goes, and the sign-in screen replaces everything.
-    await GuideAuthGate.signOut();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('selected_guide');
+    await signOutThisPhone();
 
     if (context.mounted) {
       Navigator.pushReplacement(context,

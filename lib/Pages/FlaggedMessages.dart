@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../actions/DeleteActions.dart';
 import '../actions/FlaggedActions.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
@@ -115,16 +116,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
   /// (`StudentScope.canManage`). A record not yet stamped falls back to its
   /// own `guideId` being the signed-in admin.
   Future<bool> _canDeleteFlagged(Map<String, dynamic> data) async {
-    if (_isHod) return true;
-    if (!data.containsKey('scopeGuide')) {
-      return (data['guideId'] ?? '').toString() == (_guide ?? '');
-    }
-    return StudentScope.current().canManage(StudentRef(
-      uid: (data['studentUid'] ?? '').toString(),
-      guideId: (data['scopeGuide'] ?? '').toString(),
-      teamGuide: (data['scopeTeam'] ?? '').toString(),
-      gender: (data['scopeGender'] ?? '').toString(),
-    ));
+    return canDeleteStamped(data, AdminProfileProvider.require());
   }
 
   Future<void> _deleteSelected() async {

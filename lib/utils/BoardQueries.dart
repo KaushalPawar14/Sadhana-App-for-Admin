@@ -486,6 +486,12 @@ Future<void> ensureGuideAssignmentBoard({
   });
 }
 
+/// Takes one student's card off a board (custom boards). Only that board's organisation changes: the
+/// student, and any other board they are on, are not touched. The Boards screen and the AI agent both
+/// remove a card through this.
+Future<void> removePlacement(String boardId, String studentUid) =>
+    placementsRef(boardId).doc(studentUid).delete();
+
 Future<void> renameBoard(String boardId, String title) =>
     _boards().doc(boardId).update({'title': title});
 

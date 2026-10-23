@@ -2032,7 +2032,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     if (ok != true) return;
 
     try {
-      await placementsRef(boardId).doc(boy.uid).delete();
+      await removePlacement(boardId, boy.uid);
       if (!mounted) return;
       showSnackbar(
           context, "${boy.name} removed from this board", Colors.deepOrange,

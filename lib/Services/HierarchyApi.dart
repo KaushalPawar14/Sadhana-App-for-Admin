@@ -226,6 +226,11 @@ class HierarchyApi {
   Future<Map<String, dynamic>> sendStudentNotification(
           Map<String, dynamic> data) =>
       _call('sendStudentNotification', data);
+  /// One step of the AI agent's conversation (functions/guideAgent.js): a message from the guide,
+  /// the phone's answers to reads it asked for, or what happened to a change it proposed. The
+  /// reply says what comes next (see lib/agent/AgentTypes.dart).
+  Future<Map<String, dynamic>> guideAgentTurn(Map<String, dynamic> data) =>
+      _call('guideAgentTurn', data);
   /// A recorded voice note as clean English text (functions/voiceNote.js).
   ///
   /// The audio is sent once and not kept. [existingText] is whatever is already

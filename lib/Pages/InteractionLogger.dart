@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../Services/GeminiService.dart';
+import '../actions/DeleteActions.dart';
 import '../actions/InteractionActions.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
@@ -73,8 +74,6 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
   /// The signed-in admin's id (stamped on a new log as `guideId`).
   String get _selectedGuide => AdminProfileProvider.require().id;
 
-  bool get _isHod => AdminProfileProvider.viewerIsHod;
-
   bool _selectionMode = false;
   final Set<String> _selectedIds = {};
 
@@ -140,10 +139,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
   /// [_studentRef] doc comment for why this screen's delete permission
   /// is student-scoped, not per-log-`guideId`-scoped.
   Future<bool> _canDeleteInteraction(Map<String, dynamic> data) async {
-    if (_isHod) return true;
-    final ref = _studentRef;
-    if (ref == null) return false; // fails closed while unresolved
-    return StudentScope.current().canManage(ref);
+    return canDeleteForStudent(_studentRef, AdminProfileProvider.require());
   }
 
   Future<void> _deleteSelected() async {

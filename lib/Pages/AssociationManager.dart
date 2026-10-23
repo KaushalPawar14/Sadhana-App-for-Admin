@@ -8,6 +8,7 @@ import '../utils/ColorProvider.dart';
 import '../utils/SeenMarkers.dart';
 import '../utils/SelectableDelete.dart';
 import '../actions/AssociationActions.dart';
+import '../actions/DeleteActions.dart';
 import '../utils/Snackbar.dart';
 import '../utils/VoiceNote.dart';
 import '../widgets/VoiceNoteButton.dart';
@@ -44,9 +45,6 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
   final FirebaseFirestore _firestore = GuideDb.instance;
 
   String? _selectedGuide;
-
-  /// True only for the HOD, who may delete any record.
-  bool get _isHod => AdminProfileProvider.viewerIsHod;
 
   /// HOD and Guide tabs mix several admins' records together. Cards add a
   /// guide label in this mode so mixed records stay attributable.
@@ -702,16 +700,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
   /// manage (`StudentScope.canManage`). A record not yet stamped falls back to
   /// its own `guideId` being the signed-in admin.
   Future<bool> _canDeleteAssociation(Map<String, dynamic> data) async {
-    if (_isHod) return true;
-    if (!data.containsKey('scopeGuide')) {
-      return (data['guideId'] ?? '').toString() == (_selectedGuide ?? '');
-    }
-    return StudentScope.current().canManage(StudentRef(
-      uid: (data['studentUid'] ?? '').toString(),
-      guideId: (data['scopeGuide'] ?? '').toString(),
-      teamGuide: (data['scopeTeam'] ?? '').toString(),
-      gender: (data['scopeGender'] ?? '').toString(),
-    ));
+    return canDeleteStamped(data, AdminProfileProvider.require());
   }
 
   Future<void> _deleteSelected() async {
