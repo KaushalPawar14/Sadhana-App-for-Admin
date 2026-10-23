@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../Services/HierarchyApi.dart';
 import '../utils/AdminProfile.dart';
+import '../utils/ChallengeRange.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
@@ -90,6 +91,7 @@ class _ChantingChallengeManagerPageState
   Future<(int sent, int total)> _notifyRoster(
     String name,
     int targetRounds,
+    DateTime startDate,
     DateTime targetDate,
     Set<String> selectedGuideIds,
   ) async {
@@ -97,6 +99,7 @@ class _ChantingChallengeManagerPageState
       'kind': 'chanting_challenge',
       'name': name,
       'targetRounds': targetRounds,
+      'startDate': DateFormat('yyyy-MM-dd').format(startDate),
       'targetDate': DateFormat('yyyy-MM-dd').format(targetDate),
       if (_isHod) 'ownerIds': selectedGuideIds.toList(),
     });
@@ -125,7 +128,9 @@ class _ChantingChallengeManagerPageState
 
     String name = '';
     String rounds = '';
-    DateTime? targetDate;
+    // Both are chosen by the guide. A single day is the same date twice.
+    DateTime? startDate;
+    DateTime? targetDate; // the LAST day — what every older reader calls it
     String? error;
 
     final created = await showDialog<bool>(
@@ -162,23 +167,84 @@ class _ChantingChallengeManagerPageState
                     ),
                   ),
                   const SizedBox(height: 12),
+                  // Start and end. Choosing the start also fills the end when
+                  // it is still empty or would now fall before it, so a
+                  // single-day competition is one tap, not two.
                   InkWell(
+                    key: const ValueKey('challenge-start'),
                     borderRadius: BorderRadius.circular(12),
                     onTap: () async {
                       final picked = await showDatePicker(
                         context: context,
-                        initialDate: DateTime.now(),
+                        initialDate: startDate ?? DateTime.now(),
                         firstDate:
                             DateTime.now().subtract(const Duration(days: 30)),
                         lastDate: DateTime.now().add(const Duration(days: 365)),
                       );
                       if (picked != null) {
-                        setDialogState(() => targetDate = picked);
+                        setDialogState(() {
+                          startDate = picked;
+                          if (targetDate == null ||
+                              targetDate!.isBefore(picked)) {
+                            targetDate = picked;
+                          }
+                          error = null;
+                        });
                       }
                     },
                     child: InputDecorator(
                       decoration: InputDecoration(
-                        labelText: "Target date",
+                        labelText: "Start date",
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 14),
+                      ),
+                      child: Text(
+                        startDate == null
+                            ? "Tap to choose"
+                            : DateFormat('dd MMM yyyy').format(startDate!),
+                        style: TextStyle(
+                          color: startDate == null
+                              ? context.g.mutedText
+                              : context.g.text,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  InkWell(
+                    key: const ValueKey('challenge-end'),
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () async {
+                      final first = startDate ??
+                          DateTime.now().subtract(const Duration(days: 30));
+                      final picked = await showDatePicker(
+                        context: context,
+                        // Today when nothing is chosen yet — not the earliest day
+                        // the picker allows, which is a month ago.
+                        initialDate: targetDate ?? startDate ?? DateTime.now(),
+                        firstDate: first,
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                      );
+                      if (picked != null) {
+                        setDialogState(() {
+                          targetDate = picked;
+                          startDate ??= picked;
+                          error = null;
+                        });
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: "End date",
+                        helperText: startDate != null && targetDate != null &&
+                                challengeSpanProblem(startDate, targetDate) == null
+                            ? ChallengeSpan(
+                                    DateTime(startDate!.year, startDate!.month,
+                                        startDate!.day),
+                                    DateTime(targetDate!.year, targetDate!.month,
+                                        targetDate!.day))
+                                .dayLabel
+                            : null,
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 14, vertical: 14),
                       ),
@@ -255,11 +321,12 @@ class _ChantingChallengeManagerPageState
                   const SizedBox(height: 10),
                   Text(
                     "This is a group target. Every student assigned to you is "
-                    "notified now, and their rounds for that date are added "
-                    "together automatically. It succeeds the moment the total "
-                    "reaches the target.\n\n"
-                    "Each student's first report for that date is what counts "
-                    "— later edits to it do not change the total.",
+                    "notified now, and their rounds across every day from the "
+                    "start to the end date are added together automatically "
+                    "(one day is fine: pick the same date twice). It succeeds "
+                    "the moment the total reaches the target.\n\n"
+                    "Each student's first report for a day is what counts for "
+                    "that day — later edits to it do not change the total.",
                     style:
                         TextStyle(fontSize: 11.5, color: context.g.mutedText),
                   ),
@@ -285,8 +352,10 @@ class _ChantingChallengeManagerPageState
                         () => error = "Target rounds must be a whole number");
                     return;
                   }
-                  if (targetDate == null) {
-                    setDialogState(() => error = "Choose a target date");
+                  final spanProblem =
+                      challengeSpanProblem(startDate, targetDate);
+                  if (spanProblem != null) {
+                    setDialogState(() => error = spanProblem);
                     return;
                   }
                   Navigator.pop(dialogContext, true);
@@ -300,10 +369,11 @@ class _ChantingChallengeManagerPageState
       ),
     );
 
-    if (created != true || targetDate == null) return;
+    if (created != true || targetDate == null || startDate == null) return;
 
     final targetRounds = int.parse(rounds.trim());
     final date = targetDate!;
+    final first = startDate!;
     final profile = AdminProfileProvider.require();
 
     setState(() => _sending = true);
@@ -316,9 +386,17 @@ class _ChantingChallengeManagerPageState
       await _firestore.collection('chantingChallenges').add({
         'name': name.trim(),
         'targetRounds': targetRounds,
-        // The string the Cloud Function matches on.
+        // The span the Cloud Function counts rounds over. A single day is
+        // the same date twice.
+        'startDateKey': _dateKey(first),
+        'startDate': Timestamp.fromDate(first),
+        'endDateKey': _dateKey(date),
+        'endDate': Timestamp.fromDate(date),
+        // Still written, and still meaning "the day this is aimed at" — now
+        // the LAST day. The expiry sweep, the result window and every Student
+        // app build older than ranges read these, so they keep working
+        // untouched; for a single day they are exactly what they always were.
         'targetDateKey': _dateKey(date),
-        // Kept alongside it for display, sorting and the deadline sweep.
         'targetDate': Timestamp.fromDate(date),
         // The creator's own id (the screen lists a non-HOD's challenges by it).
         'guideId': guide,
@@ -349,7 +427,7 @@ class _ChantingChallengeManagerPageState
       var notifyFailed = false;
       try {
         final res = await _notifyRoster(
-            name.trim(), targetRounds, date, selectedGuideIds);
+            name.trim(), targetRounds, first, date, selectedGuideIds);
         sent = res.$1;
         total = res.$2;
       } catch (_) {
@@ -532,10 +610,13 @@ class _ChantingChallengeManagerPageState
     final status = (data['status'] ?? 'active').toString();
     final (colour, icon, label) = _statusStyle(status);
 
+    final span = ChallengeSpan.of(data);
     final ts = data['targetDate'];
-    final dateText = ts is Timestamp
-        ? DateFormat('dd MMM yyyy').format(ts.toDate())
-        : (data['targetDateKey'] ?? '').toString();
+    final dateText = span != null
+        ? span.label
+        : ts is Timestamp
+            ? DateFormat('dd MMM yyyy').format(ts.toDate())
+            : (data['targetDateKey'] ?? '').toString();
 
     // Clamped so an over-achieved total does not overflow the bar.
     final fraction = target <= 0 ? 0.0 : (total / target).clamp(0.0, 1.0);
@@ -601,9 +682,14 @@ class _ChantingChallengeManagerPageState
             children: [
               Icon(Icons.event, size: 15, color: context.g.mutedText),
               const SizedBox(width: 5),
-              Text(dateText,
-                  style:
-                      TextStyle(fontSize: 12.5, color: context.g.text)),
+              // Flexible, with the labels below: a date range is longer than a
+              // single date, and "Guides: …" can list several names, so the row
+              // has to be able to give way rather than run off the card.
+              Flexible(
+                child: Text(dateText,
+                    style:
+                        TextStyle(fontSize: 12.5, color: context.g.text)),
+              ),
               // Multi-guide/all-students metadata is shown to any viewer who
               // can see this card — including a guide seeing an HOD
               // challenge that reaches their own roster via `guideIds`
@@ -613,25 +699,31 @@ class _ChantingChallengeManagerPageState
               // single-guide challenges need no such label.
               if (data['allStudents'] == true) ...[
                 const SizedBox(width: 12),
-                Text("All students",
-                    style:
-                        TextStyle(fontSize: 11, color: context.g.mutedText)),
+                Flexible(
+                  child: Text("All students",
+                      style:
+                          TextStyle(fontSize: 11, color: context.g.mutedText)),
+                ),
               ] else if (_createdByHod((data['createdBy'] ?? '').toString()) &&
                   data['guideIds'] is List &&
                   (data['guideIds'] as List).isNotEmpty) ...[
                 const SizedBox(width: 12),
-                Text(
-                  "Guides: ${(data['guideIds'] as List).map((g) => AdminProfileProvider.require().adminById('$g')?.displayName ?? '$g').join(', ')}",
-                  style:
-                      TextStyle(fontSize: 11, color: context.g.mutedText),
+                Flexible(
+                  child: Text(
+                    "Guides: ${(data['guideIds'] as List).map((g) => AdminProfileProvider.require().adminById('$g')?.displayName ?? '$g').join(', ')}",
+                    style:
+                        TextStyle(fontSize: 11, color: context.g.mutedText),
+                  ),
                 ),
               ] else if (_isHod &&
                   (data['guideId'] ?? '').toString().isNotEmpty) ...[
                 const SizedBox(width: 12),
-                Text(
-                    "Guide: ${AdminProfileProvider.require().adminById('${data['guideId']}')?.displayName ?? data['guideId']}",
-                    style:
-                        TextStyle(fontSize: 11, color: context.g.mutedText)),
+                Flexible(
+                  child: Text(
+                      "Guide: ${AdminProfileProvider.require().adminById('${data['guideId']}')?.displayName ?? data['guideId']}",
+                      style:
+                          TextStyle(fontSize: 11, color: context.g.mutedText)),
+                ),
               ],
             ],
           ),
@@ -662,6 +754,7 @@ class _ChantingChallengeManagerPageState
                       challengeName: name,
                       target: target,
                       total: total,
+                      span: span,
                     ),
                     transitionsBuilder: (_, animation, __, child) =>
                         FadeTransition(opacity: animation, child: child),
@@ -853,12 +946,16 @@ class ChallengeContributionsPage extends StatelessWidget {
   final int target;
   final int total;
 
+  /// Null only for a document with no usable date; then no day-wise table.
+  final ChallengeSpan? span;
+
   const ChallengeContributionsPage({
     super.key,
     required this.challengeId,
     required this.challengeName,
     required this.target,
     required this.total,
+    this.span,
   });
 
   @override
@@ -907,10 +1004,10 @@ class ChallengeContributionsPage extends StatelessWidget {
                     child: Text(
                       "$total of $target rounds, from ${docs.length} "
                       "student${docs.length == 1 ? '' : 's'} so far. "
-                      "Anyone not listed has not submitted a report for this "
-                      "date yet.\n\n"
-                      "Each figure is from that student's first report for the "
-                      "date and does not change afterwards.",
+                      "Anyone not listed has not submitted a report for "
+                      "${span?.isRange == true ? 'these dates' : 'this date'} yet.\n\n"
+                      "Each figure is from that student's first report for a "
+                      "day and does not change afterwards.",
                       style: TextStyle(
                         fontSize: 12.5,
                         height: 1.4,
@@ -918,6 +1015,25 @@ class ChallengeContributionsPage extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (span != null && span!.isRange && docs.isNotEmpty) ...[
+                    _DayWiseTable(
+                      days: buildDayTable(
+                        span!,
+                        docs.map((d) => d.data() as Map<String, dynamic>),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6, bottom: 10),
+                      child: Text(
+                        "Total ranking",
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: context.g.mutedText,
+                        ),
+                      ),
+                    ),
+                  ],
                   if (docs.isEmpty)
                     Padding(
                       padding: const EdgeInsets.all(24),
@@ -1000,6 +1116,89 @@ class ChallengeContributionsPage extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Master 2 A — who chanted how many rounds on which day, and how many
+/// students filed each day. One expandable row per day of the competition.
+class _DayWiseTable extends StatelessWidget {
+  final List<ChallengeDay> days;
+  const _DayWiseTable({required this.days});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: context.g.surface,
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: context.g.border),
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+              child: Text(
+                "Day by day",
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: context.g.mutedText,
+                ),
+              ),
+            ),
+            for (final day in days)
+              ExpansionTile(
+                key: ValueKey('day-${day.dayKey}'),
+                shape: const Border(),
+                collapsedShape: const Border(),
+                tilePadding: const EdgeInsets.symmetric(horizontal: 14),
+                title: Text(
+                  DateFormat('EEE dd MMM').format(day.date),
+                  style: const TextStyle(
+                      fontSize: 13.5, fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(
+                  day.studentCount == 0
+                      ? 'Nobody filed'
+                      : '${day.studentCount} student'
+                          '${day.studentCount == 1 ? '' : 's'}',
+                  style: TextStyle(fontSize: 11.5, color: context.g.mutedText),
+                ),
+                trailing: Text(
+                  '${day.rounds}',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: day.rounds == 0 ? context.g.mutedText : context.g.brass,
+                  ),
+                ),
+                children: [
+                  for (final c in day.contributors)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(28, 2, 14, 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(c.name,
+                                style: const TextStyle(fontSize: 13)),
+                          ),
+                          Text('${c.rounds}',
+                              style: const TextStyle(
+                                  fontSize: 13, fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            const SizedBox(height: 6),
+          ],
+        ),
+      ),
     );
   }
 }
