@@ -16,6 +16,7 @@ import 'SubmissionStatus.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
 import '../widgets/GuideEntry.dart';
+import 'AgentLogPage.dart';
 import 'MusicCurriculumPage.dart';
 // `AdminRegisterUserPage` is no longer imported here: its "Add Hostelers" tile
 // was removed on 2026-08-14. **The screen file was deliberately kept** — it
@@ -470,6 +471,24 @@ class _AdminControlPageState extends State<AdminControlPage> {
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const MusicCurriculumPage()),
+                    ),
+                  ),
+                ),
+              ],
+              // What the AI assistant has done: HODs only (the server's log; the rules let only a HOD read it).
+              if (AdminProfileProvider.viewerIsHod) ...[
+                gap,
+                step(
+                  4,
+                  GuideNavCard(
+                    key: const ValueKey('agent-log-card'),
+                    pastel: GuidePastel.mauve,
+                    icon: Icons.auto_awesome_outlined,
+                    title: "Assistant log",
+                    description: "What the AI assistant did, and for whom",
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AgentLogPage()),
                     ),
                   ),
                 ),

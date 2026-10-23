@@ -25,6 +25,15 @@ import '../widgets/GuideSurface.dart';
 ///
 /// The class keeps its old name (`CurvedNavBar`) because the splash screen and
 /// the sign-in page construct it by that name.
+/// Lets something outside the shell (the AI assistant's "Take me there") switch the bottom tab.
+///
+/// Set [requested] to 0 (Home), 1 (Analysis) or 2 (Tasks); the shell shows that tab and clears it.
+class GuideTabRequest {
+  GuideTabRequest._();
+  static final ValueNotifier<int?> requested = ValueNotifier<int?>(null);
+  static void show(int tab) => requested.value = tab;
+}
+
 class CurvedNavBar extends StatefulWidget {
   final String Guidename;
   const CurvedNavBar(this.Guidename, {super.key});
@@ -55,6 +64,24 @@ class _CurvedNavBarState extends State<CurvedNavBar> {
   void initState() {
     super.initState();
     _buildUnseenStreams();
+    GuideTabRequest.requested.addListener(_onTabRequest);
+  }
+
+  @override
+  void dispose() {
+    GuideTabRequest.requested.removeListener(_onTabRequest);
+    super.dispose();
+  }
+
+  void _onTabRequest() {
+    final tab = GuideTabRequest.requested.value;
+    if (tab == null) return;
+    GuideTabRequest.requested.value = null;
+    if (!mounted || tab < 0 || tab > 2) return;
+    setState(() {
+      currentIdx = tab;
+      _built.add(tab);
+    });
   }
 
   void _buildUnseenStreams() {

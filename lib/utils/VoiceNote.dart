@@ -14,7 +14,8 @@ const int kMaxVoiceSeconds = 180;
 /// the right way; unknown values fall back there.
 enum VoicePurpose {
   interaction('interaction'),
-  associationNote('association_note');
+  associationNote('association_note'),
+  assistant('assistant');
 
   const VoicePurpose(this.wire);
   final String wire;
