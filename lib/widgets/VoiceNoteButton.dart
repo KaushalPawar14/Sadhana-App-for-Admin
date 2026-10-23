@@ -12,7 +12,8 @@ import 'GuideWait.dart';
 /// A mic for a text field: speak, get clean English text (Master Part 3).
 ///
 ///   idle        a "Speak" button
-///   recording   a red dot, the time so far out of three minutes, Done and Cancel
+///   recording   a red dot, the time so far out of three minutes, Pause, Done and Cancel
+///   paused      the time held, Resume, Done and Cancel (paused time is not counted)
 ///   processing  "Turning your voice into text…"
 ///   failed      what went wrong in words, with Retry when a retry could help
 ///
@@ -50,7 +51,7 @@ class VoiceNoteButton extends StatefulWidget {
   State<VoiceNoteButton> createState() => _VoiceNoteButtonState();
 }
 
-enum _Phase { idle, recording, processing, failed }
+enum _Phase { idle, recording, paused, processing, failed }
 
 class _VoiceNoteButtonState extends State<VoiceNoteButton> {
   _Phase _phase = _Phase.idle;
@@ -67,7 +68,7 @@ class _VoiceNoteButtonState extends State<VoiceNoteButton> {
     _ticker?.cancel();
     _clip = null;
     // A guide who leaves mid-recording must not leave the mic open.
-    if (_phase == _Phase.recording) {
+    if (_phase == _Phase.recording || _phase == _Phase.paused) {
       VoiceRecorder.instance.cancel();
     }
     super.dispose();
@@ -96,12 +97,54 @@ class _VoiceNoteButtonState extends State<VoiceNoteButton> {
       _phase = _Phase.recording;
       _seconds = 0;
     });
+    _startTicker();
+  }
+
+  void _startTicker() {
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() => _seconds++);
       if (_seconds >= kMaxVoiceSeconds) _finish();
     });
+  }
+
+  /// Holds the recording. The clock stops with it, so the three minutes are minutes of
+  /// speech, not minutes of the guide thinking.
+  Future<void> _pause() async {
+    if (_phase != _Phase.recording) return;
+    _ticker?.cancel();
+    try {
+      await VoiceRecorder.instance.pause();
+    } catch (e) {
+      if (!mounted) return;
+      await VoiceRecorder.instance.cancel();
+      setState(() {
+        _error = e;
+        _phase = _Phase.failed;
+      });
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _phase = _Phase.paused);
+  }
+
+  Future<void> _resume() async {
+    if (_phase != _Phase.paused) return;
+    try {
+      await VoiceRecorder.instance.resume();
+    } catch (e) {
+      if (!mounted) return;
+      await VoiceRecorder.instance.cancel();
+      setState(() {
+        _error = e;
+        _phase = _Phase.failed;
+      });
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _phase = _Phase.recording);
+    _startTicker();
   }
 
   Future<void> _cancel() async {
@@ -115,7 +158,7 @@ class _VoiceNoteButtonState extends State<VoiceNoteButton> {
   }
 
   Future<void> _finish() async {
-    if (_phase != _Phase.recording) return;
+    if (_phase != _Phase.recording && _phase != _Phase.paused) return;
     _ticker?.cancel();
     setState(() => _phase = _Phase.processing);
     try {
@@ -198,8 +241,10 @@ class _VoiceNoteButtonState extends State<VoiceNoteButton> {
         );
 
       case _Phase.recording:
+      case _Phase.paused:
+        final paused = _phase == _Phase.paused;
         return Container(
-          key: const ValueKey('voice-recording'),
+          key: ValueKey(paused ? 'voice-paused' : 'voice-recording'),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: g.danger.withValues(alpha: .08),
@@ -214,10 +259,11 @@ class _VoiceNoteButtonState extends State<VoiceNoteButton> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.fiber_manual_record, size: 14, color: g.danger),
+                  Icon(paused ? Icons.pause_circle_filled : Icons.fiber_manual_record,
+                      size: 14, color: paused ? g.mutedText : g.danger),
                   const SizedBox(width: 6),
                   Text(
-                    'Recording ${formatElapsed(_seconds)} / '
+                    '${paused ? 'Paused' : 'Recording'} ${formatElapsed(_seconds)} / '
                     '${formatElapsed(kMaxVoiceSeconds)}',
                     key: const ValueKey('voice-timer'),
                     style: const TextStyle(
@@ -225,13 +271,19 @@ class _VoiceNoteButtonState extends State<VoiceNoteButton> {
                   ),
                 ],
               ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   TextButton(
                     key: const ValueKey('voice-cancel'),
                     onPressed: _cancel,
                     child: const Text('Cancel'),
+                  ),
+                  TextButton.icon(
+                    key: ValueKey(paused ? 'voice-resume' : 'voice-pause'),
+                    onPressed: paused ? _resume : _pause,
+                    icon: Icon(paused ? Icons.mic : Icons.pause, size: 18),
+                    label: Text(paused ? 'Resume' : 'Pause'),
                   ),
                   ElevatedButton.icon(
                     key: const ValueKey('voice-done'),

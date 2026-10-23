@@ -35,7 +35,11 @@ class FakeRecorder implements VoiceRecorder {
   int starts = 0;
   int stops = 0;
   int cancels = 0;
+  int pauses = 0;
+  int resumes = 0;
+  bool pauseThrows = false;
   bool recording = false;
+  bool paused = false;
 
   @override
   Future<bool> ensurePermission() async {
@@ -51,9 +55,23 @@ class FakeRecorder implements VoiceRecorder {
   }
 
   @override
+  Future<void> pause() async {
+    if (pauseThrows) throw StateError('cannot pause');
+    pauses++;
+    paused = true;
+  }
+
+  @override
+  Future<void> resume() async {
+    resumes++;
+    paused = false;
+  }
+
+  @override
   Future<VoiceClip?> stop() async {
     stops++;
     recording = false;
+    paused = false;
     return next;
   }
 
@@ -127,23 +145,46 @@ void main() {
           contains('sign in again'));
     });
 
-    test('a connection problem says so, in words', () {
-      for (final code in ['unavailable', 'deadline-exceeded', 'internal']) {
-        expect(voiceFailureMessage(HierarchyException(code, 'INTERNAL')),
-            contains('Check your connection'), reason: code);
+    test('a connection problem says so, in words, with the real reason', () {
+      for (final code in ['unavailable', 'deadline-exceeded']) {
+        final m = voiceFailureMessage(HierarchyException(code, 'The service is currently unavailable.'));
+        expect(m, contains('Check your connection'), reason: code);
+        expect(m, contains(code), reason: 'the code is shown');
+        expect(m, contains('The service is currently unavailable.'), reason: 'and the server\'s own words');
       }
     });
 
-    test('nothing ever reaches the guide as a bare code or a stack trace', () {
+    test('a function that is not on the server says exactly that', () {
+      final m = voiceFailureMessage(HierarchyException('not-found', 'NOT_FOUND'));
+      expect(m, contains("isn't on the server yet"));
+      expect(m, contains('not-found'));
+      expect(m, isNot(contains('NOT_FOUND')), reason: 'the placeholder adds nothing beyond the code');
+    });
+
+    test('a server fault names its reason', () {
+      final m = voiceFailureMessage(HierarchyException('internal', 'Something went wrong: Gemini returned 500.'));
+      expect(m, contains('internal: Something went wrong: Gemini returned 500.'));
+    });
+
+    test('a bare "INTERNAL" is shown as just the code, not twice', () {
+      expect(voiceReason(HierarchyException('internal', 'INTERNAL')), 'internal');
+      expect(voiceReason(HierarchyException('deadline-exceeded', 'DEADLINE_EXCEEDED')), 'deadline-exceeded');
+      expect(voiceReason(HierarchyException('internal', '')), 'internal');
+      expect(voiceReason(HierarchyException('x', 'Something went wrong.')), 'x');
+    });
+
+    test('anything else shows what it was — never a bare "failed", never a stack trace', () {
       for (final e in <Object>[
         HierarchyException('weird-code', ''),
+        HierarchyException('weird-code', 'because'),
         StateError('boom'),
         'a string',
       ]) {
         final m = voiceFailureMessage(e);
         expect(m, isNotEmpty);
-        expect(m, isNot(contains('StateError')));
-        expect(m, isNot(contains('weird-code')));
+        expect(m, isNot(contains('#0')), reason: 'no stack trace');
+        expect(m.contains('weird-code') || m.contains('boom') || m.contains('a string'), isTrue,
+            reason: 'the cause is in it: $m');
       }
     });
 
@@ -326,6 +367,108 @@ void main() {
     expect(mic.cancels, 1);
     expect(mic.recording, isFalse);
   });
+
+  testWidgets('Pause holds the clock; Resume carries on; Done from there sends it', (tester) async {
+    final got = <String>[];
+    await pumpButton(tester, received: got);
+    await tester.tap(find.byKey(const ValueKey('voice-speak')));
+    await tester.pump(const Duration(seconds: 10));
+    await tester.tap(find.byKey(const ValueKey('voice-pause')));
+    await tester.pump();
+
+    expect(mic.pauses, 1);
+    expect(find.byKey(const ValueKey('voice-paused')), findsOneWidget);
+    expect(find.text('Paused 0:10 / 3:00'), findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-resume')), findsOneWidget);
+
+    // A long think while paused costs nothing.
+    await tester.pump(const Duration(seconds: 90));
+    expect(find.text('Paused 0:10 / 3:00'), findsOneWidget);
+    expect(mic.stops, 0);
+
+    await tester.tap(find.byKey(const ValueKey('voice-resume')));
+    await tester.pump();
+    expect(mic.resumes, 1);
+    expect(find.text('Recording 0:10 / 3:00'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.text('Recording 0:15 / 3:00'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('voice-pause')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('voice-done')));
+    await tester.pumpAndSettle();
+    expect(mic.stops, 1, reason: 'Done works straight from a pause');
+    expect(got, ['Arjun is keeping 8 rounds daily.']);
+    expect(calls.single['name'], 'voiceToEnglishText');
+  });
+
+  testWidgets('the three minutes are minutes of speech, not of waiting', (tester) async {
+    final got = <String>[];
+    await pumpButton(tester, received: got);
+    await tester.tap(find.byKey(const ValueKey('voice-speak')));
+    await tester.pump(const Duration(seconds: 100));
+    await tester.tap(find.byKey(const ValueKey('voice-pause')));
+    await tester.pump(const Duration(seconds: 600));
+    await tester.tap(find.byKey(const ValueKey('voice-resume')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 79));
+    expect(find.byKey(const ValueKey('voice-recording')), findsOneWidget);
+    expect(mic.stops, 0);
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(mic.stops, 1, reason: '100 + 80 seconds of recording is the limit');
+    expect(got, hasLength(1));
+  });
+
+  testWidgets('Cancel works from a pause, and leaving the screen paused closes the mic', (tester) async {
+    await pumpButton(tester, received: []);
+    await tester.tap(find.byKey(const ValueKey('voice-speak')));
+    await tester.pump(const Duration(seconds: 3));
+    await tester.tap(find.byKey(const ValueKey('voice-pause')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('voice-cancel')));
+    await tester.pumpAndSettle();
+    expect(mic.cancels, 1);
+    expect(calls, isEmpty);
+    expect(find.byKey(const ValueKey('voice-speak')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('voice-speak')));
+    await tester.pump(const Duration(seconds: 2));
+    await tester.tap(find.byKey(const ValueKey('voice-pause')));
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(mic.cancels, 2, reason: 'the mic is released');
+  });
+
+  testWidgets('a pause the microphone refuses ends the recording with the reason, not a silent hang', (tester) async {
+    await pumpButton(tester, received: []);
+    await tester.tap(find.byKey(const ValueKey('voice-speak')));
+    await tester.pump(const Duration(seconds: 3));
+    mic.pauseThrows = true;
+    await tester.tap(find.byKey(const ValueKey('voice-pause')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('voice-failed')), findsOneWidget);
+    expect(find.textContaining('cannot pause'), findsOneWidget, reason: 'the real reason is shown');
+    expect(mic.cancels, 1);
+  });
+
+  for (final scale in [1.0, 1.3, 1.6]) {
+    for (final dark in [false, true]) {
+      testWidgets('the recording and paused cards fit at text ${scale}x, ${dark ? 'dark' : 'light'}', (tester) async {
+        await pumpButton(tester, received: [], scale: scale, dark: dark);
+        await tester.tap(find.byKey(const ValueKey('voice-speak')));
+        await tester.pump(const Duration(seconds: 65));
+        expect(tester.takeException(), isNull);
+        await tester.tap(find.byKey(const ValueKey('voice-pause')));
+        await tester.pump();
+        expect(find.text('Paused 1:05 / 3:00'), findsOneWidget);
+        expect(tester.takeException(), isNull, reason: 'no overflow when paused');
+        await tester.tap(find.byKey(const ValueKey('voice-cancel')));
+        await tester.pumpAndSettle();
+      });
+    }
+  }
 
   testWidgets('a refused microphone is explained kindly, with no Retry that could not help',
       (tester) async {

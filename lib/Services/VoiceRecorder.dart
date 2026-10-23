@@ -40,7 +40,14 @@ abstract class VoiceRecorder {
   /// Starts recording. Throws if the microphone cannot be opened.
   Future<void> start();
 
-  /// Stops and returns what was recorded, or null if there is nothing.
+  /// Holds the recording without ending it. The time while paused is not counted.
+  Future<void> pause();
+
+  /// Carries on after [pause].
+  Future<void> resume();
+
+  /// Stops and returns what was recorded, or null if there is nothing. Works the same
+  /// from a recording that is running and one that is paused.
   Future<VoiceClip?> stop();
 
   /// Stops and throws the recording away.
@@ -57,7 +64,12 @@ class RecordPackageRecorder implements VoiceRecorder {
 
   AudioRecorder? _recorder;
   String? _path;
-  DateTime? _startedAt;
+
+  /// Recorded time so far, NOT counting a pause: the server checks the length it is told
+  /// against the three-minute limit, and a guide who paused for ten minutes has not
+  /// recorded ten minutes.
+  Duration _recorded = Duration.zero;
+  DateTime? _segmentStart;
 
   AudioRecorder get _rec => _recorder ??= AudioRecorder();
 
@@ -78,16 +90,39 @@ class RecordPackageRecorder implements VoiceRecorder {
       path: path,
     );
     _path = path;
-    _startedAt = DateTime.now();
+    _recorded = Duration.zero;
+    _segmentStart = DateTime.now();
+  }
+
+  /// Adds the running segment to [_recorded].
+  void _closeSegment() {
+    final s = _segmentStart;
+    if (s != null) _recorded += DateTime.now().difference(s);
+    _segmentStart = null;
+  }
+
+  @override
+  Future<void> pause() async {
+    if (_segmentStart == null) return;
+    await _rec.pause();
+    _closeSegment();
+  }
+
+  @override
+  Future<void> resume() async {
+    if (_segmentStart != null || _path == null) return;
+    await _rec.resume();
+    _segmentStart = DateTime.now();
   }
 
   @override
   Future<VoiceClip?> stop() async {
-    final started = _startedAt;
+    _closeSegment();
+    final seconds = _recorded.inSeconds;
     final stopped = await _rec.stop();
     final path = stopped ?? _path;
     _path = null;
-    _startedAt = null;
+    _recorded = Duration.zero;
     if (path == null) return null;
 
     final file = File(path);
@@ -95,9 +130,6 @@ class RecordPackageRecorder implements VoiceRecorder {
       if (!await file.exists()) return null;
       final bytes = await file.readAsBytes();
       if (bytes.isEmpty) return null;
-      final seconds = started == null
-          ? 0
-          : DateTime.now().difference(started).inSeconds;
       return VoiceClip(bytes: bytes, mimeType: 'audio/mp4', seconds: seconds);
     } finally {
       // Not kept, whatever happened above.
@@ -113,7 +145,8 @@ class RecordPackageRecorder implements VoiceRecorder {
   Future<void> cancel() async {
     final path = _path;
     _path = null;
-    _startedAt = null;
+    _segmentStart = null;
+    _recorded = Duration.zero;
     try {
       await _rec.stop();
     } catch (_) {
