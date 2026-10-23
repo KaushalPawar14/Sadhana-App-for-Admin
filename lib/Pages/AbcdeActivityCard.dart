@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../utils/AbcdeActivity.dart';
+import '../utils/ExpeditionExperience.dart';
 import '../utils/LeaderboardData.dart' show dottedField;
 import '../utils/Residence.dart' show hasDailyServices;
 import '../utils/SadhanaReportSource.dart';
@@ -12,6 +13,7 @@ import '../utils/ServiceAssignments.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
 
 /// Phase 8 — the ABCDE activity card.
@@ -41,6 +43,7 @@ import '../widgets/GuideWait.dart';
 ///      the old `studentServices/{uid}` count) + scorecard/{name} (unrelated,
 ///      unchanged — see that task's Part 1 for why these two are separate)
 ///   E  expeditionRegistrations     where studentUid ==
+///      expeditionExperiences       where studentUid ==  (what they wrote after a trip)
 class AbcdeActivityCard extends StatefulWidget {
   final String studentUid;
   final String studentName;
@@ -138,6 +141,9 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
 
   // E
   int _tripsRegistered = 0;
+
+  /// What the student wrote after the trips they completed (Master 2 B).
+  List<ExpeditionExperience> _experiences = const [];
   int _reflectionsSubmitted = 0;
   DateTime? _mostRecentTrip;
 
@@ -215,6 +221,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
         _loadBooks(),
         _loadService(),
         _loadExpeditions(),
+        _loadExperiences(),
       ]);
       // ignore: unused_local_variable
       final _ = results;
@@ -464,6 +471,57 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
       _reflectionsSubmitted = reflected;
       _mostRecentTrip = mostRecent;
     });
+  }
+
+  /// What this student wrote about the trips they completed. A failure leaves the list empty rather than
+  /// failing the card — the rest of E is still true without it.
+  Future<void> _loadExperiences() async {
+    try {
+      final snapshot = await (await _scopedFor('expeditionExperiences', 'studentUid')).get();
+      final list = parseExperiences(snapshot.docs.map((d) => d.data()));
+      if (!mounted) return;
+      setState(() => _experiences = list);
+    } catch (_) {
+      // Not loaded — the expedition counts above still stand.
+    }
+  }
+
+  void _showExperiences() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => GuideDialog(
+        title: Text(widget.studentName),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final e in _experiences.where((e) => e.shared)) ...[
+                Text(e.tripName.isEmpty ? 'A trip' : e.tripName,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+                Text(e.statusLine, style: TextStyle(fontSize: 11.5, color: dialogContext.g.mutedText)),
+                const SizedBox(height: 8),
+                for (final q in kExperienceQuestions)
+                  if (e.answerFor(q.field).isNotEmpty) ...[
+                    Text(q.question, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Text(e.answerFor(q.field), style: const TextStyle(fontSize: 13.5, height: 1.4)),
+                    const SizedBox(height: 8),
+                  ],
+                if (e.notes.isNotEmpty) ...[
+                  const Text('Anything else', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(e.notes, style: const TextStyle(fontSize: 13.5, height: 1.4)),
+                  const SizedBox(height: 8),
+                ],
+                const Divider(),
+              ],
+            ],
+          ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close'))],
+      ),
+    );
   }
 
   int _asInt(Object? value) => value is num ? value.toInt() : 0;
@@ -793,15 +851,35 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
   // --- E ---------------------------------------------------------------------
 
   List<Widget> _expeditionLines() {
-    if (_tripsRegistered == 0) {
+    // An experience can outlive the registration it came from (a trip deleted
+    // after it was asked about), so it is shown even with no trips registered
+    // rather than being hidden behind "No trips registered".
+    if (_tripsRegistered == 0 && _experiences.isEmpty) {
       return [_value("No trips registered")];
     }
     return [
-      _value(
-          "$_tripsRegistered trip${_tripsRegistered == 1 ? '' : 's'} registered"),
-      _muted("$_reflectionsSubmitted reflection"
-          "${_reflectionsSubmitted == 1 ? '' : 's'} submitted"
-          "${_mostRecentTrip == null ? '' : ' · latest ${DateFormat('dd MMM yyyy').format(_mostRecentTrip!)}'}"),
+      if (_tripsRegistered == 0)
+        _value("No trips registered")
+      else ...[
+        _value(
+            "$_tripsRegistered trip${_tripsRegistered == 1 ? '' : 's'} registered"),
+        _muted("$_reflectionsSubmitted reflection"
+            "${_reflectionsSubmitted == 1 ? '' : 's'} submitted"
+            "${_mostRecentTrip == null ? '' : ' · latest ${DateFormat('dd MMM yyyy').format(_mostRecentTrip!)}'}"),
+      ],
+      if (_experiences.isNotEmpty) ...[
+        _muted(experienceSummary(_experiences)),
+        if (_experiences.any((e) => e.shared))
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const ValueKey('read-experiences'),
+              onPressed: _showExperiences,
+              icon: const Icon(Icons.auto_stories, size: 16),
+              label: const Text('Read experiences'),
+            ),
+          ),
+      ],
     ];
   }
 
@@ -818,7 +896,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
       child: _loading
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 26),
-              child: const GuideWait(),
+              child: GuideWait(),
             )
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,

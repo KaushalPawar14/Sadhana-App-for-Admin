@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../Services/GeminiService.dart';
 import '../Services/UpdateFCM.dart';
 import '../utils/Snackbar.dart';
+import '../utils/ExpeditionExperience.dart';
 import '../utils/StudentScope.dart';
 import '../utils/StudentSuggestions.dart';
 import '../theme/GuideTheme.dart';
@@ -194,9 +195,15 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
 
     // --- Expeditions --------------------------------------------------------
     //
-    // Reflection *text* is never sent. Only counts and a coarse length band,
-    // because a reflection can contain personal disclosure the student wrote
-    // for their guide, not for an API.
+    // The registration's reflection *text* is still never sent — only counts
+    // and a coarse length band, because a reflection can contain personal
+    // disclosure the student wrote for their guide, not for an API.
+    //
+    // The EXPERIENCE (what they learned, what touched them, what they will
+    // change — written after a trip they completed) is different, and is sent:
+    // it is the "E" evidence Master 1 B asks for, and the student was told it
+    // is written for their guides. Clipped per answer and labelled as the
+    // student's own words, so it is weighed rather than obeyed.
     try {
       final registrations = await _scoped('expeditionRegistrations', 'studentUid').get();
 
@@ -246,6 +253,15 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
       }
     } catch (_) {
       // Ignore — proceed without expedition data.
+    }
+
+    // --- What they wrote about the trips they completed -----------------------
+    try {
+      final snap = await _scoped('expeditionExperiences', 'studentUid').get();
+      lines.addAll(experienceEvidenceLines(
+          parseExperiences(snap.docs.map((d) => d.data()))));
+    } catch (_) {
+      // Ignore — the suggestion is still useful without it.
     }
 
     // --- Approved interaction logs ------------------------------------------

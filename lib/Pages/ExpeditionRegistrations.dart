@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/GuideTheme.dart';
+import '../utils/ExpeditionExperience.dart';
 import '../utils/ExpeditionModel.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
@@ -42,16 +43,35 @@ class ExpeditionRegistrationsList extends StatelessWidget {
               .compareTo((b.data()['studentName'] ?? '').toString().toLowerCase()));
         final summary = summariseAttendance(docs.map((d) => d.data()));
 
-        return ListView(
-          padding: padding,
-          children: [
-            _SummaryBar(total: docs.length, summary: summary),
-            const SizedBox(height: 8),
-            if (docs.isEmpty)
-              const Padding(padding: EdgeInsets.all(20), child: Text('Nobody has registered yet'))
-            else
-              for (final d in docs) _StudentRow(doc: d, editable: editable),
-          ],
+        // What each student wrote about the trip, once they were asked (the morning after it ended).
+        // A second stream, scoped the same way; a failure here must never hide the attendance list.
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: StudentScope.current().historyStream(
+            'expeditionExperiences',
+            extraEquals: {'tripId': tripId},
+          ),
+          builder: (context, expSnap) {
+            final experiences = <String, ExpeditionExperience>{};
+            for (final e in parseExperiences((expSnap.data?.docs ?? const []).map((d) => d.data()))) {
+              experiences[e.studentName] = e;
+            }
+            return ListView(
+              padding: padding,
+              children: [
+                _SummaryBar(total: docs.length, summary: summary),
+                const SizedBox(height: 8),
+                if (docs.isEmpty)
+                  const Padding(padding: EdgeInsets.all(20), child: Text('Nobody has registered yet'))
+                else
+                  for (final d in docs)
+                    _StudentRow(
+                      doc: d,
+                      editable: editable,
+                      experience: experiences[(d.data()['studentName'] ?? '').toString()],
+                    ),
+              ],
+            );
+          },
         );
       },
     );
@@ -119,10 +139,14 @@ class _Pill extends StatelessWidget {
 }
 
 class _StudentRow extends StatelessWidget {
-  const _StudentRow({required this.doc, required this.editable});
+  const _StudentRow({required this.doc, required this.editable, this.experience});
 
   final QueryDocumentSnapshot<Map<String, dynamic>> doc;
   final bool editable;
+
+  /// What this student shared about the trip; null when they were never asked (not marked Fully or Partially
+  /// completed, or the trip has not ended yet).
+  final ExpeditionExperience? experience;
 
   Color _color(BuildContext context, String a) {
     final g = context.g;
@@ -176,6 +200,41 @@ class _StudentRow extends StatelessWidget {
           child: Text(
             (data['reflectionText'] ?? '').toString().isEmpty ? 'No reflection text.' : data['reflectionText'].toString(),
             style: const TextStyle(fontSize: 14, height: 1.5),
+          ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close'))],
+      ),
+    );
+  }
+
+  void _showExperience(BuildContext context, ExpeditionExperience e) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => GuideDialog(
+        title: Text(e.studentName.isEmpty ? 'Experience' : e.studentName),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (e.tripName.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text(e.tripName, style: TextStyle(fontSize: 12.5, color: dialogContext.g.mutedText)),
+                ),
+              for (final q in kExperienceQuestions)
+                if (e.answerFor(q.field).isNotEmpty) ...[
+                  Text(q.question, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 3),
+                  Text(e.answerFor(q.field), style: const TextStyle(fontSize: 14, height: 1.45)),
+                  const SizedBox(height: 12),
+                ],
+              if (e.notes.isNotEmpty) ...[
+                const Text('Anything else', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 3),
+                Text(e.notes, style: const TextStyle(fontSize: 14, height: 1.45)),
+              ],
+            ],
           ),
         ),
         actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close'))],
@@ -240,6 +299,19 @@ class _StudentRow extends StatelessWidget {
                     onPressed: () => _showReflection(context, data),
                     icon: const Icon(Icons.notes, size: 16),
                     label: const Text('View reflection'),
+                  ),
+                if (experience != null && experience!.shared)
+                  TextButton.icon(
+                    key: ValueKey('experience-${doc.id}'),
+                    onPressed: () => _showExperience(context, experience!),
+                    icon: const Icon(Icons.auto_stories, size: 16),
+                    label: const Text('View experience'),
+                  )
+                else if (experience != null)
+                  Text(
+                    key: ValueKey('experience-pending-${doc.id}'),
+                    experience!.statusLine,
+                    style: TextStyle(fontSize: 12, color: g.mutedText),
                   ),
               ],
             ),
