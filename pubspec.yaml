@@ -63,6 +63,7 @@ dependencies:
   # maintained packages for exactly this, not a new pattern invented here.
   package_info_plus: ^8.0.0
   url_launcher: ^6.3.0
+  record: ^7.1.2
 
 dev_dependencies:
   flutter_test:

@@ -226,6 +226,29 @@ class HierarchyApi {
   Future<Map<String, dynamic>> sendStudentNotification(
           Map<String, dynamic> data) =>
       _call('sendStudentNotification', data);
+  /// A recorded voice note as clean English text (functions/voiceNote.js).
+  ///
+  /// The audio is sent once and not kept. [existingText] is whatever is already
+  /// in the field, sent for context only (so names and terms match) and never
+  /// returned. The result is the one field `text`; there is no raw transcript.
+  Future<String> voiceToEnglishText({
+    required String audioBase64,
+    required String mimeType,
+    required int durationSeconds,
+    required String purpose,
+    String studentName = '',
+    String existingText = '',
+  }) async {
+    final r = await _call('voiceToEnglishText', {
+      'audioBase64': audioBase64,
+      'mimeType': mimeType,
+      'durationSeconds': durationSeconds,
+      'purpose': purpose,
+      if (studentName.isNotEmpty) 'studentName': studentName,
+      if (existingText.trim().isNotEmpty) 'existingText': existingText,
+    });
+    return (r['text'] ?? '').toString();
+  }
 }
 
 class RemoveAdminResult {

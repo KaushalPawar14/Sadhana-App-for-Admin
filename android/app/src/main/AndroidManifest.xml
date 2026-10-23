@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- The voice-note mic on the interaction and meeting-notes fields. Asked for only when a guide
+         first taps the mic, never at launch. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 
     <application
         android:label="FOLK Guides"

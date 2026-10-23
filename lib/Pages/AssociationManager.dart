@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../Services/HierarchyApi.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/SeenMarkers.dart';
 import '../utils/SelectableDelete.dart';
+import '../actions/AssociationActions.dart';
 import '../utils/Snackbar.dart';
+import '../utils/VoiceNote.dart';
+import '../widgets/VoiceNoteButton.dart';
 import '../utils/StudentScope.dart';
 import 'InteractionLogger.dart';
 import 'OverdueAssociations.dart';
@@ -116,26 +118,6 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
     }
   }
 
-  Future<void> _notifyStudent(
-    String studentUid,
-    String title,
-    String body,
-  ) async {
-    if (studentUid.isEmpty) return;
-
-    // The server applies the student's `associationUpdates` preference and
-    // owns the FCM token, so there is nothing to look up here.
-    try {
-      await HierarchyApi.instance.sendStudentNotification({
-        'kind': 'association_update',
-        'studentUid': studentUid,
-        'title': title,
-        'body': body,
-      });
-    } catch (_) {
-      // A failed notification must not roll back the status change.
-    }
-  }
 
   /// Which admin a record belongs to — shown **only** where the tabs mix
   /// several admins together (HOD, Guide). For everyone else this returns an
@@ -205,17 +187,10 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
     );
 
     try {
-      await _firestore.collection('associations').doc(docId).update({
-        'confirmedDate': Timestamp.fromDate(confirmed),
-        'status': 'confirmed',
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      await _notifyStudent(
-        (data['studentUid'] ?? '').toString(),
-        "Meeting Confirmed",
-        "Your meeting is confirmed for "
-            "${DateFormat('dd MMM yyyy, hh:mm a').format(confirmed)}",
+      await confirmMeeting(
+        docId,
+        studentUid: (data['studentUid'] ?? '').toString(),
+        when: confirmed,
       );
 
       if (!mounted) return;
@@ -226,17 +201,50 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
     }
   }
 
+  /// Moves a confirmed meeting to another day and time, and tells the student.
+  ///
+  /// Added with the AI agent, which may only do what a guide can do by hand: the
+  /// app could confirm a request and cancel a meeting but not move one, so the
+  /// Upcoming card gained this, on the same shared write the agent uses.
+  Future<void> _rescheduleMeeting(String docId, Map<String, dynamic> data) async {
+    final current = data['confirmedDate'];
+    final initial = current is Timestamp ? current.toDate() : DateTime.now();
+
+    final date = await showDatePicker(
+      context: context,
+      initialDate: initial.isBefore(DateTime.now()) ? DateTime.now() : initial,
+      firstDate: DateTime.now().subtract(const Duration(days: 1)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (date == null || !mounted) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initial),
+    );
+    if (time == null) return;
+
+    final moved = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+
+    try {
+      await rescheduleMeeting(
+        docId,
+        studentUid: (data['studentUid'] ?? '').toString(),
+        when: moved,
+      );
+      if (!mounted) return;
+      showSnackbar(context, "Meeting rescheduled", Colors.green, Icons.check_circle);
+    } catch (_) {
+      if (!mounted) return;
+      showSnackbar(context, "Could not reschedule", Colors.red, Icons.error);
+    }
+  }
+
   Future<void> _cancelRequest(String docId, Map<String, dynamic> data) async {
     try {
-      await _firestore.collection('associations').doc(docId).update({
-        'status': 'cancelled',
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      await _notifyStudent(
-        (data['studentUid'] ?? '').toString(),
-        "Meeting Cancelled",
-        "Your meeting request was cancelled",
+      await cancelMeeting(
+        docId,
+        studentUid: (data['studentUid'] ?? '').toString(),
       );
 
       if (!mounted) return;
@@ -265,15 +273,10 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 14),
-                TextFormField(
-                  initialValue: notes,
-                  autofocus: true,
-                  maxLines: 4,
+                _MeetingNotesField(
+                  initialText: notes,
+                  studentName: (data['studentName'] ?? '').toString(),
                   onChanged: (v) => notes = v,
-                  decoration: InputDecoration(
-                    labelText: "Notes from the meeting",
-                    alignLabelWithHint: true,
-                  ),
                 ),
               ],
             ),
@@ -297,11 +300,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
     if (saved != true) return;
 
     try {
-      await _firestore.collection('associations').doc(docId).update({
-        'status': 'completed',
-        'guideNotes': notes.trim(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await completeMeeting(docId, notes: notes);
 
       if (!mounted) return;
       showSnackbar(context, "Meeting completed", Colors.blue, Icons.check_circle);
@@ -471,25 +470,12 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
               );
 
               try {
-                await _firestore.collection('associations').add({
-                  'studentUid': studentUid,
-                  'studentName': studentName,
-                  'guideId': guide,
-                  'requestedBy': 'guide',
-                  'preferredDate': Timestamp.fromDate(preferred),
-                  'confirmedDate': null,
-                  'status': 'pending',
-                  'studentNotes': notes.trim(),
-                  'guideNotes': '',
-                  'createdAt': FieldValue.serverTimestamp(),
-                  'updatedAt': FieldValue.serverTimestamp(),
-                });
-
-                await _notifyStudent(
-                  studentUid!,
-                  "Meeting Scheduled",
-                  "Your guide has requested a meeting on "
-                      "${DateFormat('dd MMM yyyy, hh:mm a').format(preferred)}",
+                await requestMeeting(
+                  guideId: guide,
+                  studentUid: studentUid!,
+                  studentName: studentName,
+                  preferred: preferred,
+                  message: notes,
                 );
 
                 if (!sheetContext.mounted) return;
@@ -959,17 +945,10 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
     }
 
     try {
-      await _firestore.collection('associations').doc(docId).update({
-        'confirmedDate': proposed,
-        'status': 'confirmed',
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      await _notifyStudent(
-        (data['studentUid'] ?? '').toString(),
-        "Meeting Confirmed",
-        "Your meeting is confirmed for "
-            "${DateFormat('dd MMM yyyy, hh:mm a').format(proposed.toDate())}",
+      await acceptStudentProposal(
+        docId,
+        studentUid: (data['studentUid'] ?? '').toString(),
+        proposed: proposed,
       );
 
       if (!mounted) return;
@@ -1034,6 +1013,20 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              key: ValueKey('reschedule-$docId'),
+              onPressed: () => _rescheduleMeeting(docId, data),
+              icon: const Icon(Icons.edit_calendar, size: 18),
+              label: const Text("Reschedule"),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: context.g.brass,
+                side: BorderSide(color: context.g.brass),
+              ),
+            ),
           ),
         ],
       ),
@@ -1425,6 +1418,72 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                 ),
         );
       },
+    );
+  }
+}
+
+/// The notes box of "Complete Meeting", with the mic under it.
+///
+/// A widget of its own so that it owns its controller. The controller used to be
+/// created before the dialog opened and disposed the moment it closed — which is
+/// while the dialog's exit animation is still painting this very field, and
+/// Flutter rightly objects to a disposed controller being used. A widget disposes
+/// its controller when it is actually removed from the tree, not before.
+class _MeetingNotesField extends StatefulWidget {
+  const _MeetingNotesField({
+    required this.initialText,
+    required this.studentName,
+    required this.onChanged,
+  });
+
+  final String initialText;
+  final String studentName;
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<_MeetingNotesField> createState() => _MeetingNotesFieldState();
+}
+
+class _MeetingNotesFieldState extends State<_MeetingNotesField> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialText);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextFormField(
+          controller: _controller,
+          autofocus: true,
+          maxLines: 4,
+          onChanged: widget.onChanged,
+          decoration: const InputDecoration(
+            labelText: "Notes from the meeting",
+            alignLabelWithHint: true,
+          ),
+        ),
+        // Speak it instead: English, Hindi, Gujarati or a mix, turned into clean
+        // English and added after whatever is already here — editable before Save.
+        VoiceNoteButton(
+          purpose: VoicePurpose.associationNote,
+          studentName: widget.studentName,
+          existingText: () => _controller.text,
+          onText: (clean) {
+            _controller.text = appendNote(_controller.text, clean);
+            _controller.selection =
+                TextSelection.collapsed(offset: _controller.text.length);
+            widget.onChanged(_controller.text);
+          },
+        ),
+      ],
     );
   }
 }

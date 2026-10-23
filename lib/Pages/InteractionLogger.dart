@@ -4,11 +4,13 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../Services/GeminiService.dart';
-import '../Services/HierarchyApi.dart';
+import '../actions/InteractionActions.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/SelectableDelete.dart';
 import '../utils/Snackbar.dart';
+import '../utils/VoiceNote.dart';
+import '../widgets/VoiceNoteButton.dart';
 import '../utils/StudentScope.dart';
 import 'LitAssessment.dart';
 import '../theme/GuideTheme.dart';
@@ -47,7 +49,9 @@ import '../widgets/GuideSheet.dart';
 /// Guide corrections happen after the fact: the saved entry can be opened
 /// from the list below and edited directly (`InteractionDetailPage`) — there
 /// is no required review step before saving.
-const List<String> kInteractionTypes = ['WhatsApp', 'Call', 'Live (in-person)'];
+// `kInteractionTypes` lives with the shared save (actions/InteractionActions.dart);
+// re-exported so anything that imported it from here still finds it.
+export '../actions/InteractionActions.dart' show kInteractionTypes;
 
 class InteractionLoggerPage extends StatefulWidget {
   final String studentUid;
@@ -206,39 +210,21 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
 
               setSheetState(() => busy = true);
 
-              final initialSummary = {
-                'interactionType': interactionType,
-                'interactionDateTime': Timestamp.fromDate(interactionDate),
-                'durationMinutes': 0,
-                'themes': <String>[],
-                'studentConcerns': '',
-                'personalRevelation': '',
-                'commitmentsMade': '',
-                'followUpDate': followUpDate == null
-                    ? null
-                    : Timestamp.fromDate(followUpDate!),
-                'abcdeEvidence': '',
-                'possibleLitEvidence': '',
-                'temporaryCircumstances': '',
-                'recommendedNextAction': '',
-                'recommendedReasoning': '',
-                'extractionConfidence': 'low',
-              };
-
-              DocumentReference<Map<String, dynamic>> docRef;
+              // The record, the notification and the AI extraction are one shared
+              // write (actions/InteractionActions.dart) — the AI agent saves a note
+              // through exactly this. Only the first write can throw; once it has
+              // landed, nothing after it can lose what the guide wrote.
+              SavedInteraction saved;
               try {
-                docRef = await _firestore.collection('interactionLogs').add({
-                  'studentUid': widget.studentUid,
-                  'studentName': widget.studentName,
-                  'guideId': guide,
-                  'interactionDate': Timestamp.fromDate(interactionDate),
-                  'rawDictation': raw,
-                  'approvedSummary': initialSummary,
-                  'extractedDraft': null,
-                  'status': 'approved',
-                  'createdAt': FieldValue.serverTimestamp(),
-                  'approvedAt': FieldValue.serverTimestamp(),
-                });
+                saved = await saveInteraction(
+                  guideId: guide,
+                  studentUid: widget.studentUid,
+                  studentName: widget.studentName,
+                  raw: raw,
+                  interactionType: interactionType!,
+                  interactionDate: interactionDate,
+                  followUpDate: followUpDate,
+                );
               } catch (_) {
                 setSheetState(() => busy = false);
                 if (!sheetContext.mounted) return;
@@ -250,46 +236,8 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                 );
                 return;
               }
-
-              // The record is durably saved and already complete — every
-              // downstream reader (the list below, HolisticSuggestion,
-              // WeeklyPlanning) can use it from this point on even if
-              // everything below fails. Notified now, not after extraction,
-              // so this is at least as reliable as the old approve-gated
-              // notification, never less.
-              await _notifyInteractionLogged(widget.studentUid);
-
-              String? extractionError;
-              String litPrefill = '';
-              try {
-                final draft = await GeminiService().extractInteraction(
-                  rawText: raw,
-                  studentName: widget.studentName,
-                );
-                // The guide's own selections are authoritative — Gemini's
-                // guesses for these two keys are discarded, never used to
-                // silently override what the guide picked.
-                draft['interactionType'] = interactionType;
-                draft['interactionDateTime'] =
-                    interactionDate.toIso8601String();
-                if (followUpDate != null) {
-                  draft['followUpDate'] = followUpDate!.toIso8601String();
-                }
-                litPrefill = (draft['possibleLitEvidence'] ?? '').toString();
-
-                await docRef.update({
-                  'approvedSummary': _draftForFirestore(draft),
-                  'rawDictation': FieldValue.delete(),
-                });
-              } on GeminiException catch (e) {
-                extractionError = e.message;
-              } catch (e) {
-                extractionError = "Extraction failed: $e";
-              }
-              // On failure, the doc saved above already stands as the
-              // complete record; rawDictation is left in place (not deleted)
-              // so the guide can retry from the entry's Edit screen via
-              // Re-extract.
+              final extractionError = saved.extractionError;
+              final litPrefill = saved.litPrefill;
 
               if (!sheetContext.mounted) return;
               Navigator.pop(sheetContext);
@@ -317,7 +265,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                 context: context,
                 studentUid: widget.studentUid,
                 studentName: widget.studentName,
-                docId: docRef.id,
+                docId: saved.id,
                 prefilledEvidence: litPrefill,
               );
             }
@@ -449,6 +397,20 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                               "struggling to chant during exam week...",
                         ),
                       ),
+                      // Speak it instead: English, Hindi, Gujarati or a mix, turned
+                      // into clean English and added below whatever is already here.
+                      // It lands in the box above, editable, before anything is saved.
+                      VoiceNoteButton(
+                        purpose: VoicePurpose.interaction,
+                        studentName: widget.studentName,
+                        enabled: !busy,
+                        existingText: () => controller.text,
+                        onText: (clean) => setSheetState(() {
+                          controller.text = appendNote(controller.text, clean);
+                          controller.selection = TextSelection.collapsed(
+                              offset: controller.text.length);
+                        }),
+                      ),
                       const SizedBox(height: 16),
                       if (busy)
                         const Padding(
@@ -458,8 +420,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                               SizedBox(
                                 width: 18,
                                 height: 18,
-                                child:
-                                    const GuideBusyDot(),
+                                child: GuideBusyDot(),
                               ),
                               SizedBox(width: 12),
                               Expanded(
@@ -735,48 +696,14 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
 
 /// Converts the in-memory summary (ISO date strings) into the Firestore shape
 /// (Timestamps), keeping every other key as-is.
-Map<String, dynamic> _draftForFirestore(Map<String, dynamic> draft) {
-  final out = Map<String, dynamic>.from(draft);
-  out['interactionDateTime'] = _tsFromIso(draft['interactionDateTime']);
-  out['followUpDate'] = _tsFromIso(draft['followUpDate']);
-  return out;
-}
-
-Timestamp? _tsFromIso(Object? value) {
-  if (value is Timestamp) return value;
-  final text = (value ?? '').toString().trim();
-  if (text.isEmpty) return null;
-  final parsed = DateTime.tryParse(text);
-  return parsed == null ? null : Timestamp.fromDate(parsed);
-}
+Map<String, dynamic> _draftForFirestore(Map<String, dynamic> draft) =>
+    interactionDraftForFirestore(draft);
 
 DateTime? _dateFrom(Object? value) {
   if (value is Timestamp) return value.toDate();
   final text = (value ?? '').toString().trim();
   if (text.isEmpty) return null;
   return DateTime.tryParse(text);
-}
-
-/// Tells the other admins who should know that an interaction was logged —
-/// **the fact only**.
-///
-/// No interaction content, no themes, no LIT evidence, no student concerns
-/// go into the payload. FCM notifications land outside the app on a lock
-/// screen, so they get the same privacy boundary the raw notes already have.
-/// The server decides who is told (and builds the message).
-///
-/// Called right after the interaction's initial save succeeds — before
-/// Gemini extraction even runs — so this fires at least as reliably as the
-/// old approve-gated notification, never less.
-Future<void> _notifyInteractionLogged(String studentUid) async {
-  try {
-    await HierarchyApi.instance.sendStudentNotification({
-      'kind': 'interaction_logged',
-      'studentUid': studentUid,
-    });
-  } catch (_) {
-    // A failed notification must never undo a save that already landed.
-  }
 }
 
 /// Optional LIT step, offered once right after a successful save.
@@ -1250,7 +1177,7 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(12),
-          child: const GuideBusyDot(),
+          child: GuideBusyDot(),
         ),
       );
     }
