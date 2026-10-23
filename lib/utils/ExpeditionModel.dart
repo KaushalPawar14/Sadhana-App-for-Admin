@@ -80,12 +80,55 @@ bool tripArchived(Map<String, dynamic> trip) => trip['archived'] == true;
 String tripDateText(Object? value) =>
     value is Timestamp ? DateFormat('dd MMM yyyy').format(value.toDate()) : 'Not set';
 
-/// A History card's title: the place and the date, e.g. "Vrindavan · 25 Aug 2026". With no place, the trip's
-/// own title stands in for it.
+/// The longest a trip may run. A fortnight is a long trip; this only stops a typo (a year, not a day).
+const int kMaxTripDays = 60;
+
+/// A trip's last day: its end date, or — for a trip made before end dates existed — its one date. An end
+/// before the start is ignored, matching the server, so a hand-edited trip never shows as ending before
+/// it begins.
+DateTime? tripEndOf(Map<String, dynamic> trip) {
+  final start = trip['tripDate'];
+  final end = trip['endDate'];
+  final s = start is Timestamp ? start.toDate() : null;
+  final e = end is Timestamp ? end.toDate() : null;
+  if (e != null && (s == null || !DateTime(e.year, e.month, e.day).isBefore(DateTime(s.year, s.month, s.day)))) {
+    return e;
+  }
+  return s;
+}
+
+/// "25 Aug 2026" for a one-day trip, "18 Oct – 20 Oct 2026" for a longer one, "Not set" with no date.
+String tripDatesText(Map<String, dynamic> trip) {
+  final start = trip['tripDate'];
+  final end = tripEndOf(trip);
+  if (start is! Timestamp || end == null) return tripDateText(start);
+  final s = start.toDate();
+  final sameDay = s.year == end.year && s.month == end.month && s.day == end.day;
+  if (sameDay) return tripDateText(start);
+  final full = DateFormat('dd MMM yyyy');
+  return s.year == end.year
+      ? '${DateFormat('dd MMM').format(s)} – ${full.format(end)}'
+      : '${full.format(s)} – ${full.format(end)}';
+}
+
+/// Why a trip's dates cannot be saved, or null if they are fine.
+String? tripDatesProblem(DateTime? start, DateTime? end) {
+  if (start == null) return 'Choose the trip start date';
+  if (end == null) return 'Choose the trip end date';
+  final s = DateTime(start.year, start.month, start.day);
+  final e = DateTime(end.year, end.month, end.day);
+  if (e.isBefore(s)) return 'The end date cannot be before the start date';
+  final days = DateTime.utc(e.year, e.month, e.day).difference(DateTime.utc(s.year, s.month, s.day)).inDays + 1;
+  if (days > kMaxTripDays) return 'A trip can run for at most $kMaxTripDays days';
+  return null;
+}
+
+/// A History card's title: the place and the date, e.g. "Vrindavan · 25 Aug 2026" (or the span, for a longer
+/// trip). With no place, the trip's own title stands in for it.
 String historyTitle(Map<String, dynamic> trip) {
   final place = (trip['location'] ?? '').toString().trim();
   final name = place.isNotEmpty ? place : (trip['title'] ?? 'Trip').toString().trim();
-  return '$name · ${tripDateText(trip['tripDate'])}';
+  return '$name · ${tripDatesText(trip)}';
 }
 
 /// Newest trip date first (History); a trip with no date goes last.

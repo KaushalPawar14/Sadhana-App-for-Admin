@@ -3,14 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../Services/GeminiService.dart';
-import '../Services/HierarchyApi.dart';
+import '../Services/GuideAi.dart';
+import '../actions/DeleteActions.dart';
+import '../actions/InteractionActions.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/SelectableDelete.dart';
 import '../utils/Snackbar.dart';
+import '../utils/VoiceNote.dart';
+import '../widgets/VoiceNoteButton.dart';
 import '../utils/StudentScope.dart';
-import 'LitAssessment.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../utils/GuideDb.dart';
@@ -21,33 +23,26 @@ import '../widgets/GuideSheet.dart';
 
 /// Phase 5, item 1 — interaction logging.
 ///
-/// Redesigned to single-step entry: the guide types what was discussed,
-/// picks how they connected and (optionally) a follow-up date, and taps Save
-/// once. Gemini extraction (duration, themes, concerns, recommended next
-/// action, etc.) runs automatically right after — the guide never sees or
-/// fills those fields manually. There is no draft state and no separate
-/// approval screen: the record is complete and live the moment the initial
-/// write below succeeds; Gemini's output is merged in afterward.
+/// Single-step entry: the guide types or speaks what was discussed and taps Save. Nothing else
+/// is shown or asked — no extracted fields, no review, no approval. The record is complete and
+/// live the moment the write succeeds; the SERVER then analyses the note in the background
+/// (what the AI extraction used to do on the phone), silently fills in the details, and makes
+/// new suggestions for the student (see `functions/interactionAI.js`).
 ///
-/// Writes `interactionLogs/{autoId}`. No existing collection is touched.
+/// Writes `interactionLogs/{autoId}`.
 ///
-/// `status` is always written as `'approved'` and `approvedSummary` is always
-/// populated immediately — `HolisticSuggestion.dart`, `WeeklyPlanning.dart`
-/// and `PlanningQueries.dart` all filter on `status == 'approved'` and read
-/// `approvedSummary`; this keeps every one of those readers working
-/// unchanged even though the guide-facing draft/approve distinction that
-/// originally produced that value is gone. `extractedDraft` and
-/// `status: 'draft'` are no longer written — nothing outside this file ever
-/// read them.
+/// `status` is always written as `'approved'` and `approvedSummary` is always populated
+/// immediately — `HolisticSuggestion.dart`, `WeeklyPlanning.dart` and `PlanningQueries.dart`
+/// all filter on `status == 'approved'` and read `approvedSummary`.
 ///
-/// LIT is deliberately absent here. `possibleLitEvidence` is free text the
-/// guide reads; no score is entered, computed or displayed anywhere in this
-/// file.
+/// LIT is deliberately absent here. `possibleLitEvidence` is free text the guide may read; no
+/// score is entered, computed or displayed anywhere in this file.
 ///
-/// Guide corrections happen after the fact: the saved entry can be opened
-/// from the list below and edited directly (`InteractionDetailPage`) — there
-/// is no required review step before saving.
-const List<String> kInteractionTypes = ['WhatsApp', 'Call', 'Live (in-person)'];
+/// Corrections happen after the fact: a saved entry can be opened from the list below and
+/// edited directly (`InteractionDetailPage`).
+// `kInteractionTypes` lives with the shared save (actions/InteractionActions.dart);
+// re-exported so anything that imported it from here still finds it.
+export '../actions/InteractionActions.dart' show kInteractionTypes;
 
 class InteractionLoggerPage extends StatefulWidget {
   final String studentUid;
@@ -68,8 +63,6 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
 
   /// The signed-in admin's id (stamped on a new log as `guideId`).
   String get _selectedGuide => AdminProfileProvider.require().id;
-
-  bool get _isHod => AdminProfileProvider.viewerIsHod;
 
   bool _selectionMode = false;
   final Set<String> _selectedIds = {};
@@ -136,10 +129,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
   /// [_studentRef] doc comment for why this screen's delete permission
   /// is student-scoped, not per-log-`guideId`-scoped.
   Future<bool> _canDeleteInteraction(Map<String, dynamic> data) async {
-    if (_isHod) return true;
-    final ref = _studentRef;
-    if (ref == null) return false; // fails closed while unresolved
-    return StudentScope.current().canManage(ref);
+    return canDeleteForStudent(_studentRef, AdminProfileProvider.require());
   }
 
   Future<void> _deleteSelected() async {
@@ -163,340 +153,24 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
   // ---------------------------------------------------------------------------
 
   Future<void> _openEntrySheet() async {
-    final guide = _selectedGuide;
-
-    final controller = TextEditingController();
-    DateTime interactionDate = DateTime.now();
-    String? interactionType;
-    DateTime? followUpDate;
-
-    await showModalBottomSheet<void>(
+    final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        bool busy = false;
-
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            /// Persists the complete record BEFORE calling Gemini, so an API
-            /// failure can never lose what the guide typed, and so the
-            /// interaction is already fully saved — no draft, no approval —
-            /// the instant this write succeeds.
-            Future<void> save() async {
-              final raw = controller.text.trim();
-              if (raw.isEmpty) {
-                showSnackbar(
-                  sheetContext,
-                  "Type what was discussed first",
-                  Colors.orange,
-                  Icons.info,
-                );
-                return;
-              }
-              if (interactionType == null) {
-                showSnackbar(
-                  sheetContext,
-                  "Select how you connected",
-                  Colors.orange,
-                  Icons.info,
-                );
-                return;
-              }
-
-              setSheetState(() => busy = true);
-
-              final initialSummary = {
-                'interactionType': interactionType,
-                'interactionDateTime': Timestamp.fromDate(interactionDate),
-                'durationMinutes': 0,
-                'themes': <String>[],
-                'studentConcerns': '',
-                'personalRevelation': '',
-                'commitmentsMade': '',
-                'followUpDate': followUpDate == null
-                    ? null
-                    : Timestamp.fromDate(followUpDate!),
-                'abcdeEvidence': '',
-                'possibleLitEvidence': '',
-                'temporaryCircumstances': '',
-                'recommendedNextAction': '',
-                'recommendedReasoning': '',
-                'extractionConfidence': 'low',
-              };
-
-              DocumentReference<Map<String, dynamic>> docRef;
-              try {
-                docRef = await _firestore.collection('interactionLogs').add({
-                  'studentUid': widget.studentUid,
-                  'studentName': widget.studentName,
-                  'guideId': guide,
-                  'interactionDate': Timestamp.fromDate(interactionDate),
-                  'rawDictation': raw,
-                  'approvedSummary': initialSummary,
-                  'extractedDraft': null,
-                  'status': 'approved',
-                  'createdAt': FieldValue.serverTimestamp(),
-                  'approvedAt': FieldValue.serverTimestamp(),
-                });
-              } catch (_) {
-                setSheetState(() => busy = false);
-                if (!sheetContext.mounted) return;
-                showSnackbar(
-                  sheetContext,
-                  "Could not save the interaction",
-                  Colors.red,
-                  Icons.error,
-                );
-                return;
-              }
-
-              // The record is durably saved and already complete — every
-              // downstream reader (the list below, HolisticSuggestion,
-              // WeeklyPlanning) can use it from this point on even if
-              // everything below fails. Notified now, not after extraction,
-              // so this is at least as reliable as the old approve-gated
-              // notification, never less.
-              await _notifyInteractionLogged(widget.studentUid);
-
-              String? extractionError;
-              String litPrefill = '';
-              try {
-                final draft = await GeminiService().extractInteraction(
-                  rawText: raw,
-                  studentName: widget.studentName,
-                );
-                // The guide's own selections are authoritative — Gemini's
-                // guesses for these two keys are discarded, never used to
-                // silently override what the guide picked.
-                draft['interactionType'] = interactionType;
-                draft['interactionDateTime'] =
-                    interactionDate.toIso8601String();
-                if (followUpDate != null) {
-                  draft['followUpDate'] = followUpDate!.toIso8601String();
-                }
-                litPrefill = (draft['possibleLitEvidence'] ?? '').toString();
-
-                await docRef.update({
-                  'approvedSummary': _draftForFirestore(draft),
-                  'rawDictation': FieldValue.delete(),
-                });
-              } on GeminiException catch (e) {
-                extractionError = e.message;
-              } catch (e) {
-                extractionError = "Extraction failed: $e";
-              }
-              // On failure, the doc saved above already stands as the
-              // complete record; rawDictation is left in place (not deleted)
-              // so the guide can retry from the entry's Edit screen via
-              // Re-extract.
-
-              if (!sheetContext.mounted) return;
-              Navigator.pop(sheetContext);
-              if (!mounted) return;
-
-              if (extractionError != null) {
-                showSnackbar(
-                  context,
-                  "Saved. Could not auto-fill the details just now — open it "
-                  "from the list and tap Re-extract, or edit the fields "
-                  "yourself.",
-                  context.g.warning,
-                  Icons.info,
-                );
-              } else {
-                showSnackbar(
-                  context,
-                  "Interaction saved",
-                  Colors.green,
-                  Icons.check_circle,
-                );
-              }
-
-              await _offerLitAssessment(
-                context: context,
-                studentUid: widget.studentUid,
-                studentName: widget.studentName,
-                docId: docRef.id,
-                prefilledEvidence: litPrefill,
-              );
-            }
-
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
-              ),
-              child: Container(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.9,
-                ),
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                decoration: BoxDecoration(
-                  color: context.g.surface,
-                  borderRadius:
-                      BorderRadius.vertical(top: Radius.circular(24)),
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      GuideSheetHeader(title: "Log interaction — ${widget.studentName}"),
-                      const SizedBox(height: 4),
-                      Text(
-                        "Type what was discussed. AI fills in the details "
-                        "automatically — you can review or correct them "
-                        "afterward from the Interactions list.",
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: context.g.mutedText,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Material(
-                        color: Colors.transparent,
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.event, color: context.g.brass),
-                          title: const Text("Interaction date"),
-                          subtitle: Text(
-                            DateFormat('dd MMM yyyy').format(interactionDate),
-                          ),
-                          trailing: const Icon(Icons.edit, size: 18),
-                          onTap: busy
-                              ? null
-                              : () async {
-                                  final now = DateTime.now();
-                                  final picked = await showDatePicker(
-                                    context: sheetContext,
-                                    initialDate: interactionDate,
-                                    firstDate:
-                                        now.subtract(const Duration(days: 365)),
-                                    lastDate: now,
-                                  );
-                                  if (picked != null) {
-                                    setSheetState(
-                                        () => interactionDate = picked);
-                                  }
-                                },
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<String>(
-                        isExpanded: true,
-                        initialValue: interactionType,
-                        decoration: InputDecoration(
-                          labelText: "How did you connect?",
-                        ),
-                        items: kInteractionTypes
-                            .map((t) => DropdownMenuItem(
-                                  value: t,
-                                  child: Text(t),
-                                ))
-                            .toList(),
-                        onChanged: busy
-                            ? null
-                            : (v) => setSheetState(() => interactionType = v),
-                      ),
-                      const SizedBox(height: 8),
-                      Material(
-                        color: Colors.transparent,
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.event_available,
-                              color: context.g.brass),
-                          title: const Text("Follow-up date (optional)"),
-                          subtitle: Text(
-                            followUpDate == null
-                                ? "Not set"
-                                : DateFormat('dd MMM yyyy').format(followUpDate!),
-                          ),
-                          trailing: followUpDate == null
-                              ? const Icon(Icons.edit, size: 18)
-                              : IconButton(
-                                  icon: const Icon(Icons.close, size: 18),
-                                  onPressed: busy
-                                      ? null
-                                      : () => setSheetState(
-                                          () => followUpDate = null),
-                                ),
-                          onTap: busy
-                              ? null
-                              : () async {
-                                  final now = DateTime.now();
-                                  final picked = await showDatePicker(
-                                    context: sheetContext,
-                                    initialDate: followUpDate ?? now,
-                                    firstDate: now,
-                                    lastDate:
-                                        now.add(const Duration(days: 365)),
-                                  );
-                                  if (picked != null) {
-                                    setSheetState(() => followUpDate = picked);
-                                  }
-                                },
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: controller,
-                        enabled: !busy,
-                        maxLines: 9,
-                        textCapitalization: TextCapitalization.sentences,
-                        decoration: InputDecoration(
-                          hintText:
-                              "e.g. Met Ravi after the evening program. He is "
-                              "struggling to chant during exam week...",
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      if (busy)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: Row(
-                            children: [
-                              SizedBox(
-                                width: 18,
-                                height: 18,
-                                child:
-                                    const GuideBusyDot(),
-                              ),
-                              SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  "Saving…",
-                                  style: TextStyle(fontSize: 13),
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      else
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: save,
-                            icon: const Icon(Icons.check_circle_outline,
-                                size: 18),
-                            label: const Text("Save"),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: context.g.brass,
-                              foregroundColor: context.g.onPrimary,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
+      builder: (_) => _EntrySheet(
+        guideId: _selectedGuide,
+        studentUid: widget.studentUid,
+        studentName: widget.studentName,
+      ),
     );
-
-    controller.dispose();
+    if (saved == true && mounted) {
+      showSnackbar(
+        context,
+        "Interaction saved",
+        Colors.green,
+        Icons.check_circle,
+      );
+    }
   }
 
   Future<void> _openDetail(String docId) async {
@@ -528,8 +202,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                   onCancel: _cancelSelectionMode,
                   onDelete: _selectedIds.isEmpty ? null : _deleteSelected,
                 )
-              : GuideAppBar(
-            title: Text("Interactions")),
+              : GuideAppBar(title: Text("Interactions")),
           floatingActionButton: FloatingActionButton.extended(
             backgroundColor: context.g.brass,
             onPressed: _openEntrySheet,
@@ -542,58 +215,60 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
           body: _studentRef == null && !_studentRefFailed
               ? const GuideWait()
               : StreamBuilder<QuerySnapshot>(
-            // studentUid plus the scope filter that proves the viewer may read
-            // this student's logs; sorted in Dart so no composite index is
-            // needed — same approach as AssociationManager.
-            stream: _studentRef == null
-                ? const Stream<QuerySnapshot>.empty()
-                : StudentScope.current()
-                    .constrainForStudent(
-                        _firestore.collection('interactionLogs').where(
-                            'studentUid',
-                            isEqualTo: widget.studentUid),
-                        _studentRef!)
-                    .snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting &&
-                  _studentRef != null) {
-                return const GuideWait();
-              }
+                  // studentUid plus the scope filter that proves the viewer may read
+                  // this student's logs; sorted in Dart so no composite index is
+                  // needed — same approach as AssociationManager.
+                  stream: _studentRef == null
+                      ? const Stream<QuerySnapshot>.empty()
+                      : StudentScope.current()
+                          .constrainForStudent(
+                              _firestore.collection('interactionLogs').where(
+                                  'studentUid',
+                                  isEqualTo: widget.studentUid),
+                              _studentRef!)
+                          .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting &&
+                        _studentRef != null) {
+                      return const GuideWait();
+                    }
 
-              final docs = snapshot.data?.docs.toList() ?? [];
-              if (docs.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Text(
-                      "No interactions logged yet.\n"
-                      "Tap New to record one.",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: context.g.mutedText),
-                    ),
-                  ),
-                );
-              }
+                    final docs = snapshot.data?.docs.toList() ?? [];
+                    if (docs.isEmpty) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Text(
+                            "No interactions logged yet.\n"
+                            "Tap New to record one.",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: context.g.mutedText),
+                          ),
+                        ),
+                      );
+                    }
 
-              docs.sort((a, b) {
-                final da = (a.data() as Map<String, dynamic>)['interactionDate'];
-                final db = (b.data() as Map<String, dynamic>)['interactionDate'];
-                if (da is! Timestamp) return 1;
-                if (db is! Timestamp) return -1;
-                return db.compareTo(da);
-              });
+                    docs.sort((a, b) {
+                      final da =
+                          (a.data() as Map<String, dynamic>)['interactionDate'];
+                      final db =
+                          (b.data() as Map<String, dynamic>)['interactionDate'];
+                      if (da is! Timestamp) return 1;
+                      if (db is! Timestamp) return -1;
+                      return db.compareTo(da);
+                    });
 
-              return ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
-                itemCount: docs.length,
-                itemBuilder: (context, i) {
-                  final doc = docs[i];
-                  final data = doc.data() as Map<String, dynamic>;
-                  return _logCard(doc.id, data);
-                },
-              );
-            },
-          ),
+                    return ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
+                      itemCount: docs.length,
+                      itemBuilder: (context, i) {
+                        final doc = docs[i];
+                        final data = doc.data() as Map<String, dynamic>;
+                        return _logCard(doc.id, data);
+                      },
+                    );
+                  },
+                ),
         );
       },
     );
@@ -625,105 +300,107 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
       },
       onLongPress: () => _enterSelectionMode(docId),
       child: Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: context.g.surface,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  type.isEmpty ? "Interaction" : type,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                  ),
-                ),
-              ),
-              if (incomplete)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: context.g.chipBackground,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: context.g.surface,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
                   child: Text(
-                    "Incomplete (old)",
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: context.g.mutedText,
+                    type.isEmpty ? "Interaction" : type,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
                     ),
                   ),
                 ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Icon(Icons.event, size: 13, color: context.g.mutedText),
-              const SizedBox(width: 4),
-              Flexible(child: Text(
-                dateText,
-                style: TextStyle(fontSize: 12, color: context.g.mutedText),
-              ))],
-          ),
-          if (action.isNotEmpty || reasoning.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: context.g.brass.withValues(alpha: .14),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Suggested next action",
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: .4,
-                      color: context.g.brass,
+                if (incomplete)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: context.g.chipBackground,
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                  ),
-                  if (action.isNotEmpty) ...[
-                    const SizedBox(height: 5),
-                    Text(action, style: const TextStyle(fontSize: 13)),
-                  ],
-                  if (reasoning.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      reasoning,
+                    child: Text(
+                      "Incomplete (old)",
                       style: TextStyle(
-                        fontSize: 12,
-                        height: 1.35,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
                         color: context.g.mutedText,
                       ),
                     ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(Icons.event, size: 13, color: context.g.mutedText),
+                const SizedBox(width: 4),
+                Flexible(
+                    child: Text(
+                  dateText,
+                  style: TextStyle(fontSize: 12, color: context.g.mutedText),
+                ))
+              ],
+            ),
+            if (action.isNotEmpty || reasoning.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: context.g.brass.withValues(alpha: .14),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Suggested next action",
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: .4,
+                        color: context.g.brass,
+                      ),
+                    ),
+                    if (action.isNotEmpty) ...[
+                      const SizedBox(height: 5),
+                      Text(action, style: const TextStyle(fontSize: 13)),
+                    ],
+                    if (reasoning.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        reasoning,
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: context.g.mutedText,
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => _openDetail(docId),
+                child: const Text("View / edit"),
               ),
             ),
           ],
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: () => _openDetail(docId),
-              child: const Text("View / edit"),
-            ),
-          ),
-        ],
-      ),
+        ),
       ),
     );
   }
@@ -733,23 +410,6 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
 // Shared helpers
 // -----------------------------------------------------------------------------
 
-/// Converts the in-memory summary (ISO date strings) into the Firestore shape
-/// (Timestamps), keeping every other key as-is.
-Map<String, dynamic> _draftForFirestore(Map<String, dynamic> draft) {
-  final out = Map<String, dynamic>.from(draft);
-  out['interactionDateTime'] = _tsFromIso(draft['interactionDateTime']);
-  out['followUpDate'] = _tsFromIso(draft['followUpDate']);
-  return out;
-}
-
-Timestamp? _tsFromIso(Object? value) {
-  if (value is Timestamp) return value;
-  final text = (value ?? '').toString().trim();
-  if (text.isEmpty) return null;
-  final parsed = DateTime.tryParse(text);
-  return parsed == null ? null : Timestamp.fromDate(parsed);
-}
-
 DateTime? _dateFrom(Object? value) {
   if (value is Timestamp) return value.toDate();
   final text = (value ?? '').toString().trim();
@@ -757,79 +417,254 @@ DateTime? _dateFrom(Object? value) {
   return DateTime.tryParse(text);
 }
 
-/// Tells the other admins who should know that an interaction was logged —
-/// **the fact only**.
+// -----------------------------------------------------------------------------
+// New interaction — the sheet
+// -----------------------------------------------------------------------------
+
+/// The guide types or speaks what was discussed and taps Save. Nothing else is shown or asked:
+/// the server analyses the note in the background and makes new suggestions for the student.
 ///
-/// No interaction content, no themes, no LIT evidence, no student concerns
-/// go into the payload. FCM notifications land outside the app on a lock
-/// screen, so they get the same privacy boundary the raw notes already have.
-/// The server decides who is told (and builds the message).
-///
-/// Called right after the interaction's initial save succeeds — before
-/// Gemini extraction even runs — so this fires at least as reliably as the
-/// old approve-gated notification, never less.
-Future<void> _notifyInteractionLogged(String studentUid) async {
-  try {
-    await HierarchyApi.instance.sendStudentNotification({
-      'kind': 'interaction_logged',
-      'studentUid': studentUid,
-    });
-  } catch (_) {
-    // A failed notification must never undo a save that already landed.
-  }
+/// Its own widget, so the text controller lives exactly as long as the sheet's route does. (A
+/// controller disposed by the screen that opened the sheet — the moment the sheet's future
+/// completes — is disposed while the sheet is still sliding away and still painting the field,
+/// which is a red "used after being disposed" error on the phone's back button.)
+class _EntrySheet extends StatefulWidget {
+  const _EntrySheet({
+    required this.guideId,
+    required this.studentUid,
+    required this.studentName,
+  });
+
+  final String guideId;
+  final String studentUid;
+  final String studentName;
+
+  @override
+  State<_EntrySheet> createState() => _EntrySheetState();
 }
 
-/// Optional LIT step, offered once right after a successful save.
-///
-/// Declining is a normal outcome: the interaction is already saved by the
-/// time this runs, and saying "Not now" does nothing at all. The evidence
-/// text is pre-filled from `possibleLitEvidence` purely to save retyping —
-/// **no L/I/T value is ever suggested, defaulted or derived**. The guide
-/// picks all three by hand in the sheet.
-Future<void> _offerLitAssessment({
-  required BuildContext context,
-  required String studentUid,
-  required String studentName,
-  required String docId,
-  required String prefilledEvidence,
-}) async {
-  final wants = await showDialog<bool>(
-    context: context,
-    builder: (dialogContext) => GuideDialog(
-      title: const Text("Add LIT assessment?"),
-      content: const Text(
-        "Optional. A private, guide-only reading of receptivity, interest "
-        "and available time, linked to this interaction.",
+class _EntrySheetState extends State<_EntrySheet> {
+  final TextEditingController _controller = TextEditingController();
+  DateTime _interactionDate = DateTime.now();
+  String? _interactionType;
+  DateTime? _followUpDate;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final raw = _controller.text.trim();
+    if (raw.isEmpty) {
+      showSnackbar(
+        context,
+        "Type what was discussed first",
+        Colors.orange,
+        Icons.info,
+      );
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await saveInteraction(
+        guideId: widget.guideId,
+        studentUid: widget.studentUid,
+        studentName: widget.studentName,
+        raw: raw,
+        interactionType: _interactionType ?? '',
+        interactionDate: _interactionDate,
+        followUpDate: _followUpDate,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      showSnackbar(
+        context,
+        "Could not save the interaction",
+        Colors.red,
+        Icons.error,
+      );
+      return;
+    }
+    if (!mounted) return;
+    Navigator.pop(context, true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(dialogContext, false),
-          child: const Text("Not now"),
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.9,
         ),
-        ElevatedButton(
-          onPressed: () => Navigator.pop(dialogContext, true),
-          child: const Text("Add assessment"),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        decoration: BoxDecoration(
+          color: context.g.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
-      ],
-    ),
-  );
-
-  if (wants != true || !context.mounted) return;
-
-  final saved = await openLitAssessmentSheet(
-    context: context,
-    studentUid: studentUid,
-    studentName: studentName,
-    sourceInteractionId: docId,
-    prefilledEvidence: prefilledEvidence,
-  );
-
-  if (saved && context.mounted) {
-    showSnackbar(
-      context,
-      "LIT assessment saved privately",
-      Colors.indigo,
-      Icons.lock_outline,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // The form scrolls; Save stays pinned below it, so it is always on screen (at a large text size
+            // or with the keyboard up it used to sit below the fold of the sheet).
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    GuideSheetHeader(
+                        title: "Log interaction — ${widget.studentName}"),
+                    const SizedBox(height: 14),
+                    Material(
+                      color: Colors.transparent,
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.event, color: context.g.brass),
+                        title: const Text("Interaction date"),
+                        subtitle: Text(
+                          DateFormat('dd MMM yyyy').format(_interactionDate),
+                        ),
+                        trailing: const Icon(Icons.edit, size: 18),
+                        onTap: _busy
+                            ? null
+                            : () async {
+                                final now = DateTime.now();
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: _interactionDate,
+                                  firstDate:
+                                      now.subtract(const Duration(days: 365)),
+                                  lastDate: now,
+                                );
+                                if (picked != null && mounted) {
+                                  setState(() => _interactionDate = picked);
+                                }
+                              },
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      isExpanded: true,
+                      initialValue: _interactionType,
+                      decoration: const InputDecoration(
+                        labelText: "How did you connect? (optional)",
+                      ),
+                      items: kInteractionTypes
+                          .map(
+                              (t) => DropdownMenuItem(value: t, child: Text(t)))
+                          .toList(),
+                      onChanged: _busy
+                          ? null
+                          : (v) => setState(() => _interactionType = v),
+                    ),
+                    const SizedBox(height: 8),
+                    Material(
+                      color: Colors.transparent,
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading:
+                            Icon(Icons.event_available, color: context.g.brass),
+                        title: const Text("Follow-up date (optional)"),
+                        subtitle: Text(
+                          _followUpDate == null
+                              ? "Not set"
+                              : DateFormat('dd MMM yyyy')
+                                  .format(_followUpDate!),
+                        ),
+                        trailing: _followUpDate == null
+                            ? const Icon(Icons.edit, size: 18)
+                            : IconButton(
+                                icon: const Icon(Icons.close, size: 18),
+                                onPressed: _busy
+                                    ? null
+                                    : () =>
+                                        setState(() => _followUpDate = null),
+                              ),
+                        onTap: _busy
+                            ? null
+                            : () async {
+                                final now = DateTime.now();
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: _followUpDate ?? now,
+                                  firstDate: now,
+                                  lastDate: now.add(const Duration(days: 365)),
+                                );
+                                if (picked != null && mounted) {
+                                  setState(() => _followUpDate = picked);
+                                }
+                              },
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _controller,
+                      enabled: !_busy,
+                      maxLines: 9,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(
+                        hintText:
+                            "e.g. Met Ravi after the evening program. He is "
+                            "struggling to chant during exam week...",
+                      ),
+                    ),
+                    // Speak it instead: English, Hindi, Gujarati or a mix, turned into clean
+                    // English and added below whatever is already here. It lands in the box
+                    // above, editable, before anything is saved.
+                    VoiceNoteButton(
+                      purpose: VoicePurpose.interaction,
+                      studentName: widget.studentName,
+                      enabled: !_busy,
+                      existingText: () => _controller.text,
+                      onText: (clean) => setState(() {
+                        _controller.text = appendNote(_controller.text, clean);
+                        _controller.selection = TextSelection.collapsed(
+                            offset: _controller.text.length);
+                      }),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_busy)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    SizedBox(width: 18, height: 18, child: GuideBusyDot()),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text("Saving…", style: TextStyle(fontSize: 13)),
+                    ),
+                  ],
+                ),
+              )
+            else
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _save,
+                  icon: const Icon(Icons.check_circle_outline, size: 18),
+                  label: const Text("Save"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: context.g.brass,
+                    foregroundColor: context.g.onPrimary,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -918,8 +753,8 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
       _fill(source);
     } catch (_) {
       if (mounted) {
-        showSnackbar(context, "Could not load the interaction", Colors.red,
-            Icons.error);
+        showSnackbar(
+            context, "Could not load the interaction", Colors.red, Icons.error);
       }
     }
 
@@ -987,8 +822,7 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
           _controllers['temporaryCircumstances']!.text.trim(),
       'recommendedNextAction':
           _controllers['recommendedNextAction']!.text.trim(),
-      'recommendedReasoning':
-          _controllers['recommendedReasoning']!.text.trim(),
+      'recommendedReasoning': _controllers['recommendedReasoning']!.text.trim(),
       'extractionConfidence': _confidence,
     };
   }
@@ -1000,14 +834,11 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
   Future<void> _saveChanges() async {
     setState(() => _saving = true);
     try {
-      final summary = _draftForFirestore(_currentSummary());
-      await _firestore.collection('interactionLogs').doc(widget.docId).update({
-        'approvedSummary': summary,
-        'status': 'approved',
-        'interactionDate': _interactionDateTime == null
-            ? FieldValue.delete()
-            : Timestamp.fromDate(_interactionDateTime!),
-      });
+      await saveInteractionEdits(
+        widget.docId,
+        summary: _currentSummary(),
+        interactionDate: _interactionDateTime,
+      );
       if (!mounted) return;
       showSnackbar(context, "Saved", Colors.green, Icons.check_circle);
     } catch (_) {
@@ -1031,31 +862,14 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
     setState(() => _extracting = true);
 
     try {
-      final draft = await GeminiService().extractInteraction(
-        rawText: _rawDictation,
-        studentName: widget.studentName,
-      );
-      // The guide's already-chosen type and dates are authoritative, same
-      // rule as the initial save.
-      draft['interactionType'] = _interactionType ?? draft['interactionType'];
-      draft['interactionDateTime'] =
-          _interactionDateTime?.toIso8601String() ?? draft['interactionDateTime'];
-      if (_followUpDate != null) {
-        draft['followUpDate'] = _followUpDate!.toIso8601String();
-      }
-
-      final forFirestore = _draftForFirestore(draft);
-      await _firestore.collection('interactionLogs').doc(widget.docId).update({
-        'approvedSummary': forFirestore,
-        'rawDictation': FieldValue.delete(),
-      });
+      // The server reads the notes again and saves the result; the guide's own choices (how
+      // they connected, when, the follow-up date) stay authoritative over the AI's guesses.
+      await reExtractInteraction(widget.docId);
       if (!mounted) return;
-      setState(() {
-        _rawDictation = '';
-        _fill(forFirestore);
-      });
+      await _load();
+      if (!mounted) return;
       showSnackbar(context, "Re-extracted", Colors.green, Icons.check_circle);
-    } on GeminiException catch (e) {
+    } on AiException catch (e) {
       if (mounted) {
         showSnackbar(context, e.message, Colors.red, Icons.error);
       }
@@ -1077,8 +891,8 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         return GuideScaffold(
-          appBar: GuideAppBar(
-            title: Text("Interaction — ${widget.studentName}")),
+          appBar:
+              GuideAppBar(title: Text("Interaction — ${widget.studentName}")),
           body: _loading
               ? const GuideWait()
               : SingleChildScrollView(
@@ -1250,7 +1064,7 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(12),
-          child: const GuideBusyDot(),
+          child: GuideBusyDot(),
         ),
       );
     }

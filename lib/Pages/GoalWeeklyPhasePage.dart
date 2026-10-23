@@ -346,6 +346,26 @@ class _GoalWeeklyPhasePageState extends State<GoalWeeklyPhasePage> {
               ),
             ),
           ),
+          // Books only: the per-student actions behind the summary line.
+          // This page only ever shows the phase the guide is ON, so these
+          // always carry a real deadline (see [phaseDueDayLabel]).
+          if (task.bookActions.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 24, top: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final action in task.bookActions)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 3),
+                      child: Text(
+                        "• ${action.describe(uidToName?[action.uid], byDay: phaseDueDayLabel())}",
+                        style: TextStyle(fontSize: 12.5, color: context.g.mutedText),
+                      ),
+                    ),
+                ],
+              ),
+            ),
         ],
       ),
     );

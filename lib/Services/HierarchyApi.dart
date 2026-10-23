@@ -172,31 +172,18 @@ class HierarchyApi {
     return (taken: r['taken'] == true, name: (r['name'] ?? '').toString());
   }
 
-  /// Gemini runs on the server (the API key is no longer in the app).
-  /// Returns the normalised draft map; throws [HierarchyException] with a
-  /// message that is safe to show the guide.
-  Future<Map<String, dynamic>> geminiExtractInteraction({
-    required String rawText,
-    required String studentName,
-  }) async {
-    final r = await _call('geminiExtractInteraction',
-        {'rawText': rawText, 'studentName': studentName});
-    final draft = r['draft'];
-    if (draft is! Map) throw HierarchyException('internal', 'Gemini returned the wrong shape. Try Extract again.');
-    return Map<String, dynamic>.from(draft);
+  /// New suggestions for a student, made now by the server (OpenAI) and stored for the profile to read.
+  /// Returns how many; throws [HierarchyException] with a message that is safe to show the guide.
+  Future<int> generateStudentSuggestions(String studentUid) async {
+    final r = await _call('generateStudentSuggestions', {'studentUid': studentUid});
+    final n = r['count'];
+    return n is num ? n.toInt() : 0;
   }
 
-  Future<Map<String, String>> geminiSuggestNextAction({
-    required String contextText,
-    required String studentName,
-  }) async {
-    final r = await _call('geminiSuggestNextAction',
-        {'contextText': contextText, 'studentName': studentName});
-    return {
-      'recommendedNextAction': (r['recommendedNextAction'] ?? '').toString(),
-      'recommendedReasoning': (r['recommendedReasoning'] ?? '').toString(),
-    };
-  }
+  /// Runs the AI analysis again over an interaction whose original notes are still stored; the
+  /// server saves the result.
+  Future<void> analyseInteraction(String interactionId) =>
+      _call('analyseInteraction', {'logId': interactionId});
 
   /// Deletes a trip and every registration for it (the trip's creator, or a HOD; the server checks).
   /// Used for an active trip and for a History card alike. Nothing else is touched.
@@ -218,6 +205,34 @@ class HierarchyApi {
   Future<Map<String, dynamic>> sendStudentNotification(
           Map<String, dynamic> data) =>
       _call('sendStudentNotification', data);
+  /// One step of the AI agent's conversation (functions/guideAgent.js): a message from the guide,
+  /// the phone's answers to reads it asked for, or what happened to a change it proposed. The
+  /// reply says what comes next (see lib/agent/AgentTypes.dart).
+  Future<Map<String, dynamic>> guideAgentTurn(Map<String, dynamic> data) =>
+      _call('guideAgentTurn', data);
+  /// A recorded voice note as clean English text (functions/voiceNote.js).
+  ///
+  /// The audio is sent once and not kept. [existingText] is whatever is already
+  /// in the field, sent for context only (so names and terms match) and never
+  /// returned. The result is the one field `text`; there is no raw transcript.
+  Future<String> voiceToEnglishText({
+    required String audioBase64,
+    required String mimeType,
+    required int durationSeconds,
+    required String purpose,
+    String studentName = '',
+    String existingText = '',
+  }) async {
+    final r = await _call('voiceToEnglishText', {
+      'audioBase64': audioBase64,
+      'mimeType': mimeType,
+      'durationSeconds': durationSeconds,
+      'purpose': purpose,
+      if (studentName.isNotEmpty) 'studentName': studentName,
+      if (existingText.trim().isNotEmpty) 'existingText': existingText,
+    });
+    return (r['text'] ?? '').toString();
+  }
 }
 
 class RemoveAdminResult {

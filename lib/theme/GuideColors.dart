@@ -44,6 +44,7 @@ class GuideColors extends ThemeExtension<GuideColors> {
     required this.success,
     required this.warning,
     required this.attention,
+    required this.agent,
     required this.scrim,
   });
 
@@ -103,6 +104,10 @@ class GuideColors extends ThemeExtension<GuideColors> {
 
   // The small dot that says there is something new (unseen content).
   final Color attention;
+
+  /// The AI assistant's own colour: its floating button and its page. A fuchsia, deliberately unlike
+  /// the Student app's assistant, so the two are never mistaken for each other.
+  final Color agent;
 
   // Behind modal sheets and dialogs.
   final Color scrim;
@@ -246,6 +251,7 @@ class GuideColors extends ThemeExtension<GuideColors> {
     success: Color(0xFF2F7D5B),
     warning: Color(0xFFA9812F),
     attention: Color(0xFFF57C00),
+    agent: Color(0xFFB0278F),
     scrim: Color(0x8014192B),
   );
 
@@ -294,6 +300,7 @@ class GuideColors extends ThemeExtension<GuideColors> {
     success: Color(0xFF4FB38A),
     warning: Color(0xFFC9A24A),
     attention: Color(0xFFFFA43D),
+    agent: Color(0xFFE05CC0),
     scrim: Color(0xB3000000),
   );
 

@@ -21,7 +21,7 @@ import 'package:flutter/material.dart';
 
 import 'Snackbar.dart';
 import '../theme/GuideTheme.dart';
-import 'GuideDb.dart';
+import '../actions/DeleteActions.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideDialog.dart';
 
@@ -211,43 +211,11 @@ Future<Set<String>> confirmAndDeleteSelected({
 
   if (confirmed != true) return {};
 
-  final firestore = GuideDb.instance;
-  final deleted = <String>{};
-  var deniedCount = 0;
-  var failedCount = 0;
-
-  await Future.wait(selectedIds.map((id) async {
-    try {
-      final ref = firestore.collection(collectionName).doc(id);
-      final snap = await ref.get();
-
-      if (!snap.exists) {
-        // Already gone (e.g. deleted elsewhere a moment earlier) — the end
-        // state the caller wanted is already true.
-        deleted.add(id);
-        return;
-      }
-
-      final allowed = await canDelete(snap.data() as Map<String, dynamic>);
-      if (!allowed) {
-        deniedCount++;
-        return;
-      }
-
-      await ref.delete();
-
-      // Verify, don't assume: only counted as deleted once confirmed gone.
-      final recheck = await ref.get();
-      if (recheck.exists) {
-        failedCount++;
-        return;
-      }
-
-      deleted.add(id);
-    } catch (_) {
-      failedCount++;
-    }
-  }));
+  // One shared delete (actions/DeleteActions.dart): the AI agent deletes records through exactly this.
+  final outcome = await deleteRecords(collection: collectionName, ids: selectedIds, canDelete: canDelete);
+  final deleted = outcome.deleted;
+  final deniedCount = outcome.denied;
+  final failedCount = outcome.failed;
 
   if (!context.mounted) return deleted;
 

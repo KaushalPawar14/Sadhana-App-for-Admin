@@ -28,7 +28,10 @@ void main() {
     test('Add Student / manual entry (BoysDetails) saves the normalised name', () {
       final s = read('lib/Pages/BoysDetails.dart');
       expect(s.contains('final name = normalizeStudentName(nameController.text);'), isTrue);
-      expect(s.contains("'name': name,"), isTrue);
+      expect(s.contains('name: name,'), isTrue); // handed to the shared write (actions/StudentActions.dart)
+      final shared = read('lib/actions/StudentActions.dart');
+      expect(shared.contains('final cleanName = normalizeStudentName(name);'), isTrue);
+      expect(shared.contains("'name': cleanName,"), isTrue);
       expect(RegExp(r"final name = nameController\.text\.trim\(\);").hasMatch(s), isFalse);
     });
 

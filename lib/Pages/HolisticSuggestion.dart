@@ -1,45 +1,47 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../Services/GeminiService.dart';
-import '../Services/UpdateFCM.dart';
+import '../actions/SuggestionActions.dart';
+import '../Services/GuideAi.dart';
+import '../utils/AdminProfile.dart';
+import '../utils/SuggestionsReady.dart';
+import '../utils/UnseenDot.dart';
 import '../utils/Snackbar.dart';
-import '../utils/StudentScope.dart';
+import '../utils/StudentSuggestions.dart';
 import '../theme/GuideTheme.dart';
 import '../utils/GuideDb.dart';
-import '../utils/LeaderboardData.dart' show dottedField;
 import '../widgets/GuideWait.dart';
 
 /// Holistic "suggested next action" (Phase 5, item 1 — final piece).
 ///
-/// Pulls together what this profile page already shows about a student, plus
-/// their approved interaction logs and most recent LIT reading, and asks Gemini
-/// for ONE current suggested next step with reasoning.
+/// Three to five specific things the guide could do with this student, each with why and a first
+/// step, made by the SERVER (OpenAI, `functions/interactionAI.js`) from everything recorded about the
+/// student: sadhana points, books, meetings, expeditions and what they wrote about them, the latest
+/// interactions, the latest LIT reading and the guide's own active targets.
 ///
-/// **On demand only.** Nothing here runs on page view. Gemini is called only
-/// when the guide presses the button, and the result is cached in Firestore so
-/// reopening the profile costs nothing.
+/// **They arrive by themselves.** Every saved interaction is analysed on the server, which then makes
+/// new suggestions for that student and tells their guide ("New suggestions ready for <student>").
+/// Until the guide opens them this card says so and the orange dot trail leads here (see
+/// `utils/SuggestionsReady.dart`); it clears when the card has been on screen for a moment. The
+/// "Refresh suggestions" button is for asking again right now. Nothing runs when the page opens.
 ///
 /// **Guidance, never a decision** (Section 1). The output carries a permanent
 /// disclaimer and is never shown to a student.
 ///
-/// **LIT is passed as three separate readings.** `L`, `I` and `T` go into the
-/// prompt as three independent lines and the prompt forbids combining them.
-/// Nothing here computes a total, average, level or tier.
+/// **LIT is given as three separate readings.** `L`, `I` and `T` go into the prompt as three independent
+/// lines and the prompt forbids combining them. Nothing here computes a total, average, level or tier.
 class HolisticSuggestionSection extends StatefulWidget {
   final String studentUid;
   final String studentName;
-
-  /// The `users/{uid}` map this page has already streamed. Passed in rather
-  /// than re-queried, so opening the profile triggers no extra read.
-  final Map<String, dynamic> profileData;
 
   const HolisticSuggestionSection({
     super.key,
     required this.studentUid,
     required this.studentName,
-    required this.profileData,
   });
 
   @override
@@ -52,292 +54,79 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
 
   bool _working = false;
 
+  /// This admin's id (their seen markers are keyed by it); empty when no profile is loaded.
+  String get _me => AdminProfileProvider.current?.id ?? '';
+
+  /// Are the suggestions on this card new to this admin (made by the server, not yet opened)?
+  late final Stream<bool> _unseenStream = SuggestionsReady.unseenFor(_me, widget.studentUid);
+  StreamSubscription<bool>? _unseenSub;
+  bool _unseen = false;
+  Timer? _openTimer;
+  ScrollPosition? _position;
+
+  @override
+  void initState() {
+    super.initState();
+    _unseenSub = _unseenStream.listen((v) {
+      if (!mounted) return;
+      setState(() => _unseen = v);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _checkVisible());
+    }, onError: (_) {});
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final p = Scrollable.maybeOf(context)?.position;
+    if (p != _position) {
+      _position?.removeListener(_checkVisible);
+      _position = p;
+      _position?.addListener(_checkVisible);
+    }
+  }
+
+  @override
+  void dispose() {
+    _unseenSub?.cancel();
+    _openTimer?.cancel();
+    _position?.removeListener(_checkVisible);
+    super.dispose();
+  }
+
+  /// "Opened": more than half of the card has been on screen for a moment. Only then does the dot trail clear.
+  void _checkVisible() {
+    if (!mounted || !_unseen) {
+      _openTimer?.cancel();
+      _openTimer = null;
+      return;
+    }
+    try {
+      final box = context.findRenderObject();
+      final scrollBox = Scrollable.maybeOf(context)?.context.findRenderObject();
+      if (box is! RenderBox || !box.hasSize || scrollBox is! RenderBox || !scrollBox.hasSize) return;
+      final top = box.localToGlobal(Offset.zero, ancestor: scrollBox).dy;
+      final h = box.size.height;
+      final shown = math.max(0.0, math.min(top + h, scrollBox.size.height) - math.max(top, 0.0));
+      final enough = h > 0 && shown >= math.min(h, scrollBox.size.height) * 0.5;
+      if (enough) {
+        _openTimer ??= Timer(const Duration(milliseconds: 1200), _opened);
+      } else {
+        _openTimer?.cancel();
+        _openTimer = null;
+      }
+    } catch (_) {
+      // Not laid out yet: the next frame or scroll checks again.
+    }
+  }
+
+  void _opened() {
+    _openTimer = null;
+    if (!mounted || !_unseen) return;
+    SuggestionsReady.markOpened(_me, widget.studentUid).catchError((_) {});
+  }
+
   DocumentReference<Map<String, dynamic>> get _docRef =>
       _firestore.collection('holisticSuggestions').doc(widget.studentUid);
-
-  /// `collection where <uidField> == this student`, plus the scope filter the
-  /// security rules need (built from the `users` map this page already holds).
-  Query<Map<String, dynamic>> _scoped(String collection, String uidField) =>
-      StudentScope.current().constrainForStudent(
-        _firestore
-            .collection(collection)
-            .where(uidField, isEqualTo: widget.studentUid),
-        StudentRef.fromUser(widget.studentUid, widget.profileData),
-      );
-
-  // ---------------------------------------------------------------------------
-  // Gathering
-  // ---------------------------------------------------------------------------
-
-  /// Assembles the evidence block sent to Gemini.
-  ///
-  /// Reads only collections this profile page already displays — `competition`
-  /// and `booksRead` — plus the two Phase 5 collections. No new ABCDE
-  /// collection is introduced, and none of these reads happen until the guide
-  /// presses the button.
-  Future<String> _gatherContext() async {
-    final lines = <String>[];
-
-    final role = (widget.profileData['role'] ?? '').toString();
-    final guideId = (widget.profileData['guideId'] ?? '').toString();
-    if (role.isNotEmpty) lines.add("Residence: $role");
-    if (guideId.isNotEmpty) lines.add("Assigned guide: $guideId");
-
-    // --- Sadhana points of this month (the new point system, `competition/{name}`) ---------
-    try {
-      final comp = await _firestore.collection('competition').doc(widget.studentName).get();
-      final s = comp.data();
-      if (s != null) {
-        double n(String f) {
-          final v = dottedField(s, 'monthly.$f');
-          return v is num ? v.toDouble() : 0;
-        }
-
-        String p(double v) => v == v.roundToDouble() ? '${v.toInt()}' : v.toStringAsFixed(1);
-        lines.add(
-          "This month's sadhana points — total (with multipliers): ${p(n('total_score'))}; "
-          "chanting: ${p(n('pts_chanting'))}, reading: ${p(n('pts_reading'))}, "
-          "hearing (Bhagavatam class + extra lecture): ${p(n('pts_hearing'))}, "
-          "services: ${p(n('pts_service'))}; days reported: ${p(n('days_count'))}",
-        );
-      }
-    } catch (_) {
-      // No competition document yet is normal for a new student.
-    }
-
-    // --- Book progress (as shown in the Book Progress section) --------------
-    try {
-      final books = await _scoped('booksRead', 'uid').get();
-
-      if (books.docs.isNotEmpty) {
-        final current = books.docs
-            .map((d) => d.data())
-            .where((d) => d['isCurrentBook'] == true)
-            .map((d) => (d['bookTitle'] ?? '').toString())
-            .where((t) => t.isNotEmpty)
-            .toList();
-
-        lines.add("Books started: ${books.docs.length}");
-        if (current.isNotEmpty) {
-          lines.add("Currently reading: ${current.join(', ')}");
-        }
-      }
-    } catch (_) {
-      // Ignore — the suggestion is still useful without book data.
-    }
-
-    // --- Association: meetings with the guide -------------------------------
-    try {
-      final meetings = await _scoped('associations', 'studentUid').get();
-
-      if (meetings.docs.isEmpty) {
-        lines.add("Association: no meetings requested or held yet.");
-      } else {
-        final byStatus = <String, int>{};
-        DateTime? mostRecentHeld;
-
-        for (final doc in meetings.docs) {
-          final data = doc.data();
-          final status = (data['status'] ?? 'unknown').toString();
-          byStatus[status] = (byStatus[status] ?? 0) + 1;
-
-          // A meeting counts as "held" once it is confirmed or completed.
-          if (status == 'confirmed' || status == 'completed') {
-            final when = data['confirmedDate'] ?? data['preferredDate'];
-            if (when is Timestamp) {
-              final date = when.toDate();
-              if (mostRecentHeld == null || date.isAfter(mostRecentHeld)) {
-                mostRecentHeld = date;
-              }
-            }
-          }
-        }
-
-        final counts = byStatus.entries
-            .map((e) => "${e.value} ${e.key}")
-            .join(', ');
-
-        lines.add(
-          "Association: ${meetings.docs.length} meeting records ($counts).",
-        );
-        if (mostRecentHeld != null) {
-          lines.add(
-            "- most recent confirmed or completed meeting: "
-            "${DateFormat('dd MMM yyyy').format(mostRecentHeld)}",
-          );
-        } else {
-          lines.add("- no meeting has been confirmed or completed yet");
-        }
-      }
-    } catch (_) {
-      // Ignore — proceed without association data.
-    }
-
-    // --- Expeditions --------------------------------------------------------
-    //
-    // Reflection *text* is never sent. Only counts and a coarse length band,
-    // because a reflection can contain personal disclosure the student wrote
-    // for their guide, not for an API.
-    try {
-      final registrations = await _scoped('expeditionRegistrations', 'studentUid').get();
-
-      if (registrations.docs.isEmpty) {
-        lines.add("Expeditions: none registered for yet.");
-      } else {
-        var reflected = 0;
-        var brief = 0;
-        var moderate = 0;
-        var detailed = 0;
-
-        for (final doc in registrations.docs) {
-          final data = doc.data();
-          if (data['hasReflected'] != true) continue;
-          reflected++;
-
-          final words = (data['reflectionText'] ?? '')
-              .toString()
-              .trim()
-              .split(RegExp(r'\s+'))
-              .where((w) => w.isNotEmpty)
-              .length;
-
-          if (words >= 100) {
-            detailed++;
-          } else if (words >= 30) {
-            moderate++;
-          } else {
-            brief++;
-          }
-        }
-
-        lines.add(
-          "Expeditions: registered for ${registrations.docs.length}, "
-          "$reflected with a reflection submitted.",
-        );
-        if (reflected > 0) {
-          final bands = <String>[];
-          if (detailed > 0) bands.add("$detailed detailed (100+ words)");
-          if (moderate > 0) bands.add("$moderate moderate (30-99 words)");
-          if (brief > 0) bands.add("$brief brief (under 30 words)");
-          lines.add(
-            "- reflection length, as a rough proxy for how much they engaged: "
-            "${bands.join(', ')}. The text itself is private and not included.",
-          );
-        }
-      }
-    } catch (_) {
-      // Ignore — proceed without expedition data.
-    }
-
-    // --- Approved interaction logs ------------------------------------------
-    try {
-      final logs = await _scoped('interactionLogs', 'studentUid').get();
-
-      final approved = logs.docs
-          .map((d) => d.data())
-          .where((d) => d['status'] == 'approved')
-          .toList()
-        ..sort((a, b) {
-          final da = a['interactionDate'];
-          final db = b['interactionDate'];
-          if (da is! Timestamp) return 1;
-          if (db is! Timestamp) return -1;
-          return db.compareTo(da);
-        });
-
-      if (approved.isEmpty) {
-        lines.add("No approved interaction logs yet.");
-      } else {
-        lines.add("");
-        lines.add("Approved interactions, most recent first:");
-
-        // Most recent six is plenty of context without bloating the prompt.
-        for (final log in approved.take(6)) {
-          final summary = log['approvedSummary'] as Map<String, dynamic>? ?? {};
-          final when = log['interactionDate'];
-          final whenText = when is Timestamp
-              ? DateFormat('dd MMM yyyy').format(when.toDate())
-              : "date unknown";
-
-          final parts = <String>[];
-          void add(String label, Object? value) {
-            final text = (value ?? '').toString().trim();
-            if (text.isNotEmpty) parts.add("$label: $text");
-          }
-
-          final themes = summary['themes'];
-          if (themes is List && themes.isNotEmpty) {
-            parts.add("themes: ${themes.join(', ')}");
-          }
-          add("concerns", summary['studentConcerns']);
-          add("commitments", summary['commitmentsMade']);
-          add("temporary circumstances", summary['temporaryCircumstances']);
-          add("ABCDE evidence", summary['abcdeEvidence']);
-          add("previous suggested action", summary['recommendedNextAction']);
-
-          final followUp = summary['followUpDate'];
-          if (followUp is Timestamp) {
-            parts.add(
-              "follow-up due: ${DateFormat('dd MMM yyyy').format(followUp.toDate())}",
-            );
-          }
-
-          lines.add("- $whenText — ${parts.isEmpty ? 'no detail' : parts.join('; ')}");
-        }
-      }
-    } catch (_) {
-      // Ignore — proceed with whatever was gathered.
-    }
-
-    // --- Most recent LIT reading --------------------------------------------
-    //
-    // Three separate lines on purpose. Never a sum, average or single figure.
-    try {
-      final lit = await _scoped('litAssessments', 'studentUid').get();
-
-      final sorted = lit.docs.map((d) => d.data()).toList()
-        ..sort((a, b) {
-          final da = a['assessedAt'];
-          final db = b['assessedAt'];
-          if (da is! Timestamp) return 1;
-          if (db is! Timestamp) return -1;
-          return db.compareTo(da);
-        });
-
-      if (sorted.isNotEmpty) {
-        final latest = sorted.first;
-        final when = latest['assessedAt'];
-        final whenText = when is Timestamp
-            ? DateFormat('dd MMM yyyy').format(when.toDate())
-            : "date unknown";
-
-        lines.add("");
-        lines.add(
-          "Most recent guide assessment ($whenText, by ${latest['guideId'] ?? 'unknown'}, "
-          "confidence ${latest['confidence'] ?? 'unknown'}). These are three "
-          "independent readings on a 1-5 scale:",
-        );
-        lines.add(
-          "- L, receptivity and learning relationship: ${latest['L'] ?? 'not set'} out of 5",
-        );
-        lines.add(
-          "- I, interest in Krishna consciousness: ${latest['I'] ?? 'not set'} out of 5",
-        );
-        lines.add(
-          "- T, available time: ${latest['T'] ?? 'not set'} out of 5",
-        );
-
-        final evidence = (latest['evidence'] ?? '').toString().trim();
-        if (evidence.isNotEmpty) {
-          lines.add("- evidence the guide recorded: $evidence");
-        }
-      }
-    } catch (_) {
-      // Ignore — a suggestion without a LIT reading is still useful.
-    }
-
-    return lines.join('\n');
-  }
 
   // ---------------------------------------------------------------------------
   // Generation
@@ -347,27 +136,17 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
     setState(() => _working = true);
 
     try {
-      final guide = await UpdateTokenService().getSavedGuide();
-      final context_ = await _gatherContext();
-
-      final result = await GeminiService().suggestNextAction(
-        contextText: context_,
-        studentName: widget.studentName,
-      );
-
-      await _docRef.set({
-        'studentUid': widget.studentUid,
-        'studentName': widget.studentName,
-        'generatedBy': guide ?? '',
-        'recommendedNextAction': result['recommendedNextAction'] ?? '',
-        'recommendedReasoning': result['recommendedReasoning'] ?? '',
-        'generatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      // One shared function (actions/SuggestionActions.dart): the AI agent generates suggestions
+      // through exactly this. The server does the work.
+      final count = await generateStudentSuggestions(studentUid: widget.studentUid);
 
       if (!mounted) return;
-      showSnackbar(context, "Suggestion generated", Colors.green,
+      showSnackbar(
+          context,
+          "$count suggestions generated",
+          Colors.green,
           Icons.check_circle);
-    } on GeminiException catch (e) {
+    } on AiException catch (e) {
       if (mounted) showSnackbar(context, e.message, Colors.red, Icons.error);
     } catch (e) {
       if (mounted) {
@@ -389,11 +168,10 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
       stream: _docRef.snapshots(),
       builder: (context, snapshot) {
         final data = snapshot.data?.data();
-        final action = (data?['recommendedNextAction'] ?? '').toString();
-        final reasoning = (data?['recommendedReasoning'] ?? '').toString();
+        final suggestions = suggestionsOf(data);
         final generatedAt = data?['generatedAt'];
         final generatedBy = (data?['generatedBy'] ?? '').toString();
-        final hasSuggestion = action.isNotEmpty || reasoning.isNotEmpty;
+        final hasSuggestion = suggestions.isNotEmpty;
 
         return Container(
           width: double.infinity,
@@ -406,25 +184,29 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (hasSuggestion) ...[
-                Text(
-                  action.isEmpty ? "No action suggested" : action,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    height: 1.35,
-                  ),
-                ),
-                if (reasoning.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    reasoning,
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.45,
-                      color: context.g.text,
+              if (_unseen && hasSuggestion) ...[
+                Row(
+                  children: [
+                    const UnseenDot(size: 9),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        SuggestionsReady.label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: context.g.attention,
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
+              if (hasSuggestion) ...[
+                for (var i = 0; i < suggestions.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 14),
+                  _suggestionTile(i + 1, suggestions[i]),
                 ],
                 const SizedBox(height: 12),
                 _disclaimer(),
@@ -441,9 +223,12 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
                   ),
               ] else
                 Text(
-                  "Draws on this student's sadhana counters, book progress, "
-                  "approved interaction logs and most recent LIT reading. "
-                  "Runs only when you ask.",
+                  "Three to five things you could do with this student, "
+                  "each with why and a first step. Draws on their sadhana "
+                  "counters, book progress, interactions, most recent LIT "
+                  "reading and your own active targets. New ones appear here "
+                  "by themselves after you save an interaction; tap Generate "
+                  "to ask for them now.",
                   style: TextStyle(fontSize: 13, color: context.g.mutedText),
                 ),
               const SizedBox(height: 14),
@@ -452,15 +237,15 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
                 child: _working
                     ? const Padding(
                         padding: EdgeInsets.symmetric(vertical: 10),
-                        child: const GuideWait(),
+                        child: GuideWait(),
                       )
                     : OutlinedButton.icon(
                         onPressed: _generate,
                         icon: const Icon(Icons.auto_awesome, size: 18),
                         label: Text(
                           hasSuggestion
-                              ? "Regenerate suggestion"
-                              : "Get suggested next action",
+                              ? "Refresh suggestions"
+                              : "Generate suggestions",
                         ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: context.g.brass,
@@ -472,6 +257,77 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
           ),
         );
       },
+    );
+  }
+
+  /// One suggestion: what to do, why, and the first step.
+  ///
+  /// The step is the part a guide actually acts on, so it is given its own
+  /// labelled line rather than being folded into the reasoning where it
+  /// would be easy to skim past.
+  Widget _suggestionTile(int number, StudentSuggestion s) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 1),
+          child: Text(
+            "$number.",
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: context.g.brass,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                s.action,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
+              ),
+              if (s.why.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  s.why,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.45,
+                    color: context.g.mutedText,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 5),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.arrow_right_alt,
+                      size: 16, color: context.g.success),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      s.next,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.4,
+                        color: context.g.text,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -492,7 +348,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              "AI-generated suggestion — guide judgment decides the actual "
+              "AI-generated suggestions — guide judgment decides the actual "
               "next step.",
               style: TextStyle(
                 fontSize: 11,

@@ -58,6 +58,7 @@ class _CompetitionPageState extends State<CompetitionPage> {
         _priorityStudentsUnseen = UnseenAggregates.anyOf([
           UnseenAggregates.flaggedMessagesUnseen(guide, isHod),
           UnseenAggregates.studentDoubtsUnseen(guide, isHod),
+          UnseenAggregates.priorityReasonsUnseen(guide, isHod),
         ]);
         _guideTargetsUnseen = UnseenAggregates.goalProposalsUnseen(guide);
       });

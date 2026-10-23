@@ -96,6 +96,14 @@
           }
         },
         {
+          "client_id": "365753789029-hi3ulbepbaro6eisp7gfg0getf71p5rc.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "org.folksurat.guides",
+            "certificate_hash": "9d03ff41347e6682384f62c41671cfab34fad7af"
+          }
+        },
+        {
           "client_id": "365753789029-q2btuuiel2re08f52cpen113ljgjjinf.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../Services/UpdateFCM.dart';
 import '../theme/GuideColors.dart';
@@ -6,6 +5,7 @@ import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
+import '../actions/StudentActions.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ManualStudents.dart';
 import '../utils/StudentNameGuard.dart';
@@ -13,10 +13,11 @@ import '../utils/Snackbar.dart';
 import 'AdminManager.dart';
 import 'NotificationSettings.dart';
 import 'SubmissionStatus.dart';
-import '../utils/GuideDb.dart';
 import '../widgets/GuideDialog.dart';
+import '../widgets/OwnedBy.dart';
 import '../widgets/GuideWait.dart';
 import '../widgets/GuideEntry.dart';
+import 'AgentLogPage.dart';
 import 'MusicCurriculumPage.dart';
 // `AdminRegisterUserPage` is no longer imported here: its "Add Hostelers" tile
 // was removed on 2026-08-14. **The screen file was deliberately kept** — it
@@ -137,7 +138,7 @@ class _AdminControlPageState extends State<AdminControlPage> {
 
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) {
+      builder: ownedBy([nameController, mobileController, roundsController], (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             Future<void> save() async {
@@ -175,18 +176,6 @@ class _AdminControlPageState extends State<AdminControlPage> {
               });
 
               try {
-                // Part 3 item 5 — warn before saving and refuse the
-                // duplicate outright, rather than a confirm-to-override.
-                final existing = await findUserByMobileNumber(normalizedMobile);
-                if (existing != null) {
-                  setDialogState(() {
-                    saving = false;
-                    error = 'This mobile number already belongs to '
-                        '"${existing['name'] ?? 'another student'}" — '
-                        'cannot add a duplicate.';
-                  });
-                  return;
-                }
 
                 final roundsText = roundsController.text.trim();
                 final rounds =
@@ -198,24 +187,18 @@ class _AdminControlPageState extends State<AdminControlPage> {
                 final guideForNewStudent =
                     _isHod ? assignedGuide : _selectedGuide;
 
-                final id = generateManualStudentId();
-                await GuideDb.instance
-                    .collection('users')
-                    .doc(id)
-                    .set({
-                  'name': name,
-                  'mobileNumber': normalizedMobile,
-                  'role': residence,
-                  'gender': gender,
-                  if (guideForNewStudent != null &&
-                      guideForNewStudent.isNotEmpty)
-                    'guideId': guideForNewStudent,
-                  if (rounds != null && rounds > 0) 'commitmentRounds': rounds,
-                  'isManualEntry': true,
-                  'addedByGuideId': _selectedGuide,
-                  'addedAt': Timestamp.now(),
-                  'createdAt': Timestamp.now(),
-                });
+                // One shared write (actions/StudentActions.dart): it also refuses a
+                // mobile number that already belongs to someone — outright, not a
+                // confirm-to-override. The AI agent adds a student through this.
+                await addManualStudent(
+                  name: name,
+                  mobile: normalizedMobile,
+                  residence: residence!,
+                  gender: gender,
+                  addedBy: _selectedGuide ?? '',
+                  guideId: guideForNewStudent,
+                  rounds: rounds,
+                );
 
                 // Captured in the OUTER scope, read only AFTER this dialog
                 // has fully closed — see this method's own header for why
@@ -223,6 +206,11 @@ class _AdminControlPageState extends State<AdminControlPage> {
                 // `setDialogState` again.
                 addedStudentName = name;
                 if (dialogContext.mounted) Navigator.pop(dialogContext);
+              } on DuplicateMobileException catch (e) {
+                setDialogState(() {
+                  saving = false;
+                  error = e.toString();
+                });
               } catch (_) {
                 setDialogState(() {
                   saving = false;
@@ -355,12 +343,8 @@ class _AdminControlPageState extends State<AdminControlPage> {
             );
           },
         );
-      },
+      }),
     );
-
-    nameController.dispose();
-    mobileController.dispose();
-    roundsController.dispose();
 
     // Shown here, not from inside the dialog — see this method's own header.
     // `context`/`mounted` here are the PAGE's own, unrelated to the
@@ -484,6 +468,24 @@ class _AdminControlPageState extends State<AdminControlPage> {
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const MusicCurriculumPage()),
+                    ),
+                  ),
+                ),
+              ],
+              // What the AI assistant has done: HODs only (the server's log; the rules let only a HOD read it).
+              if (AdminProfileProvider.viewerIsHod) ...[
+                gap,
+                step(
+                  4,
+                  GuideNavCard(
+                    key: const ValueKey('agent-log-card'),
+                    pastel: GuidePastel.mauve,
+                    icon: Icons.auto_awesome_outlined,
+                    title: "Assistant log",
+                    description: "What the AI assistant did, and for whom",
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AgentLogPage()),
                     ),
                   ),
                 ),

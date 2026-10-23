@@ -108,6 +108,11 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
         Icons.check_circle,
       );
       Navigator.pop(context);
+    } on CompoundTargetLimitException catch (e) {
+      // One active target per metric (A1). The guide is told exactly what to
+      // do about it, not that something went wrong.
+      if (!mounted) return;
+      showSnackbar(context, e.message, Colors.orange, Icons.info);
     } catch (e) {
       if (!mounted) return;
       showSnackbar(

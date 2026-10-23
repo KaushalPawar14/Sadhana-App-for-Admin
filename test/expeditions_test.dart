@@ -107,10 +107,11 @@ const everyTitle = [
 ];
 List<String> shown(Iterable<String> all) => [for (final t in all) if (find.text(t).evaluate().isNotEmpty) t];
 
-// Fills the "New Expedition" dialog: title, today as the trip date. (The dialog is already open.)
+// Fills the "New Expedition" dialog: title, today as the trip start (the end follows it, so this is a one-day
+// trip). (The dialog is already open.)
 Future<void> fillTrip(WidgetTester tester, String title) async {
   await tester.enterText(find.byType(TextFormField).first, title);
-  await tester.tap(find.text('Trip date'));
+  await tester.tap(find.text('Trip start date'));
   await letDataArrive(tester);
   await tester.tap(find.text('OK'));
   await letDataArrive(tester);

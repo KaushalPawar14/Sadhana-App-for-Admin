@@ -129,6 +129,16 @@ class FakeBoardData implements BoardData {
     yield* unseenC.stream;
   }
 
+  /// The students whose new suggestions the board shows a dot for (set by a test; empty by default).
+  final StreamController<Set<String>> suggestionsC = StreamController<Set<String>>.broadcast();
+  Set<String> suggestionsUnseen = {};
+
+  @override
+  Stream<Set<String>> unseenSuggestions(String guide) async* {
+    yield suggestionsUnseen;
+    yield* suggestionsC.stream;
+  }
+
   @override
   Future<void> markBooksSeen(String guide, String studentUid, Iterable<String> bookDocIds) async {
     seenBooks.addAll(bookDocIds);

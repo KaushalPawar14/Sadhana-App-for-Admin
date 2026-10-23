@@ -3,15 +3,19 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../actions/StudentActions.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/BoardQueries.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/Snackbar.dart';
+import '../widgets/StudentCommitmentsCard.dart';
+import 'StudentNotificationSettings.dart';
 import '../utils/StudentScope.dart';
 import 'AbcdeActivityCard.dart';
 import 'StudentMusicPage.dart';
 import 'HolisticSuggestion.dart';
-import 'InteractionLogger.dart';
+import '../utils/SuggestionsReady.dart';
+import '../utils/UnseenDot.dart';
 import 'LitAssessment.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
@@ -131,7 +135,10 @@ import '../widgets/GuideSheet.dart';
 class StudentProfilePage extends StatefulWidget {
   final String studentUid;
 
-  const StudentProfilePage({super.key, required this.studentUid});
+  /// Opened from a "New suggestions ready" notification: scroll to the suggestions as soon as the page is there.
+  final bool focusSuggestions;
+
+  const StudentProfilePage({super.key, required this.studentUid, this.focusSuggestions = false});
 
   @override
   State<StudentProfilePage> createState() => _StudentProfilePageState();
@@ -150,6 +157,72 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
   /// else the page stays readable but its controls are inert (see
   /// [_gatedAction]).
   bool _canAct(StudentRef student) => StudentScope(_viewer).canManage(student);
+
+  /// The suggestions section, so the label under the picture (and a notification) can scroll to it.
+  final GlobalKey _suggestionsKey = GlobalKey(debugLabel: 'suggestions');
+  bool _focused = false;
+
+  /// "New suggestions ready" for this admin — the end of the orange dot trail from the board.
+  late final Stream<bool> _suggestionsUnseen = SuggestionsReady.unseenFor(_viewer.id, widget.studentUid);
+
+  /// Brings the suggestions on screen; they count as opened once they have been there a moment.
+  void _showSuggestions() {
+    final target = _suggestionsKey.currentContext;
+    if (target == null || !target.mounted) return;
+    Scrollable.ensureVisible(
+      target,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+      alignment: 0.05,
+    );
+  }
+
+  Widget _suggestionsReadyLabel() {
+    return StreamBuilder<bool>(
+      stream: _suggestionsUnseen,
+      builder: (context, snap) {
+        if (!(snap.data ?? false)) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Semantics(
+            button: true,
+            label: SuggestionsReady.label,
+            child: Material(
+              color: Colors.white.withValues(alpha: .18),
+              borderRadius: BorderRadius.circular(20),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: _showSuggestions,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 40),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const UnseenDot(size: 9),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            SuggestionsReady.label,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: GuideColors.heroText,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   /// Wraps an already-built, verbatim-reused section so its controls become
   /// inert when [allowed] is false, without modifying that section's own
@@ -443,10 +516,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
     }
 
     try {
-      await GuideDb.instance
-          .collection('users')
-          .doc(widget.studentUid)
-          .set({'role': selected}, SetOptions(merge: true));
+      await setStudentResidence(widget.studentUid, selected);
       if (context.mounted) {
         showSnackbar(
             context, 'Residence updated', context.g.success, Icons.check_circle);
@@ -492,6 +562,13 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
               // See `utils/ManualStudents.dart`'s own header for the schema.
               final isManual = data['isManualEntry'] == true;
 
+              if (widget.focusSuggestions && !_focused) {
+                _focused = true;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) _showSuggestions();
+                });
+              }
+
               return SingleChildScrollView(
                 child: Column(
                   children: [
@@ -531,6 +608,8 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                               ),
                             ),
                           ),
+                          // The end of the orange dot trail: shown while the suggestions the server made are unopened.
+                          _suggestionsReadyLabel(),
                           const SizedBox(height: 16),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -582,6 +661,49 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                             ),
                           ),
 
+                          // COMMITMENTS — the same two fields the Student
+                          // app itself writes (commitmentRounds /
+                          // readingCommitmentMinutes). The server's own
+                          // rescoreOnCommitmentChange trigger re-scores the
+                          // week and month when they change, whoever changed
+                          // them, so points follow with no new server code.
+                          StudentCommitmentsCard(
+                            studentUid: widget.studentUid,
+                            studentName: name,
+                            commitmentRounds:
+                                data['commitmentRounds'] is num &&
+                                        _asInt(data['commitmentRounds']) > 0
+                                    ? _asInt(data['commitmentRounds'])
+                                    : null,
+                            readingCommitmentMinutes:
+                                data['readingCommitmentMinutes'] is num
+                                    ? _asInt(data['readingCommitmentMinutes'])
+                                    : null,
+                            canEdit: canAct,
+                          ),
+
+                          // NOTIFICATION SETTINGS — the student's own six
+                          // switches, same keys, editable by their guide.
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      StudentNotificationSettingsPage(
+                                    studentUid: widget.studentUid,
+                                    studentName: name,
+                                    canEdit: canAct,
+                                  ),
+                                ),
+                              ),
+                              icon: const Icon(
+                                  Icons.notifications_outlined, size: 18),
+                              label: const Text('Notification settings'),
+                            ),
+                          ),
+
                           const SizedBox(height: 25),
 
                           // ABCDE ACTIVITY — never gated: this card has no
@@ -612,18 +734,10 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                             canTick: canAct,
                           ),
 
-                          const SizedBox(height: 25),
-
-                          // INTERACTIONS — gated (Part 4).
-                          _sectionTitle(colorProvider, "Interactions"),
-                          const SizedBox(height: 10),
-                          _gatedAction(
-                            allowed: canAct,
-                            child: InteractionLogSection(
-                              studentUid: widget.studentUid,
-                              studentName: name,
-                            ),
-                          ),
+                          // INTERACTIONS are no longer entered here:
+                          // they live in Associations now (one place for
+                          // everything that happened with a student), and
+                          // this page's own ABCDE card counts them under A.
 
                           const SizedBox(height: 25),
 
@@ -643,12 +757,14 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                           // SUGGESTED NEXT ACTION — gated (Part 4).
                           _sectionTitle(colorProvider, "Suggested Next Action"),
                           const SizedBox(height: 10),
-                          _gatedAction(
-                            allowed: canAct,
-                            child: HolisticSuggestionSection(
-                              studentUid: widget.studentUid,
-                              studentName: name,
-                              profileData: data,
+                          KeyedSubtree(
+                            key: _suggestionsKey,
+                            child: _gatedAction(
+                              allowed: canAct,
+                              child: HolisticSuggestionSection(
+                                studentUid: widget.studentUid,
+                                studentName: name,
+                              ),
                             ),
                           ),
                         ],
@@ -703,10 +819,7 @@ class DobCard extends StatelessWidget {
     if (picked == null) return;
 
     try {
-      await GuideDb.instance.collection('users').doc(userId).set(
-        {'dob': Timestamp.fromDate(picked)},
-        SetOptions(merge: true),
-      );
+      await setStudentDob(userId, picked);
       if (context.mounted) {
         showSnackbar(context, "Date of birth saved", Colors.green,
             Icons.check_circle);
@@ -776,90 +889,3 @@ class DobCard extends StatelessWidget {
   }
 }
 
-// -----------------------------------------------------------------------------
-// InteractionLogSection — moved here from Profile.dart (item 3). Generic UI
-// plumbing only: the real logic (delete, permissions, FCM) lives untouched in
-// Pages/InteractionLogger.dart, which this still navigates to unchanged.
-// -----------------------------------------------------------------------------
-
-/// "Log Interaction" entry point.
-///
-/// Lives here rather than a shared file because this page already receives
-/// the student's real uid, so `interactionLogs.studentUid` can be set
-/// directly — no name lookup, and no ambiguity when two students share a
-/// name.
-class InteractionLogSection extends StatelessWidget {
-  final String studentUid;
-  final String studentName;
-
-  const InteractionLogSection({
-    super.key,
-    required this.studentUid,
-    required this.studentName,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 10),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: context.g.surface,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: context.g.cardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: context.g.brass.withValues(alpha: .15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.record_voice_over,
-                  color: context.g.brass,
-                  size: 26,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  "Record what happened in your own words. It's saved "
-                  "immediately — AI fills in the details, and you can edit "
-                  "them afterward from the Interactions list.",
-                  style: TextStyle(color: context.g.mutedText, fontSize: 13),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => InteractionLoggerPage(
-                    studentUid: studentUid,
-                    studentName: studentName,
-                  ),
-                ),
-              ),
-              icon: const Icon(Icons.edit_note, size: 18),
-              label: const Text("Log Interaction"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: context.g.brass,
-                foregroundColor: context.g.onPrimary,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

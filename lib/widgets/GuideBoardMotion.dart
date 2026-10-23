@@ -33,11 +33,24 @@ class GuideHeaderParallax extends StatelessWidget {
       builder: (context, child) {
         final box = context.findRenderObject();
         var shift = 0.0;
-        if (box is RenderBox && box.attached && box.hasSize) {
-          final x = box.localToGlobal(Offset.zero).dx;
-          // 0 when the column rests at the left padding; -1..1 one column either side.
-          final delta = ((x - GuideSpace.pagePadding) / columnWidth).clamp(-1.0, 1.0);
-          shift = delta * maxShift;
+        // Measured against the board's OWN horizontal scroll view, never the screen. A global
+        // position walks up through every ancestor — including the page-transition wrapper
+        // (`SlideTransition` → `RenderFractionalTranslation`) that Flutter puts around a route,
+        // which exists but has not been laid out in the frames where a profile is pushed over
+        // the board or popped back (the phone's back gesture too). Asking it for its size there
+        // threw 'hasSize … RenderFractionalTranslation NEEDS-LAYOUT' in every column's header
+        // at once. The scroll view sits inside the board and is always laid out.
+        final viewport = Scrollable.maybeOf(context, axis: Axis.horizontal)?.context.findRenderObject();
+        if (box is RenderBox && box.attached && box.hasSize &&
+            viewport is RenderBox && viewport.attached && viewport.hasSize) {
+          try {
+            final x = box.localToGlobal(Offset.zero, ancestor: viewport).dx;
+            // 0 when the column rests at the left padding; -1..1 one column either side.
+            final delta = ((x - GuideSpace.pagePadding) / columnWidth).clamp(-1.0, 1.0);
+            shift = delta * maxShift;
+          } catch (_) {
+            // A decoration must never take the column down: no drift this frame.
+          }
         }
         return Transform.translate(offset: Offset(-shift, 0), child: child);
       },

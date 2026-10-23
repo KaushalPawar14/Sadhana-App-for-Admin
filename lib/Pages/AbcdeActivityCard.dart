@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../utils/AbcdeActivity.dart';
+import '../utils/ExpeditionExperience.dart';
 import '../utils/LeaderboardData.dart' show dottedField;
 import '../utils/Residence.dart' show hasDailyServices;
 import '../utils/SadhanaReportSource.dart';
@@ -10,6 +13,7 @@ import '../utils/ServiceAssignments.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
 
 /// Phase 8 — the ABCDE activity card.
@@ -39,6 +43,7 @@ import '../widgets/GuideWait.dart';
 ///      the old `studentServices/{uid}` count) + scorecard/{name} (unrelated,
 ///      unchanged — see that task's Part 1 for why these two are separate)
 ///   E  expeditionRegistrations     where studentUid ==
+///      expeditionExperiences       where studentUid ==  (what they wrote after a trip)
 class AbcdeActivityCard extends StatefulWidget {
   final String studentUid;
   final String studentName;
@@ -136,13 +141,56 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
 
   // E
   int _tripsRegistered = 0;
+
+  /// What the student wrote after the trips they completed (Master 2 B).
+  List<ExpeditionExperience> _experiences = const [];
   int _reflectionsSubmitted = 0;
   DateTime? _mostRecentTrip;
+
+  /// Live subscriptions for the A limb only.
+  ///
+  /// The other limbs are one-shot reads taken when the card is built, which
+  /// is right for them: a guide cannot change a student's reports, books or
+  /// services from inside this app while looking at this card. Associations
+  /// and interactions they CAN change — an interaction saved from the
+  /// Associations screen has to show here without reopening the profile — so
+  /// those two are watched and recomputed when they change.
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _assocSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _interSub;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _watchAssociationSources();
+  }
+
+  /// Recomputes the A limb whenever a meeting or an interaction about this
+  /// student is written, by anyone. Both queries are the scoped ones the
+  /// one-shot read already uses, so a guide never watches a student they may
+  /// not see. Failures are swallowed: a card that cannot watch still shows
+  /// the figures its first read produced.
+  Future<void> _watchAssociationSources() async {
+    try {
+      final assoc = await _scopedFor('associations', 'studentUid');
+      final inter = await _scopedFor('interactionLogs', 'studentUid');
+      if (!mounted) return;
+      _assocSub = assoc.snapshots().listen((_) {
+        if (mounted) _loadAssociation();
+      });
+      _interSub = inter.snapshots().listen((_) {
+        if (mounted) _loadAssociation();
+      });
+    } catch (_) {
+      // no live updates; the first read's figures stand
+    }
+  }
+
+  @override
+  void dispose() {
+    _assocSub?.cancel();
+    _interSub?.cancel();
+    super.dispose();
   }
 
   // The student's category changed: his chanting / reading series are read again from the new category's
@@ -173,6 +221,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
         _loadBooks(),
         _loadService(),
         _loadExpeditions(),
+        _loadExperiences(),
       ]);
       // ignore: unused_local_variable
       final _ = results;
@@ -247,8 +296,14 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
     });
   }
 
+  /// A (associations) counts MEETINGS and, since interactions moved into
+  /// Associations, the guide's own interaction notes as well — as a separate
+  /// line item, never summed into the meeting counts. `interactionLogs` keeps
+  /// its own collection and shape; only this card's reading of it is new.
   Future<void> _loadAssociation() async {
     final snapshot = await (await _scopedFor('associations', 'studentUid')).get();
+    final interactions =
+        await (await _scopedFor('interactionLogs', 'studentUid')).get();
 
     final now = DateTime.now();
     final ninetyDaysAgo = now.subtract(const Duration(days: 90));
@@ -283,8 +338,26 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
       }
     }
 
+    // Interactions in the same 90-day window, by their own date.
+    var interactions90d = 0;
+    DateTime? lastInteraction;
+    for (final doc in interactions.docs) {
+      final raw = doc.data()['interactionDate'];
+      final when = raw is Timestamp ? raw.toDate() : null;
+      if (when == null) continue;
+      if (when.isAfter(ninetyDaysAgo) && !when.isAfter(now)) interactions90d++;
+      if (!when.isAfter(now) &&
+          (lastInteraction == null || when.isAfter(lastInteraction))) {
+        lastInteraction = when;
+      }
+    }
+
     if (!mounted) return;
     setState(() {
+      _interactions90d = interactions90d;
+      _daysSinceLastInteraction = lastInteraction == null
+          ? null
+          : wholeDaysBetween(lastInteraction, now);
       _daysSinceLastMeeting =
           lastHeld == null ? null : wholeDaysBetween(lastHeld, now);
       _nextMeeting = nextUpcoming;
@@ -398,6 +471,57 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
       _reflectionsSubmitted = reflected;
       _mostRecentTrip = mostRecent;
     });
+  }
+
+  /// What this student wrote about the trips they completed. A failure leaves the list empty rather than
+  /// failing the card — the rest of E is still true without it.
+  Future<void> _loadExperiences() async {
+    try {
+      final snapshot = await (await _scopedFor('expeditionExperiences', 'studentUid')).get();
+      final list = parseExperiences(snapshot.docs.map((d) => d.data()));
+      if (!mounted) return;
+      setState(() => _experiences = list);
+    } catch (_) {
+      // Not loaded — the expedition counts above still stand.
+    }
+  }
+
+  void _showExperiences() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => GuideDialog(
+        title: Text(widget.studentName),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final e in _experiences.where((e) => e.shared)) ...[
+                Text(e.tripName.isEmpty ? 'A trip' : e.tripName,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+                Text(e.statusLine, style: TextStyle(fontSize: 11.5, color: dialogContext.g.mutedText)),
+                const SizedBox(height: 8),
+                for (final q in kExperienceQuestions)
+                  if (e.answerFor(q.field).isNotEmpty) ...[
+                    Text(q.question, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Text(e.answerFor(q.field), style: const TextStyle(fontSize: 13.5, height: 1.4)),
+                    const SizedBox(height: 8),
+                  ],
+                if (e.notes.isNotEmpty) ...[
+                  const Text('Anything else', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(e.notes, style: const TextStyle(fontSize: 13.5, height: 1.4)),
+                  const SizedBox(height: 8),
+                ],
+                const Divider(),
+              ],
+            ],
+          ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close'))],
+      ),
+    );
   }
 
   int _asInt(Object? value) => value is num ? value.toInt() : 0;
@@ -653,6 +777,12 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
 
   // --- A ---------------------------------------------------------------------
 
+  /// How many interaction notes fall in the 90-day window, and how long ago
+  /// the most recent one was. Kept separate from the meeting figures above:
+  /// a note a guide wrote is not a meeting that was held.
+  int _interactions90d = 0;
+  int? _daysSinceLastInteraction;
+
   List<Widget> _associationLines() {
     final lines = <Widget>[];
 
@@ -678,6 +808,21 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
     if (_nextMeeting != null) {
       lines.add(_muted(
           "Next: ${DateFormat('dd MMM yyyy').format(_nextMeeting!)}"));
+    }
+
+    // Interactions: their own line, never added to the meeting counts.
+    if (_interactions90d == 0) {
+      lines.add(_muted("No interactions logged in the last 90 days"));
+    } else {
+      final ago = _daysSinceLastInteraction;
+      final last = ago == null
+          ? ''
+          : (ago == 0
+              ? ', last today'
+              : ', last $ago day${ago == 1 ? '' : 's'} ago');
+      lines.add(_muted(
+          "$_interactions90d interaction${_interactions90d == 1 ? '' : 's'} "
+          "in the last 90 days$last"));
     }
     return lines;
   }
@@ -706,15 +851,35 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
   // --- E ---------------------------------------------------------------------
 
   List<Widget> _expeditionLines() {
-    if (_tripsRegistered == 0) {
+    // An experience can outlive the registration it came from (a trip deleted
+    // after it was asked about), so it is shown even with no trips registered
+    // rather than being hidden behind "No trips registered".
+    if (_tripsRegistered == 0 && _experiences.isEmpty) {
       return [_value("No trips registered")];
     }
     return [
-      _value(
-          "$_tripsRegistered trip${_tripsRegistered == 1 ? '' : 's'} registered"),
-      _muted("$_reflectionsSubmitted reflection"
-          "${_reflectionsSubmitted == 1 ? '' : 's'} submitted"
-          "${_mostRecentTrip == null ? '' : ' · latest ${DateFormat('dd MMM yyyy').format(_mostRecentTrip!)}'}"),
+      if (_tripsRegistered == 0)
+        _value("No trips registered")
+      else ...[
+        _value(
+            "$_tripsRegistered trip${_tripsRegistered == 1 ? '' : 's'} registered"),
+        _muted("$_reflectionsSubmitted reflection"
+            "${_reflectionsSubmitted == 1 ? '' : 's'} submitted"
+            "${_mostRecentTrip == null ? '' : ' · latest ${DateFormat('dd MMM yyyy').format(_mostRecentTrip!)}'}"),
+      ],
+      if (_experiences.isNotEmpty) ...[
+        _muted(experienceSummary(_experiences)),
+        if (_experiences.any((e) => e.shared))
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const ValueKey('read-experiences'),
+              onPressed: _showExperiences,
+              icon: const Icon(Icons.auto_stories, size: 16),
+              label: const Text('Read experiences'),
+            ),
+          ),
+      ],
     ];
   }
 
@@ -731,7 +896,7 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
       child: _loading
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 26),
-              child: const GuideWait(),
+              child: GuideWait(),
             )
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,

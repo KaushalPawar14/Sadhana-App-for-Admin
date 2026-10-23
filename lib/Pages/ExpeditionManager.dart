@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../Services/HierarchyApi.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
+import '../actions/TripActions.dart';
 import '../utils/ExpeditionModel.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
@@ -124,7 +125,9 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
     String location = '';
     String maxParticipants = '';
     DateTime? tripDate;
+    DateTime? endDate; // the LAST day; the same date for a one-day trip
     DateTime? deadline;
+    String? datesError;
     // A Guide / Male Enabler: boys. A Female Enabler: girls. A HOD chooses.
     String? targetGender = tripTargetGenderFor(profile);
 
@@ -186,10 +189,13 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                     decoration: const InputDecoration(labelText: "Max participants (optional)"),
                   ),
                   const SizedBox(height: 6),
+                  // Start and end. Choosing the start fills the end while it is empty or would
+                  // fall before it, so a one-day trip is still a single choice.
                   ListTile(
+                    key: const ValueKey('trip-start'),
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.event, size: 20),
-                    title: const Text("Trip date", style: TextStyle(fontSize: 14)),
+                    title: const Text("Trip start date", style: TextStyle(fontSize: 14)),
                     trailing: Text(
                       tripDate == null ? "Not set" : DateFormat('dd MMM yyyy').format(tripDate!),
                       style: const TextStyle(fontWeight: FontWeight.w600),
@@ -198,13 +204,55 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                       final now = DateTime.now();
                       final picked = await showDatePicker(
                         context: dialogContext,
-                        initialDate: now,
+                        initialDate: tripDate ?? now,
                         firstDate: now,
                         lastDate: now.add(const Duration(days: 730)),
                       );
-                      if (picked != null) setDialogState(() => tripDate = picked);
+                      if (picked != null) {
+                        setDialogState(() {
+                          tripDate = picked;
+                          if (endDate == null || endDate!.isBefore(picked)) endDate = picked;
+                          datesError = null;
+                        });
+                      }
                     },
                   ),
+                  ListTile(
+                    key: const ValueKey('trip-end'),
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.event_available, size: 20),
+                    title: const Text("Trip end date", style: TextStyle(fontSize: 14)),
+                    subtitle: const Text(
+                      "The trip moves to History the day after this",
+                      style: TextStyle(fontSize: 11.5),
+                    ),
+                    trailing: Text(
+                      endDate == null ? "Not set" : DateFormat('dd MMM yyyy').format(endDate!),
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    onTap: () async {
+                      final now = DateTime.now();
+                      final first = tripDate ?? now;
+                      final picked = await showDatePicker(
+                        context: dialogContext,
+                        initialDate: endDate ?? first,
+                        firstDate: first,
+                        lastDate: now.add(const Duration(days: 730)),
+                      );
+                      if (picked != null) {
+                        setDialogState(() {
+                          endDate = picked;
+                          tripDate ??= picked;
+                          datesError = null;
+                        });
+                      }
+                    },
+                  ),
+                  if (datesError != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(datesError!, style: TextStyle(fontSize: 12, color: context.g.danger)),
+                    ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.how_to_reg, size: 20),
@@ -231,7 +279,16 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
               TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text("Cancel")),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: context.g.brass),
-                onPressed: () => Navigator.pop(dialogContext, true),
+                onPressed: () {
+                  // Checked in the dialog, where the guide can fix it, rather than after it has
+                  // closed and everything typed is gone.
+                  final problem = tripDatesProblem(tripDate, endDate);
+                  if (problem != null) {
+                    setDialogState(() => datesError = problem);
+                    return;
+                  }
+                  Navigator.pop(dialogContext, true);
+                },
                 child: Text("Create", style: TextStyle(color: context.g.onPrimary)),
               ),
             ],
@@ -246,27 +303,25 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
       if (mounted) showSnackbar(context, "Choose Boys or Girls for this trip", Colors.red, Icons.error);
       return;
     }
-    if (title.trim().isEmpty || tripDate == null) {
-      if (mounted) showSnackbar(context, "Title and trip date are required", Colors.red, Icons.error);
+    if (title.trim().isEmpty || tripDate == null || endDate == null) {
+      if (mounted) showSnackbar(context, "Title and trip dates are required", Colors.red, Icons.error);
       return;
     }
 
     try {
-      await _firestore.collection('expeditions').add({
-        'title': title.trim(),
-        'description': description.trim(),
-        'location': location.trim(),
-        'tripDate': Timestamp.fromDate(tripDate!),
-        'registrationDeadline': deadline == null ? null : Timestamp.fromDate(deadline!),
-        'createdBy': _selectedGuide ?? '',
-        'createdAt': FieldValue.serverTimestamp(),
-        'maxParticipants': int.tryParse(maxParticipants.trim()),
-        'status': 'upcoming',
-        // Who the trip is for, and where it is in its life: active until the day after the trip date,
-        // when the server sets `archived: true` and it moves to History.
-        'targetGender': targetGender,
-        'archived': false,
-      });
+      // One shared write (actions/TripActions.dart): the AI agent creates a trip through
+      // exactly this.
+      await createTrip(
+        createdBy: _selectedGuide ?? '',
+        title: title,
+        description: description,
+        location: location,
+        start: tripDate!,
+        end: endDate!,
+        registrationDeadline: deadline,
+        maxParticipants: int.tryParse(maxParticipants.trim()),
+        targetGender: targetGender!,
+      );
 
       if (!mounted) return;
       showSnackbar(context, "Expedition created", Colors.green, Icons.check_circle);
@@ -304,7 +359,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
     if (next == null || next == current) return;
 
     try {
-      await _firestore.collection('expeditions').doc(docId).update({'status': next});
+      await setTripStatus(docId, next);
       if (!mounted) return;
       showSnackbar(context, "Status updated", Colors.blue, Icons.check_circle);
     } catch (_) {
@@ -469,7 +524,7 @@ class _ExpeditionManagerPageState extends State<ExpeditionManagerPage>
                     runSpacing: 4,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      _meta(Icons.event, tripDateText(data['tripDate'])),
+                      _meta(Icons.event, tripDatesText(data)),
                       _meta(Icons.people, "$registrations$capacity"),
                       if (forWho.isNotEmpty) _meta(Icons.wc, "For ${forWho.toLowerCase()}", key: ValueKey('trip-for-${doc.id}')),
                     ],

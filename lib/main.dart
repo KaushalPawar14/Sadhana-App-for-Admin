@@ -21,6 +21,7 @@ import 'dart:async';
 
 import 'Pages/ForceUpdateScreen.dart';
 import 'Pages/GuideSignIn.dart';
+import 'agent/AgentOverlay.dart';
 import 'Services/UpdateToken.dart';
 import 'Services/UpdateFCM.dart' show UpdateTokenService;
 import 'utils/ForceUpdateCheck.dart';
@@ -126,12 +127,16 @@ class MyApp extends StatelessWidget {
       builder: (context, orientation, deviceType) {
         return MaterialApp(
           navigatorKey: guideNavigatorKey,
+          navigatorObservers: [AgentRouteVisibility.instance],
           debugShowCheckedModeBanner: false,
           title: 'FOLK Guides',
           theme: GuideTheme.light,
           darkTheme: GuideTheme.dark,
           themeMode: context.watch<ThemeModeController>().themeMode,
           themeAnimationDuration: GuideMotion.of(context, GuideMotion.theme),
+          // The AI assistant's floating button sits above EVERY screen of the signed-in app (it wraps the whole
+          // Navigator, so it survives every push and pop) and steps aside on the assistant's own page.
+          builder: (context, navChild) => AgentOverlay(child: navChild ?? const SizedBox.shrink()),
           home: SplashScreen(savedGuide: savedGuide),
         );
       },

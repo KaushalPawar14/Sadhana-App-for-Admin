@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../actions/DeleteActions.dart';
+import '../actions/FlaggedActions.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/SeenMarkers.dart';
@@ -38,8 +40,6 @@ class FlaggedMessagesPage extends StatefulWidget {
 }
 
 class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
-  final FirebaseFirestore _firestore = GuideDb.instance;
-
   String? _guide;
   bool get _isHod => AdminProfileProvider.viewerIsHod;
   bool _loading = true;
@@ -116,16 +116,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
   /// (`StudentScope.canManage`). A record not yet stamped falls back to its
   /// own `guideId` being the signed-in admin.
   Future<bool> _canDeleteFlagged(Map<String, dynamic> data) async {
-    if (_isHod) return true;
-    if (!data.containsKey('scopeGuide')) {
-      return (data['guideId'] ?? '').toString() == (_guide ?? '');
-    }
-    return StudentScope.current().canManage(StudentRef(
-      uid: (data['studentUid'] ?? '').toString(),
-      guideId: (data['scopeGuide'] ?? '').toString(),
-      teamGuide: (data['scopeTeam'] ?? '').toString(),
-      gender: (data['scopeGender'] ?? '').toString(),
-    ));
+    return canDeleteStamped(data, AdminProfileProvider.require());
   }
 
   Future<void> _deleteSelected() async {
@@ -146,10 +137,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
 
   Future<void> _markReviewed(String docId, bool reviewed) async {
     try {
-      await _firestore
-          .collection('flaggedChatMessages')
-          .doc(docId)
-          .update({'reviewed': reviewed});
+      await markFlaggedReviewed(docId, reviewed);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

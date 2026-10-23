@@ -1,14 +1,11 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../Services/MissingReportNotification.dart';
-import '../utils/GuideDb.dart';
+import '../actions/PriorityActions.dart';
 import '../widgets/GuideDialog.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
-import '../utils/PlanningQueries.dart';
+import '../utils/SeenMarkers.dart';
 import 'StudentProfilePage.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
@@ -38,29 +35,13 @@ class PriorityStudentsPage extends StatefulWidget {
   State<PriorityStudentsPage> createState() => _PriorityStudentsPageState();
 }
 
-/// One named concern. Deliberately carries no weight or number — a flag is
-/// either present or it is not, and the guide reads the words.
-///
-/// `kind` names the TYPE of concern (never its wording or its day count, which change daily): it is what
-/// "Remove from priority list" remembers, so a removed student comes back only when a NEW kind of concern appears.
-typedef _Flag = ({String kind, String label, Color colour});
-
-/// A student with at least one concern, and the concerns themselves.
-typedef _Priority = ({String uid, String name, List<_Flag> flags});
-
 class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
-  /// A relationship is considered stale after three weeks without contact.
-  static const int _staleAfterDays = 21;
-
-  /// A LIT axis at or below this is worth the guide's attention.
-  static const int _lowAxis = 2;
-
   String? _guide;
   bool _isHod = false;
   bool _loading = true;
   bool _rosterFailed = false;
 
-  List<_Priority> _priority = [];
+  List<PriorityStudent> _priority = [];
   int _inScope = 0;
 
   /// This admin's "removed from my priority list" records: student uid -> the concern kinds they had then.
@@ -82,10 +63,18 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
 
     final profile = AdminProfileProvider.require();
     final guide = profile.displayName;
-    final students = await scopedStudents();
+    // Opening this list is "seen" for the automatic priority reasons, the
+    // same as the flagged-messages list is for its own dot. Keyed by the
+    // admin's ID (what `SeenMarkers.seenAt` is read with), never the display
+    // name the rest of this method uses for wording.
+    if (profile.id.isNotEmpty) {
+      SeenMarkers.markSeen(profile.id, 'priorityReasons');
+    }
+    // One shared computation (actions/PriorityActions.dart): the AI agent lists the same students, in
+    // the same order, with the same reasons.
+    final list = await loadPriorityList();
 
-    if (students == null) {
-      // Fail closed — show nothing rather than another guide's students.
+    if (list.rosterFailed) {
       if (!mounted) return;
       setState(() {
         _guide = guide;
@@ -98,117 +87,18 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
       return;
     }
 
-    // Reused, not recomputed — the same singleton SubmissionStatusPage reads.
-    final missing = <String>{...NotificationManager().missingUsernames};
-
-    // One read per collection, independent of student count. `.first` on the
-    // shared streams reuses their scoping rather than rebuilding the queries.
-    List<QueryDocumentSnapshot> logs = [];
-    List<QueryDocumentSnapshot> associations = [];
-    List<QueryDocumentSnapshot> lit = [];
-
-    try {
-      logs = (await scopedInteractionLogsStream().first).docs;
-    } catch (_) {/* a missing signal must not blank the screen */}
-    try {
-      associations = (await scopedAssociationsStream().first).docs;
-    } catch (_) {}
-    try {
-      // Scoped by the viewer's visible students, not by who wrote the
-      // assessment — a reassigned student keeps their history.
-      lit = await litAssessmentsForRoster();
-    } catch (_) {}
-
-    // Bucket by studentUid once, so the per-student pass is a map lookup
-    // rather than a scan of every collection per student.
-    final logsByStudent = <String, List<Map<String, dynamic>>>{};
-    for (final doc in logs) {
-      final data = doc.data() as Map<String, dynamic>;
-      final uid = (data['studentUid'] ?? '').toString();
-      if (uid.isEmpty) continue;
-      logsByStudent.putIfAbsent(uid, () => []).add(data);
-    }
-
-    final assocByStudent = <String, List<Map<String, dynamic>>>{};
-    for (final doc in associations) {
-      final data = doc.data() as Map<String, dynamic>;
-      final uid = (data['studentUid'] ?? '').toString();
-      if (uid.isEmpty) continue;
-      assocByStudent.putIfAbsent(uid, () => []).add(data);
-    }
-
-    final litByStudent = <String, List<Map<String, dynamic>>>{};
-    for (final doc in lit) {
-      final data = doc.data() as Map<String, dynamic>;
-      final uid = (data['studentUid'] ?? '').toString();
-      if (uid.isEmpty) continue;
-      litByStudent.putIfAbsent(uid, () => []).add(data);
-    }
-
-    // The students THIS admin already removed from their own priority list (a read failure just shows everyone).
-    final dismissed = await _readDismissals(profile.id);
-
-    final result = <_Priority>[];
-    var hidden = 0;
-
-    for (final student in students) {
-      final flags = _flagsFor(
-        student: student,
-        logs: logsByStudent[student.uid] ?? const [],
-        associations: assocByStudent[student.uid] ?? const [],
-        lit: litByStudent[student.uid] ?? const [],
-        missing: missing,
-      );
-
-      // No concerns means not a priority. Such a student is simply absent.
-      if (flags.isEmpty) continue;
-
-      // Removed by this admin, and nothing NEW has come up since: stays off their list.
-      final removedKinds = dismissed[student.uid];
-      if (removedKinds != null && flags.every((f) => removedKinds.contains(f.kind))) {
-        hidden++;
-        continue;
-      }
-
-      result.add((uid: student.uid, name: student.name, flags: flags));
-    }
-
-    // Most concerns first; alphabetical within the same count so the order is
-    // stable rather than arbitrary.
-    result.sort((a, b) {
-      final byCount = b.flags.length.compareTo(a.flags.length);
-      return byCount != 0 ? byCount : a.name.compareTo(b.name);
-    });
-
     if (!mounted) return;
     setState(() {
       _guide = guide;
       _isHod = profile.isHod;
       _rosterFailed = false;
-      _priority = result;
-      _dismissed = dismissed;
-      _hiddenCount = hidden;
+      _priority = list.students;
+      _dismissed = list.dismissed;
+      _hiddenCount = list.hiddenCount;
       _selected.clear();
-      _inScope = students.length;
+      _inScope = list.inScope;
       _loading = false;
     });
-  }
-
-  Future<Map<String, Set<String>>> _readDismissals(String adminId) async {
-    try {
-      final snap = await GuideDb.instance
-          .collection('priorityDismissals')
-          .where('adminId', isEqualTo: adminId)
-          .get();
-      return {
-        for (final d in snap.docs)
-          (d.data()['studentUid'] ?? '').toString(): {
-            for (final k in (d.data()['kinds'] as List? ?? const [])) k.toString(),
-          },
-      }..remove('');
-    } catch (_) {
-      return {};
-    }
   }
 
   // ---------------------------------------------------------------------------
@@ -225,7 +115,6 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
   /// (`priorityDismissals/{adminId}__{studentUid}`: adminId, studentUid, kinds, dismissedAt) and nothing else:
   /// the student, their reports, chats, meetings and assessments are never touched.
   Future<void> _removeSelected() async {
-    final profile = AdminProfileProvider.require();
     final chosen = _priority.where((p) => _selected.contains(p.uid)).toList();
     if (chosen.isEmpty) return;
     final n = chosen.length;
@@ -253,17 +142,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
     if (confirmed != true || !mounted) return;
 
     try {
-      final db = GuideDb.instance;
-      final batch = db.batch();
-      for (final p in chosen) {
-        batch.set(db.collection('priorityDismissals').doc('${profile.id}__${p.uid}'), {
-          'adminId': profile.id,
-          'studentUid': p.uid,
-          'kinds': [for (final f in p.flags) f.kind],
-          'dismissedAt': FieldValue.serverTimestamp(),
-        });
-      }
-      await batch.commit();
+      await removeFromPriority(chosen);
       if (!mounted) return;
       setState(() => _selected.clear());
       await _load();
@@ -279,14 +158,8 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
 
   /// Puts every student this admin removed back on their list (deletes only those small records).
   Future<void> _restoreRemoved() async {
-    final profile = AdminProfileProvider.require();
     try {
-      final db = GuideDb.instance;
-      final batch = db.batch();
-      for (final uid in _dismissed.keys) {
-        batch.delete(db.collection('priorityDismissals').doc('${profile.id}__$uid'));
-      }
-      await batch.commit();
+      await restoreToPriority(_dismissed.keys.toList());
       await _load();
     } catch (_) {
       if (!mounted) return;
@@ -298,133 +171,12 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
   // The checklist
   // ---------------------------------------------------------------------------
 
-  List<_Flag> _flagsFor({
-    required ({String uid, String name}) student,
-    required List<Map<String, dynamic>> logs,
-    required List<Map<String, dynamic>> associations,
-    required List<Map<String, dynamic>> lit,
-    required Set<String> missing,
-  }) {
-    final flags = <_Flag>[];
-
-    // --- A. Contact staleness ------------------------------------------------
-    //
-    // Any status, not approved-only: an unapproved draft still means the guide
-    // met the student. `interactionDate` survives approval either way.
-    final dated = logs
-        .map((l) => l['interactionDate'])
-        .whereType<Timestamp>()
-        .map((t) => t.toDate())
-        .toList()
-      ..sort((a, b) => b.compareTo(a));
-
-    if (dated.isEmpty) {
-      // Distinct from a lapse — this student has never been engaged at all,
-      // which may simply mean they were added recently.
-      flags.add((kind: 'never_logged', label: "Never logged an interaction", colour: context.g.brass));
-    } else {
-      final days = daysOverdue(dated.first);
-      if (days >= _staleAfterDays) {
-        flags.add((
-          kind: 'stale_contact',
-          label: "No interaction in $days days",
-          colour: context.g.warning,
-        ));
-      }
-    }
-
-    // --- B. Today's sadhana report ------------------------------------------
-    if (missing.contains(student.name)) {
-      flags.add((
-        kind: 'missing_report',
-        label: "Has not submitted today's sadhana report",
-        colour: context.g.warning,
-      ));
-    }
-
-    // --- C. Overdue association ---------------------------------------------
-    DateTime? worstOverdue;
-    for (final data in associations) {
-      final since = associationOverdueSince(data);
-      if (since == null) continue;
-      if (worstOverdue == null || since.isBefore(worstOverdue)) {
-        worstOverdue = since;
-      }
-    }
-    if (worstOverdue != null) {
-      flags.add((
-        kind: 'overdue_meeting',
-        label: "Meeting overdue by ${daysOverdue(worstOverdue)} days",
-        colour: context.g.danger,
-      ));
-    }
-
-    // --- D. Low LIT axes -----------------------------------------------------
-    //
-    // Each axis is judged on its own and reported on its own. No sum, no
-    // average, no combined figure anywhere (Section 8).
-    final sortedLit = lit.toList()
-      ..sort((a, b) {
-        final da = a['assessedAt'];
-        final db = b['assessedAt'];
-        if (da is! Timestamp) return 1;
-        if (db is! Timestamp) return -1;
-        return db.compareTo(da);
-      });
-
-    if (sortedLit.isNotEmpty) {
-      final latest = sortedLit.first;
-
-      void checkAxis(String key, String meaning) {
-        final raw = latest[key];
-        if (raw is! num) return;
-        final value = raw.toInt();
-        if (value > _lowAxis) return;
-        flags.add((
-          kind: 'lit_$key',
-          label: "$meaning ($key: $value of 5)",
-          colour: context.g.brass,
-        ));
-      }
-
-      checkAxis('L', 'Low receptivity');
-      checkAxis('I', 'Low interest');
-      checkAxis('T', 'Little available time');
-    }
-
-    // --- E. Follow-up date passed with no contact since ----------------------
-    //
-    // Approved-only, because `followUpDate` lives in `approvedSummary`.
-    DateTime? dueSince;
-    for (final log in logs) {
-      if (log['status'] != 'approved') continue;
-      final summary = log['approvedSummary'];
-      if (summary is! Map<String, dynamic>) continue;
-
-      final raw = summary['followUpDate'];
-      if (raw is! Timestamp) continue;
-
-      final due = raw.toDate();
-      if (!due.isBefore(DateTime.now())) continue;
-
-      if (dueSince == null || due.isBefore(dueSince)) dueSince = due;
-    }
-
-    if (dueSince != null) {
-      // Only still outstanding if nothing has been logged since it came due.
-      final contactedSince = dated.any((d) => d.isAfter(dueSince!));
-      if (!contactedSince) {
-        flags.add((
-          kind: 'follow_up_due',
-          label: "Follow-up was due "
-              "${DateFormat('dd MMM').format(dueSince)}, no contact since",
-          colour: Colors.brown,
-        ));
-      }
-    }
-
-    return flags;
-  }
+  Color _toneColour(PriorityTone tone) => switch (tone) {
+        PriorityTone.danger => context.g.danger,
+        PriorityTone.warning => context.g.warning,
+        PriorityTone.brass => context.g.brass,
+        PriorityTone.brown => Colors.brown,
+      };
 
   // ---------------------------------------------------------------------------
   // UI
@@ -568,7 +320,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
     );
   }
 
-  Widget _studentCard(_Priority item) {
+  Widget _studentCard(PriorityStudent item) {
     final picked = _selected.contains(item.uid);
     return GestureDetector(
       key: ValueKey('priority-${item.uid}'),
@@ -632,7 +384,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
                     height: 7,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: flag.colour,
+                      color: _toneColour(flag.tone),
                     ),
                   ),
                   const SizedBox(width: 10),

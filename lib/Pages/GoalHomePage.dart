@@ -9,6 +9,7 @@ import '../utils/GoalMetrics.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/Snackbar.dart';
 import '../widgets/GuideButtons.dart';
+import '../widgets/GuideDialog.dart';
 import '../widgets/GuideEntry.dart';
 import '../widgets/GuideGhost.dart';
 import '../widgets/GuideStates.dart';
@@ -203,6 +204,110 @@ class _CompoundTargetCardState extends State<_CompoundTargetCard> {
     }
   }
 
+  bool _deleting = false;
+
+  /// Deletes the target and its phases, after naming what will go.
+  ///
+  /// The server decides who may (`requireGoalAccess`: the target's own guide,
+  /// or a HOD); this only asks, then calls. A target is a plan, not a record
+  /// of what happened, so there is nothing to keep once the guide says it is
+  /// wrong — and a leftover plan would block the next target of that metric.
+  Future<void> _confirmDelete() async {
+    final target = widget.target;
+    final phases = target.totalPhases;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => GuideDialog(
+        title: const Text('Delete this target?'),
+        content: Text(
+          phases == 0
+              ? 'The target goes for good. You can create a new one straight away.'
+              : 'The target and its $phases phase${phases == 1 ? '' : 's'} of '
+                  'tasks go for good. You can create a new one straight away.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            key: const ValueKey('confirm-delete-target'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    setState(() => _deleting = true);
+    try {
+      await callDeleteCompoundTarget(
+        guideId: widget.guideId,
+        targetId: target.targetId,
+      );
+      if (!mounted) return;
+      showSnackbar(context, 'Target deleted', Colors.green,
+          Icons.check_circle);
+    } catch (e) {
+      if (!mounted) return;
+      // The REAL reason, never a generic line. A failure here used to read
+      // "Could not delete the target just now", which sent a guide looking for
+      // a bug in the delete while the actual cause was the callable being
+      // unreachable. The code and the server's own sentence are what tell the
+      // two apart, so both are shown.
+      showSnackbar(context, deleteFailureMessage(e), Colors.red, Icons.error);
+      // A target that will not delete still blocks the next one of its metric,
+      // because the limit counts ACTIVE targets. Abandoning is a plain
+      // Firestore write that needs no callable, so it works even when the
+      // function does not — offered here rather than leaving the guide stuck.
+      await _offerAbandonInstead();
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+  }
+
+  /// Offers the one way out that does not depend on the callable.
+  ///
+  /// Abandoning keeps the record (status `abandoned`) instead of removing it,
+  /// so it is not the same as deleting — but it clears the one-active-target
+  /// limit immediately, which is what a blocked guide actually needs.
+  Future<void> _offerAbandonInstead() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => GuideDialog(
+        title: const Text('Abandon it instead?'),
+        content: const Text(
+          'Deleting needs the server, which did not answer. Abandoning the '
+          'target works without it: the target stops being active, so you can '
+          'create a new one of this type straight away. It stays in the list '
+          'as abandoned, and can be deleted properly later.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Not now'),
+          ),
+          ElevatedButton(
+            key: const ValueKey('abandon-instead'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Abandon'),
+          ),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+    try {
+      await abandonCompoundTarget(widget.guideId, widget.target.targetId);
+      if (!mounted) return;
+      showSnackbar(context, 'Target abandoned — you can create a new one now',
+          Colors.green, Icons.check_circle);
+    } catch (e) {
+      if (!mounted) return;
+      showSnackbar(context, deleteFailureMessage(e), Colors.red, Icons.error);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final target = widget.target;
@@ -228,6 +333,22 @@ class _CompoundTargetCardState extends State<_CompoundTargetCard> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (_deleting)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 8),
+                    child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2)),
+                  )
+                else
+                  IconButton(
+                    key: const ValueKey('delete-target'),
+                    tooltip: 'Delete this target',
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(Icons.delete_outline, size: 18, color: g.mutedText),
+                    onPressed: _confirmDelete,
+                  ),
                 Container(
                   width: 40,
                   height: 40,

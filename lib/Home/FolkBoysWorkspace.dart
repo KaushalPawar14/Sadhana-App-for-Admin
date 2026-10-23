@@ -10,6 +10,7 @@ import '../theme/GuideColors.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
+import '../actions/BookActions.dart';
 import '../utils/BoardData.dart';
 import '../utils/BoardQueries.dart';
 import '../utils/BookProgressData.dart';
@@ -29,7 +30,6 @@ import '../widgets/GuideChips.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
 import 'Calendar.dart';
-import '../utils/GuideDb.dart';
 import '../widgets/GuideDialog.dart';
 
 /// FOLK Boys board workspace — the board CANVAS reached by tapping the one
@@ -509,6 +509,11 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       ValueNotifier<Map<String, Set<String>>>(const {});
   StreamSubscription<Map<String, Set<String>>>? _commitmentSub;
 
+  /// Students whose NEW suggestions (made by the server after an interaction) are not opened yet: the
+  /// profile icon of each one's card shows a dot, and the profile itself says "New suggestions ready".
+  final ValueNotifier<Set<String>> _suggestionsUnseen = ValueNotifier<Set<String>>(const {});
+  StreamSubscription<Set<String>>? _suggestionsSub;
+
   /// Books already sent to be marked seen (so a rebuild never writes twice).
   final Set<String> _sentSeen = {};
   final Map<String, Timer> _seenTimers = {};
@@ -552,11 +557,17 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       (uids) => _commitmentUnseen.value = uids,
       onError: (_) {},
     );
+    _suggestionsSub = BoardData.instance.unseenSuggestions(_guide).listen(
+      (uids) => _suggestionsUnseen.value = uids,
+      onError: (_) {},
+    );
   }
 
   @override
   void dispose() {
     _commitmentSub?.cancel();
+    _suggestionsSub?.cancel();
+    _suggestionsUnseen.dispose();
     for (final t in _seenTimers.values) {
       t.cancel();
     }
@@ -2032,7 +2043,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     if (ok != true) return;
 
     try {
-      await placementsRef(boardId).doc(boy.uid).delete();
+      await removePlacement(boardId, boy.uid);
       if (!mounted) return;
       showSnackbar(
           context, "${boy.name} removed from this board", Colors.deepOrange,
@@ -3202,7 +3213,14 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
               // comments, profile — each a 48 dp target.
               Row(
                 children: [
-                  if (group != null) GuideGroupPill(group: group),
+                  // Flexible, not a bare pill: the three icon buttons beside it are a
+                  // fixed 48 dp each, so at a large text scale — or while a predictive
+                  // back gesture renders this card at ~90% of its width — the pill's
+                  // natural width no longer fits and this Row overflowed (4.9 px at
+                  // text 1.6). The pill's own Text already ellipsises, so letting it
+                  // shrink is all that is needed; the Spacer still pushes the icons to
+                  // the right whenever there is room for them.
+                  if (group != null) Flexible(child: GuideGroupPill(group: group)),
                   const Spacer(),
                   GuideCardIconButton(
                     icon: Icons.calendar_month_outlined,
@@ -3242,17 +3260,27 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                               }),
                     ),
                   ),
-                  GuideCardIconButton(
-                    icon: Icons.person_outline_rounded,
-                    tooltip: "Profile",
-                    onTap: forceCollapsed
-                        ? null
-                        : () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => StudentProfilePage(studentUid: boy.uid),
+                  // The orange dot trail for "New suggestions ready": it ends in the profile, where the label
+                  // under the picture says so; it clears only when the guide opens those suggestions.
+                  ValueListenableBuilder<Set<String>>(
+                    valueListenable: _suggestionsUnseen,
+                    builder: (context, unseen, child) => UnseenBadge(
+                      show: unseen.contains(boy.uid),
+                      offset: const Offset(10, 10),
+                      child: child!,
+                    ),
+                    child: GuideCardIconButton(
+                      icon: Icons.person_outline_rounded,
+                      tooltip: "Profile",
+                      onTap: forceCollapsed
+                          ? null
+                          : () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => StudentProfilePage(studentUid: boy.uid),
+                                ),
                               ),
-                            ),
+                    ),
                   ),
                 ],
               ),
@@ -3602,14 +3630,18 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   /// their commitment dates... show who set it"), replacing the removed
   /// automatic-deadline/extension display entirely.
   ///
-  /// Task, 2026-09-15 — the row's own separate "Mark finished" tick
-  /// (`IconButton`, `Icons.check_circle_outline`) is REMOVED: it duplicated
-  /// the "Mark as completed" action already inside the tap-the-title assign
-  /// dialog ([_openAssignBookDialog]), and cost every row extra height for
-  /// no longer reason. Tapping the title (for any non-finished book) is now
-  /// the ONLY way to mark a book finished from this card —
-  /// [_confirmMarkBookFinished] itself is unchanged and still called from
-  /// that dialog.
+  /// Completion lives on the CHECKPOINT CIRCLE, not in the assign dialog.
+  /// Tapping the circle of an unfinished book asks "Mark this book
+  /// finished?" ([_confirmMarkBookFinished], the same single write as
+  /// before); tapping a finished one asks "Mark as not completed?"
+  /// ([_confirmMarkBookNotFinished]). The circle is tappable in every level's
+  /// list, including for a finished book, whose ROW stays untappable — the
+  /// circle's own detector is a child of the row's, so it takes the tap and
+  /// the assign dialog never opens behind the confirmation. Tapping the
+  /// title still opens the assign dialog for an unfinished book.
+  ///
+  /// The "Mark as completed" button that used to be inside that dialog is
+  /// gone; both directions now go through the circle.
   Widget _bookStatusRow({
     required _Boy boy,
     required BookConfigEntry book,
@@ -3644,8 +3676,30 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Row(
             children: [
-              Icon(icon, size: 18, color: colour),
-              const SizedBox(width: 10),
+              // The checkpoint circle is its own tap target: it marks the
+              // book completed, and un-marks it again. It sits INSIDE the
+              // row's own GestureDetector, so the child wins the tap and the
+              // assign dialog is not opened behind the confirmation. It is
+              // tappable for a finished book too, which the row itself is not.
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  _markBookSeen(boy, _bookDocId(boy, book));
+                  if (isFinished) {
+                    _confirmMarkBookNotFinished(
+                        boy: boy, book: book, entry: entry);
+                  } else {
+                    _confirmMarkBookFinished(
+                        boy: boy, book: book, entry: entry);
+                  }
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 8),
+                  child: Icon(icon, size: 18, color: colour),
+                ),
+              ),
+              const SizedBox(width: 4),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -3689,6 +3743,70 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     );
   }
 
+  /// The other half of the checkpoint circle: a book marked completed by
+  /// mistake, put back.
+  ///
+  /// ONE write, the mirror of [_confirmMarkBookFinished]: `endDate` and
+  /// `endedBy` are DELETED (not blanked — `statusForBookEntry` treats an empty
+  /// string as unfinished, but a deleted field is what a book that was never
+  /// finished actually looks like), and `isCurrentBook` is left FALSE.
+  ///
+  /// Leaving it false is the safe choice, and it is deliberate: the undefined
+  /// combination `isCurrentBook == false` with no `endDate` is already defined
+  /// by `statusForBookEntry` as `notStarted` — "the record asserts no progress,
+  /// so the caller claims none". Setting it true instead would silently credit
+  /// the student with reading a book their own report never claimed, and would
+  /// risk a second current book. `startDate` is untouched, so a book that had a
+  /// real start date keeps it.
+  ///
+  /// The "finished is never current" invariant holds here by construction: this
+  /// write removes the end date and sets nothing current.
+  Future<void> _confirmMarkBookNotFinished({
+    required _Boy boy,
+    required BookConfigEntry book,
+    required Map<String, dynamic>? entry,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => GuideDialog(
+        title: const Text("Mark as not completed?"),
+        content: Text(
+          "${book.title.isEmpty ? '(untitled)' : book.title} will go back to "
+          "not completed for ${boy.name}. It does not become their current "
+          "book.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("Mark not completed"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await markBookNotFinished(
+        studentUid: boy.uid,
+        level: book.level,
+        bookKey: book.key,
+        title: book.title,
+      );
+
+      if (!mounted) return;
+      showSnackbar(context, "Book marked not completed", Colors.green,
+          Icons.check_circle);
+    } catch (_) {
+      if (!mounted) return;
+      showSnackbar(
+          context, "Could not update the book", Colors.red, Icons.error);
+    }
+  }
   /// Master Task Part 4 item 1 — confirms, then marks a book finished in
   /// ONE write: `endDate = today`, `isCurrentBook = false` and (Part 2 of
   /// the challenge/book-completion/deep-linking task) `endedBy = 'guide'`
@@ -3752,28 +3870,14 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
 
     if (confirmed != true || !mounted) return;
 
-    final today = DateTime.now().toIso8601String().split('T')[0];
-
     try {
-      await GuideDb.instance
-          .collection('booksRead')
-          .doc('${boy.uid}_${book.level}_${book.key}')
-          .set({
-        'uid': boy.uid,
-        'level': book.level,
-        'bookKey': book.key,
-        'bookTitle': book.title,
-        'endDate': today,
-        'isCurrentBook': false,
-        // Master Task Part 2 item 3 — read by the Student app
-        // (`BookPageList.dart`) to show "Marked complete by your guide"
-        // instead of leaving a student wondering why a book they never
-        // finished themselves shows as completed.
-        'endedBy': 'guide',
-        // Part 5 item 2 — only for a book with no prior `startDate`; an
-        // already-started book keeps its real start date untouched.
-        if (!hasStarted) 'startDate': today,
-      }, SetOptions(merge: true));
+      await markBookFinished(
+        studentUid: boy.uid,
+        level: book.level,
+        bookKey: book.key,
+        title: book.title,
+        hasStarted: hasStarted,
+      );
 
       if (!mounted) return;
       showSnackbar(context, "Book marked finished", Colors.green,
@@ -3888,30 +3992,10 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                       ),
                     ),
                   ),
-                  // Part 2 item 1 — originally only offered for the
-                  // student's CURRENT book. Master Task 2026-09-10, Part 5
-                  // item 1 widens this to ANY book reaching this dialog
-                  // (this dialog only ever opens for a non-finished book —
-                  // see the row's own `onTap: isFinished ? null : ...`
-                  // gate — so a not-yet-started book can be marked
-                  // complete here too, not only a current one).
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () =>
-                          Navigator.pop(dialogContext, 'mark_finished'),
-                      icon: Icon(Icons.check_circle_outline,
-                          size: 18, color: dialogContext.g.success),
-                      label: Text(
-                        "Mark as completed",
-                        style: TextStyle(color: dialogContext.g.success),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: dialogContext.g.success.withValues(alpha: .6)),
-                      ),
-                    ),
-                  ),
+                  // The "Mark as completed" button that used to sit here is
+                  // gone: the checkpoint circle on the row itself now does
+                  // that job (and undoes it), so this dialog is once again
+                  // only about assigning a commitment date.
                 ],
               ),
               actions: [
@@ -3934,58 +4018,20 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
 
     if (!mounted) return;
 
-    // Part 2 item 2 — reuses `_confirmMarkBookFinished` verbatim (its own
-    // confirmation dialog, its own single `endDate`+`isCurrentBook` write)
-    // rather than a second implementation of "mark finished" here.
-    if (confirmed == 'mark_finished') {
-      await _confirmMarkBookFinished(boy: boy, book: book, entry: entry);
-      return;
-    }
-
     if (confirmed is! DateTime) return;
 
-    final commitmentDate = confirmed.toIso8601String().split('T')[0];
-    // Master Task Part 4 item 2 — the day the guide ASSIGNS the book, not
-    // the commitment/due date the guide just picked (which the student
-    // reads as a future deadline, `commitmentDate` above). Same
-    // `yyyy-MM-dd` string format the student app's own `startDate` already
-    // uses (`Students/.../BookPageList.dart`'s `picked.toIso8601String()
-    // .split('T')[0]`), so both write paths agree on the field's shape.
-    final startDate = DateTime.now().toIso8601String().split('T')[0];
-
     try {
-      // A transaction, so the doc is read at the moment of writing: a book
-      // that is already completed (an end date, or marked finished by the
-      // student or a guide) is never made the student's CURRENT book.
-      final bookRef = GuideDb.instance
-          .collection('booksRead')
-          .doc('${boy.uid}_${book.level}_${book.key}');
-      final assigned = await GuideDb.instance
-          .runTransaction<bool>((tx) async {
-        final latest = (await tx.get(bookRef)).data();
-        final endDate = latest?['endDate'];
-        final endedBy = latest?['endedBy'];
-        final completed =
-            (endDate != null && endDate.toString().trim().isNotEmpty) ||
-                latest?['finishedViaButton'] == true ||
-                (endedBy != null && endedBy.toString().trim().isNotEmpty);
-        if (completed) return false;
-        tx.set(
-            bookRef,
-            {
-              'uid': boy.uid,
-              'level': book.level,
-              'bookKey': book.key,
-              'bookTitle': book.title,
-              'isCurrentBook': true,
-              'startDate': startDate,
-              'commitmentDate': commitmentDate,
-              'commitmentSetAt': FieldValue.serverTimestamp(),
-              'commitmentSetBy': 'guide',
-            },
-            SetOptions(merge: true));
-        return true;
-      });
+      // One shared write (actions/BookActions.dart): the AI agent assigns a book
+      // through exactly this. A transaction, so a book that is already completed
+      // is never made the student's CURRENT book.
+      final assigned = await assignBook(
+        guideId: _guide,
+        studentUid: boy.uid,
+        level: book.level,
+        bookKey: book.key,
+        title: book.title,
+        commitment: confirmed,
+      );
 
       if (!assigned) {
         if (!mounted) return;
@@ -3997,42 +4043,11 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
         return;
       }
 
-      // The admin who set the commitment has seen it: it must not light their own dot.
-      BoardData.instance.markBooksSeen(_guide, boy.uid, ['${boy.uid}_${book.level}_${book.key}']);
-
-      await _notifyStudentOfBookAssignment(
-        studentUid: boy.uid,
-        bookTitle: book.title,
-        commitmentDate: commitmentDate,
-      );
-
       if (!mounted) return;
       showSnackbar(context, "Book assigned", Colors.green, Icons.check_circle);
     } catch (_) {
       if (!mounted) return;
       showSnackbar(context, "Could not assign the book", Colors.red, Icons.error);
-    }
-  }
-
-  /// Part 3 item 2 — the "book assigned" push now goes through the server
-  /// (`HierarchyApi.sendStudentNotification`, kind `book_assigned`): the
-  /// student's FCM token is never read by the app, and the server builds the
-  /// same title/body this method used to send itself.
-  Future<void> _notifyStudentOfBookAssignment({
-    required String studentUid,
-    required String bookTitle,
-    required String commitmentDate,
-  }) async {
-    try {
-      await HierarchyApi.instance.sendStudentNotification({
-        'kind': 'book_assigned',
-        'studentUid': studentUid,
-        'bookTitle': bookTitle,
-        'commitmentDate': commitmentDate,
-      });
-    } catch (_) {
-      // A failed notification must never undo the assignment write, which
-      // has already landed by the time this runs.
     }
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../Services/UpdateFCM.dart';
+import '../actions/LitActions.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
@@ -104,7 +105,6 @@ class _LitEntrySheet extends StatefulWidget {
 }
 
 class _LitEntrySheetState extends State<_LitEntrySheet> {
-  final FirebaseFirestore _firestore = GuideDb.instance;
   final TextEditingController _evidence = TextEditingController();
 
   /// Deliberately null until the guide picks. No axis is pre-filled, so an
@@ -173,20 +173,18 @@ class _LitEntrySheetState extends State<_LitEntrySheet> {
     setState(() => _saving = true);
 
     try {
-      // add(), never set() — a reassessment is a new document beside the old
-      // one, never a replacement for it.
-      await _firestore.collection('litAssessments').add({
-        'studentUid': widget.studentUid,
-        'studentName': widget.studentName,
-        'guideId': guide,
-        'L': _scores['L'],
-        'I': _scores['I'],
-        'T': _scores['T'],
-        'evidence': _evidence.text.trim(),
-        'confidence': _confidence,
-        'sourceInteractionId': widget.sourceInteractionId,
-        'assessedAt': FieldValue.serverTimestamp(),
-      });
+      // A reassessment is a new document beside the old one, never a replacement
+      // for it. One shared write (actions/LitActions.dart): the AI agent records a
+      // reading through exactly this.
+      await saveLitAssessment(
+        studentUid: widget.studentUid,
+        studentName: widget.studentName,
+        guideId: guide,
+        scores: {'L': _scores['L'], 'I': _scores['I'], 'T': _scores['T']},
+        evidence: _evidence.text,
+        confidence: _confidence,
+        sourceInteractionId: widget.sourceInteractionId,
+      );
 
       if (!mounted) return;
       Navigator.pop(context, true);
@@ -524,7 +522,7 @@ class _LitHistorySectionState extends State<LitHistorySection> {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Padding(
                 padding: EdgeInsets.all(20),
-                child: const GuideWait(),
+                child: GuideWait(),
               );
             }
 

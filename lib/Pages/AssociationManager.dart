@@ -3,13 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../Services/HierarchyApi.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/SeenMarkers.dart';
 import '../utils/SelectableDelete.dart';
+import '../actions/AssociationActions.dart';
+import '../actions/DeleteActions.dart';
 import '../utils/Snackbar.dart';
+import '../utils/VoiceNote.dart';
+import '../widgets/VoiceNoteButton.dart';
 import '../utils/StudentScope.dart';
+import 'InteractionLogger.dart';
 import 'OverdueAssociations.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
@@ -41,9 +45,6 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
   final FirebaseFirestore _firestore = GuideDb.instance;
 
   String? _selectedGuide;
-
-  /// True only for the HOD, who may delete any record.
-  bool get _isHod => AdminProfileProvider.viewerIsHod;
 
   /// HOD and Guide tabs mix several admins' records together. Cards add a
   /// guide label in this mode so mixed records stay attributable.
@@ -115,26 +116,6 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
     }
   }
 
-  Future<void> _notifyStudent(
-    String studentUid,
-    String title,
-    String body,
-  ) async {
-    if (studentUid.isEmpty) return;
-
-    // The server applies the student's `associationUpdates` preference and
-    // owns the FCM token, so there is nothing to look up here.
-    try {
-      await HierarchyApi.instance.sendStudentNotification({
-        'kind': 'association_update',
-        'studentUid': studentUid,
-        'title': title,
-        'body': body,
-      });
-    } catch (_) {
-      // A failed notification must not roll back the status change.
-    }
-  }
 
   /// Which admin a record belongs to — shown **only** where the tabs mix
   /// several admins together (HOD, Guide). For everyone else this returns an
@@ -204,17 +185,10 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
     );
 
     try {
-      await _firestore.collection('associations').doc(docId).update({
-        'confirmedDate': Timestamp.fromDate(confirmed),
-        'status': 'confirmed',
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      await _notifyStudent(
-        (data['studentUid'] ?? '').toString(),
-        "Meeting Confirmed",
-        "Your meeting is confirmed for "
-            "${DateFormat('dd MMM yyyy, hh:mm a').format(confirmed)}",
+      await confirmMeeting(
+        docId,
+        studentUid: (data['studentUid'] ?? '').toString(),
+        when: confirmed,
       );
 
       if (!mounted) return;
@@ -225,17 +199,50 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
     }
   }
 
+  /// Moves a confirmed meeting to another day and time, and tells the student.
+  ///
+  /// Added with the AI agent, which may only do what a guide can do by hand: the
+  /// app could confirm a request and cancel a meeting but not move one, so the
+  /// Upcoming card gained this, on the same shared write the agent uses.
+  Future<void> _rescheduleMeeting(String docId, Map<String, dynamic> data) async {
+    final current = data['confirmedDate'];
+    final initial = current is Timestamp ? current.toDate() : DateTime.now();
+
+    final date = await showDatePicker(
+      context: context,
+      initialDate: initial.isBefore(DateTime.now()) ? DateTime.now() : initial,
+      firstDate: DateTime.now().subtract(const Duration(days: 1)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (date == null || !mounted) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initial),
+    );
+    if (time == null) return;
+
+    final moved = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+
+    try {
+      await rescheduleMeeting(
+        docId,
+        studentUid: (data['studentUid'] ?? '').toString(),
+        when: moved,
+      );
+      if (!mounted) return;
+      showSnackbar(context, "Meeting rescheduled", Colors.green, Icons.check_circle);
+    } catch (_) {
+      if (!mounted) return;
+      showSnackbar(context, "Could not reschedule", Colors.red, Icons.error);
+    }
+  }
+
   Future<void> _cancelRequest(String docId, Map<String, dynamic> data) async {
     try {
-      await _firestore.collection('associations').doc(docId).update({
-        'status': 'cancelled',
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      await _notifyStudent(
-        (data['studentUid'] ?? '').toString(),
-        "Meeting Cancelled",
-        "Your meeting request was cancelled",
+      await cancelMeeting(
+        docId,
+        studentUid: (data['studentUid'] ?? '').toString(),
       );
 
       if (!mounted) return;
@@ -264,15 +271,10 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 14),
-                TextFormField(
-                  initialValue: notes,
-                  autofocus: true,
-                  maxLines: 4,
+                _MeetingNotesField(
+                  initialText: notes,
+                  studentName: (data['studentName'] ?? '').toString(),
                   onChanged: (v) => notes = v,
-                  decoration: InputDecoration(
-                    labelText: "Notes from the meeting",
-                    alignLabelWithHint: true,
-                  ),
                 ),
               ],
             ),
@@ -296,11 +298,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
     if (saved != true) return;
 
     try {
-      await _firestore.collection('associations').doc(docId).update({
-        'status': 'completed',
-        'guideNotes': notes.trim(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await completeMeeting(docId, notes: notes);
 
       if (!mounted) return;
       showSnackbar(context, "Meeting completed", Colors.blue, Icons.check_circle);
@@ -313,6 +311,90 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
   // ---------------------------------------------------------------------------
   // Guide-initiated meeting
   // ---------------------------------------------------------------------------
+
+  /// "Add interaction" — the guide's own notes about a student, which used
+  /// to be a separate feature reached from the Student profile.
+  ///
+  /// Interactions are GUIDE-APP ONLY and keep their own collection
+  /// (`interactionLogs`) and document shape, untouched: nothing is migrated,
+  /// nothing is written into `associations`, and the Student app — which never
+  /// read `interactionLogs` and still does not — is unaffected. Only the way
+  /// in moved, so every existing reader (This Week's follow-ups, the calendar,
+  /// Priority students, the weekly digests, the AI extraction) keeps working
+  /// on exactly the data it always read.
+  ///
+  /// This screen is roster-wide, so it asks WHICH student first — the same
+  /// scoped list `_openCreateMeetingSheet` uses — then opens the unchanged
+  /// `InteractionLoggerPage`, which owns the form, the save and its own
+  /// "Interaction saved" confirmation.
+  Future<void> _openAddInteractionSheet(String guide) async {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> students;
+    try {
+      final snap = await StudentScope.current().studentsGet();
+      students = snap.docs.toList()
+        ..sort((a, b) => (a.data()['name'] ?? '')
+            .toString()
+            .toLowerCase()
+            .compareTo((b.data()['name'] ?? '').toString().toLowerCase()));
+    } catch (_) {
+      if (mounted) {
+        showSnackbar(context, "Could not load students", Colors.red, Icons.error);
+      }
+      return;
+    }
+    if (!mounted) return;
+    if (students.isEmpty) {
+      showSnackbar(context, "No students to log an interaction for",
+          Colors.orange, Icons.info_outline);
+      return;
+    }
+
+    final chosen = await showDialog<QueryDocumentSnapshot<Map<String, dynamic>>>(
+      context: context,
+      builder: (dialogContext) => GuideDialog(
+        title: const Text("Add interaction"),
+        // A scrolling COLUMN, not a shrink-wrapped ListView: the dialog
+        // measures its content's intrinsic height, and a shrink-wrapping
+        // viewport cannot report one (it would have to build every child).
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final d in students)
+                  ListTile(
+                    dense: true,
+                    title: Text((d.data()['name'] ?? '').toString()),
+                    onTap: () => Navigator.pop(dialogContext, d),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text("Cancel"),
+          ),
+        ],
+      ),
+    );
+
+    if (chosen == null || !mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => InteractionLoggerPage(
+          studentUid: chosen.id,
+          studentName: (chosen.data()['name'] ?? '').toString(),
+        ),
+      ),
+    );
+    // Coming back, the history list below is a live stream, so a newly saved
+    // interaction is already there; this only refreshes the rest of the screen.
+    if (mounted) setState(() {});
+  }
 
   Future<void> _openCreateMeetingSheet(String guide) async {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> students;
@@ -386,25 +468,12 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
               );
 
               try {
-                await _firestore.collection('associations').add({
-                  'studentUid': studentUid,
-                  'studentName': studentName,
-                  'guideId': guide,
-                  'requestedBy': 'guide',
-                  'preferredDate': Timestamp.fromDate(preferred),
-                  'confirmedDate': null,
-                  'status': 'pending',
-                  'studentNotes': notes.trim(),
-                  'guideNotes': '',
-                  'createdAt': FieldValue.serverTimestamp(),
-                  'updatedAt': FieldValue.serverTimestamp(),
-                });
-
-                await _notifyStudent(
-                  studentUid!,
-                  "Meeting Scheduled",
-                  "Your guide has requested a meeting on "
-                      "${DateFormat('dd MMM yyyy, hh:mm a').format(preferred)}",
+                await requestMeeting(
+                  guideId: guide,
+                  studentUid: studentUid!,
+                  studentName: studentName,
+                  preferred: preferred,
+                  message: notes,
                 );
 
                 if (!sheetContext.mounted) return;
@@ -631,16 +700,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
   /// manage (`StudentScope.canManage`). A record not yet stamped falls back to
   /// its own `guideId` being the signed-in admin.
   Future<bool> _canDeleteAssociation(Map<String, dynamic> data) async {
-    if (_isHod) return true;
-    if (!data.containsKey('scopeGuide')) {
-      return (data['guideId'] ?? '').toString() == (_selectedGuide ?? '');
-    }
-    return StudentScope.current().canManage(StudentRef(
-      uid: (data['studentUid'] ?? '').toString(),
-      guideId: (data['scopeGuide'] ?? '').toString(),
-      teamGuide: (data['scopeTeam'] ?? '').toString(),
-      gender: (data['scopeGender'] ?? '').toString(),
-    ));
+    return canDeleteStamped(data, AdminProfileProvider.require());
   }
 
   Future<void> _deleteSelected() async {
@@ -874,17 +934,10 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
     }
 
     try {
-      await _firestore.collection('associations').doc(docId).update({
-        'confirmedDate': proposed,
-        'status': 'confirmed',
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      await _notifyStudent(
-        (data['studentUid'] ?? '').toString(),
-        "Meeting Confirmed",
-        "Your meeting is confirmed for "
-            "${DateFormat('dd MMM yyyy, hh:mm a').format(proposed.toDate())}",
+      await acceptStudentProposal(
+        docId,
+        studentUid: (data['studentUid'] ?? '').toString(),
+        proposed: proposed,
       );
 
       if (!mounted) return;
@@ -949,6 +1002,20 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              key: ValueKey('reschedule-$docId'),
+              onPressed: () => _rescheduleMeeting(docId, data),
+              icon: const Icon(Icons.edit_calendar, size: 18),
+              label: const Text("Reschedule"),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: context.g.brass,
+                side: BorderSide(color: context.g.brass),
+              ),
+            ),
           ),
         ],
       ),
@@ -1088,10 +1155,9 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
           return status == 'completed' || status == 'cancelled';
         }).toList();
 
-        if (upcoming.isEmpty && history.isEmpty) {
-          return const Center(child: Text("Nothing here yet"));
-        }
-
+        // No early return when there are no meetings: a student can have
+        // interaction notes and no meetings at all, and those still belong on
+        // this tab. The empty case is handled inside the list instead.
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
@@ -1116,9 +1182,111 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                   .map((d) =>
                       _historyCard(d.id, d.data() as Map<String, dynamic>)),
             ],
+            // Interactions live here too now — the guide's own notes, in the
+            // same place as everything else that happened with a student.
+            _interactionsSection(
+              nothingElseHere: upcoming.isEmpty && history.isEmpty,
+            ),
           ],
         );
       },
+    );
+  }
+
+  /// The interaction notes this admin may see, newest first, under their own
+  /// heading in the history tab. Read straight from `interactionLogs` through
+  /// the same scope stream every other history collection uses, so an admin
+  /// sees exactly the notes about the students they may see.
+  /// [nothingElseHere] is true when the tab has no meetings at all, so this
+  /// section owns the "nothing yet" message instead of the caller.
+  Widget _interactionsSection({bool nothingElseHere = false}) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: StudentScope.current().historyStream('interactionLogs'),
+      builder: (context, snapshot) {
+        final docs = (snapshot.data?.docs ?? []).toList()
+          ..sort((a, b) {
+            final ad = _interactionWhen(a.data() as Map<String, dynamic>);
+            final bd = _interactionWhen(b.data() as Map<String, dynamic>);
+            if (ad == null || bd == null) return 0;
+            return bd.compareTo(ad); // newest first
+          });
+        if (docs.isEmpty) {
+          return nothingElseHere
+              ? const Padding(
+                  padding: EdgeInsets.only(top: 40),
+                  child: Center(child: Text("Nothing here yet")),
+                )
+              : const SizedBox.shrink();
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 20),
+            Text(
+              "Interactions (${docs.length})",
+              style: const TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            for (final d in docs)
+              _interactionCard(d.id, d.data() as Map<String, dynamic>),
+          ],
+        );
+      },
+    );
+  }
+
+  /// When an interaction happened: its own `interactionDate`, falling back to
+  /// `createdAt`. Older records carry only the latter, so sorting and the date
+  /// line must not depend on `interactionDate` being there.
+  static DateTime? _interactionWhen(Map<String, dynamic> data) {
+    for (final key in ['interactionDate', 'createdAt']) {
+      final v = data[key];
+      if (v is Timestamp) return v.toDate();
+    }
+    return null;
+  }
+
+  /// One interaction note. Tapping it opens the SAME detail page the
+  /// Interactions list always used, so editing and deleting are unchanged.
+  Widget _interactionCard(String docId, Map<String, dynamic> data) {
+    final g = context.g;
+    final when = _interactionWhen(data);
+    // `approvedSummary` is a MAP (the same one `InteractionLogger._logCard`
+    // reads), never a string — `.toString()` on it would print the raw map.
+    // The fallback to `extractedDraft` is that card's too: a stray
+    // pre-redesign record has neither populated.
+    final source = (data['approvedSummary'] ?? data['extractedDraft'])
+        as Map<String, dynamic>?;
+    final action = (source?['recommendedNextAction'] ?? '').toString().trim();
+    final dictation = (data['rawDictation'] ?? '').toString().trim();
+    final body = action.isNotEmpty ? action : dictation;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        leading: Icon(Icons.record_voice_over, color: g.brass),
+        title: Text((data['studentName'] ?? '').toString()),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (when != null)
+              Text(DateFormat('dd MMM yyyy').format(when),
+                  style: context.gText.caption),
+            if (body.isNotEmpty)
+              Text(body, maxLines: 2, overflow: TextOverflow.ellipsis),
+          ],
+        ),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => InteractionDetailPage(
+              docId: docId,
+              studentName: (data['studentName'] ?? '').toString(),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1204,20 +1372,107 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                     _buildUpcomingAndHistory(guide),
                   ],
                 ),
-          // Creating a meeting only belongs on the pending tab.
-          floatingActionButton: (guide != null && _tabController.index == 0)
-              ? FloatingActionButton.extended(
-                  backgroundColor: context.g.brass,
-                  onPressed: () => _openCreateMeetingSheet(guide),
-                  icon: Icon(Icons.add, color: context.g.onPrimary),
-                  label: Text(
-                    "New Meeting",
-                    style: TextStyle(color: context.g.onPrimary),
-                  ),
-                )
-              : null,
+          // Creating a MEETING still only belongs on the pending tab; adding an
+          // INTERACTION is relevant on both, so it sits above it on either.
+          floatingActionButton: guide == null
+              ? null
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    FloatingActionButton.extended(
+                      heroTag: 'addInteraction',
+                      backgroundColor: context.g.surface,
+                      onPressed: () => _openAddInteractionSheet(guide),
+                      icon: Icon(Icons.record_voice_over, color: context.g.brass),
+                      label: Text(
+                        "Add interaction",
+                        style: TextStyle(color: context.g.brass),
+                      ),
+                    ),
+                    if (_tabController.index == 0) ...[
+                      const SizedBox(height: 10),
+                      FloatingActionButton.extended(
+                        heroTag: 'newMeeting',
+                        backgroundColor: context.g.brass,
+                        onPressed: () => _openCreateMeetingSheet(guide),
+                        icon: Icon(Icons.add, color: context.g.onPrimary),
+                        label: Text(
+                          "New Meeting",
+                          style: TextStyle(color: context.g.onPrimary),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
         );
       },
+    );
+  }
+}
+
+/// The notes box of "Complete Meeting", with the mic under it.
+///
+/// A widget of its own so that it owns its controller. The controller used to be
+/// created before the dialog opened and disposed the moment it closed — which is
+/// while the dialog's exit animation is still painting this very field, and
+/// Flutter rightly objects to a disposed controller being used. A widget disposes
+/// its controller when it is actually removed from the tree, not before.
+class _MeetingNotesField extends StatefulWidget {
+  const _MeetingNotesField({
+    required this.initialText,
+    required this.studentName,
+    required this.onChanged,
+  });
+
+  final String initialText;
+  final String studentName;
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<_MeetingNotesField> createState() => _MeetingNotesFieldState();
+}
+
+class _MeetingNotesFieldState extends State<_MeetingNotesField> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialText);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextFormField(
+          controller: _controller,
+          autofocus: true,
+          maxLines: 4,
+          onChanged: widget.onChanged,
+          decoration: const InputDecoration(
+            labelText: "Notes from the meeting",
+            alignLabelWithHint: true,
+          ),
+        ),
+        // Speak it instead: English, Hindi, Gujarati or a mix, turned into clean
+        // English and added after whatever is already here — editable before Save.
+        VoiceNoteButton(
+          purpose: VoicePurpose.associationNote,
+          studentName: widget.studentName,
+          existingText: () => _controller.text,
+          onText: (clean) {
+            _controller.text = appendNote(_controller.text, clean);
+            _controller.selection =
+                TextSelection.collapsed(offset: _controller.text.length);
+            widget.onChanged(_controller.text);
+          },
+        ),
+      ],
     );
   }
 }

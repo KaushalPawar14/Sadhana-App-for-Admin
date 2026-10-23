@@ -141,7 +141,7 @@ void main() {
       const allowedLines = <String>[
         'Colors.brown.shade400',
         'Colors.yellow',
-        'colour: Colors.brown',
+        'PriorityTone.brown => Colors.brown',
       ];
       final hits = <String>[];
       for (final f in files) {

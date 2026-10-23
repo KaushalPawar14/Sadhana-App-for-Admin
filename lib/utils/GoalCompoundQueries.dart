@@ -160,6 +160,81 @@ int tierFor(int value, List<int> ladder) {
   return tier;
 }
 
+/// What one student should do about a book during a books task, worked out
+/// on the server from their real `booksRead` docs (goals.js
+/// `bookPlansForUids`): either a book is already open and wants finishing,
+/// or there is none and the next one needs assigning.
+///
+/// A books task on its own says "move these three from 1 book to 2", which
+/// is true but not something a guide can act on. These are the three things
+/// he actually has to go and do.
+class BookAction {
+  /// Finish the book already open.
+  static const String finish = 'finish';
+
+  /// No book open — assign the next one.
+  static const String start = 'start';
+
+  final String uid;
+  final String action;
+  final String? bookTitle;
+
+  const BookAction({required this.uid, required this.action, this.bookTitle});
+
+  static BookAction? from(Object? raw) {
+    if (raw is! Map) return null;
+    final uid = (raw['uid'] ?? '').toString();
+    final action = (raw['action'] ?? '').toString();
+    if (uid.isEmpty || (action != finish && action != start)) return null;
+    final title = raw['bookTitle'];
+    return BookAction(
+      uid: uid,
+      action: action,
+      bookTitle: title == null || title.toString().trim().isEmpty
+          ? null
+          : title.toString(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'uid': uid,
+        'action': action,
+        'bookTitle': bookTitle,
+      };
+
+  /// The line the guide reads: "Ravi: finish Bhagavad Gita by Sunday", or
+  /// "Assign the next book to Amit".
+  ///
+  /// [byDay] is passed only for the phase the guide is on NOW — a deadline
+  /// on a phase that has not started yet would be a date nobody agreed to.
+  /// It is computed where it is shown rather than stored, because a stored
+  /// one goes stale the moment the phase moves.
+  String describe(String? name, {String? byDay}) {
+    final who = (name == null || name.trim().isEmpty) ? 'A student' : name;
+    if (action == start) return 'Assign the next book to $who';
+    final title = bookTitle ?? 'their current book';
+    return byDay == null
+        ? '$who: finish $title'
+        : '$who: finish $title by $byDay';
+  }
+}
+
+/// The day the guide should have the phase he is on now finished by.
+///
+/// Monday morning's sweep is what judges a phase, so the real deadline is
+/// the Sunday before it. Said plainly on the two days where "Sunday" would
+/// be a confusing way to describe it.
+String phaseDueDayLabel([DateTime? now]) {
+  switch ((now ?? DateTime.now()).weekday) {
+    case DateTime.sunday:
+      return 'today';
+    case DateTime.saturday:
+      return 'tomorrow';
+    default:
+      return 'Sunday';
+  }
+}
+
 /// Task-list model task types — see [CompoundTask].
 const String kTaskTypeRoster = 'roster';
 const String kTaskTypeValue = 'value';
@@ -180,6 +255,10 @@ class CompoundTask {
   final int? toLevel;
   final List<String> studentUids;
 
+  /// Books targets only, and only on plans generated after this existed —
+  /// an older plan simply has none and renders exactly as it used to.
+  final List<BookAction> bookActions;
+
   const CompoundTask({
     required this.type,
     this.fromCount,
@@ -187,6 +266,7 @@ class CompoundTask {
     this.fromLevel,
     this.toLevel,
     this.studentUids = const [],
+    this.bookActions = const [],
   });
 
   bool get isRoster => type == kTaskTypeRoster;
@@ -196,6 +276,7 @@ class CompoundTask {
     final type = (raw['type'] ?? '').toString();
     if (type != kTaskTypeRoster && type != kTaskTypeValue) return null;
     final uidsRaw = raw['studentUids'];
+    final actionsRaw = raw['bookActions'];
     return CompoundTask(
       type: type,
       fromCount: (raw['fromCount'] as num?)?.toInt(),
@@ -204,6 +285,9 @@ class CompoundTask {
       toLevel: (raw['toLevel'] as num?)?.toInt(),
       studentUids: uidsRaw is List
           ? uidsRaw.map((e) => e.toString()).toList()
+          : const [],
+      bookActions: actionsRaw is List
+          ? actionsRaw.map(BookAction.from).whereType<BookAction>().toList()
           : const [],
     );
   }
@@ -215,6 +299,8 @@ class CompoundTask {
         if (fromLevel != null) 'fromLevel': fromLevel,
         if (toLevel != null) 'toLevel': toLevel,
         if (type == kTaskTypeValue) 'studentUids': studentUids,
+        if (bookActions.isNotEmpty)
+          'bookActions': bookActions.map((a) => a.toMap()).toList(),
       };
 
   /// One human-readable checklist line, e.g. "Bring roster from 6 to 8
@@ -570,6 +656,40 @@ int compoundWeeksRemaining(DateTime endDate, {DateTime? from}) {
 /// this — the actual phase plan is generated AND written server-side (the
 /// only place the real per-student standing data and the OpenAI call belong;
 /// see `functions/goals.js`'s `generateCompoundPlan`).
+/// A guide already has an active target of this metric.
+///
+/// Thrown rather than returned so no caller can create a second one by
+/// ignoring a boolean. [message] is written for the guide and shown as it is.
+class CompoundTargetLimitException implements Exception {
+  const CompoundTargetLimitException(this.metric, this.message);
+  final String metric;
+  final String message;
+  @override
+  String toString() => message;
+}
+
+/// The guide's ACTIVE target of [metric], if they have one.
+///
+/// "Active" is the only status that blocks a new target: a completed or
+/// abandoned one is history, and a guide must be able to start again.
+Future<CompoundTarget?> activeTargetOfMetric(
+    String guideId, String metric) async {
+  final snap = await compoundTargetsRef(guideId)
+      .where('metric', isEqualTo: metric)
+      .where('status', isEqualTo: kCompoundStatusActive)
+      .limit(1)
+      .get();
+  if (snap.docs.isEmpty) return null;
+  final doc = snap.docs.first;
+  return CompoundTarget.from(guideId, doc.id, doc.data());
+}
+
+/// The sentence a guide sees when they already have one.
+String targetLimitMessage(String metric) =>
+    metric == 'books'
+        ? 'Delete your current book reading target first'
+        : 'Delete your current chanting target first';
+
 Future<String> createCompoundTargetShell({
   required String guideId,
   required String metric,
@@ -579,6 +699,14 @@ Future<String> createCompoundTargetShell({
 }) async {
   if (!validCompoundMetric(metric)) {
     throw ArgumentError('Compound targets support only chanting or books.');
+  }
+
+  // ONE active target per metric (Master 1, A1). Checked here rather than
+  // only in the screen, so every path to a new target goes past it — the
+  // setup page, a retry after a failed plan, or anything added later.
+  final existing = await activeTargetOfMetric(guideId, metric);
+  if (existing != null) {
+    throw CompoundTargetLimitException(metric, targetLimitMessage(metric));
   }
 
   final targetDoc = compoundTargetsRef(guideId).doc();
@@ -598,6 +726,64 @@ Future<String> createCompoundTargetShell({
 
 Future<void> abandonCompoundTarget(String guideId, String targetId) =>
     compoundTargetRef(guideId, targetId).update({'status': kCompoundStatusAbandoned});
+
+/// Why a delete (or an abandon) failed, in words a guide can act on — and
+/// never a generic "could not do that just now".
+///
+/// A generic line is worse than useless here: it reads as "the delete is
+/// broken" when the usual cause is the callable being unreachable, which is a
+/// different problem with a different fix. So the code is always shown, with a
+/// plain sentence for the ones that mean something specific:
+///
+///   unavailable / internal / deadline-exceeded  the function did not answer
+///   unauthenticated                             the sign-in lapsed
+///   permission-denied                           not ours, or the door is shut
+///   not-found                                   already gone
+String deleteFailureMessage(Object error) {
+  if (error is FirebaseFunctionsException) {
+    final plain = switch (error.code) {
+      'unavailable' || 'internal' || 'deadline-exceeded' =>
+        'The server did not answer',
+      'unauthenticated' => 'Your sign-in has lapsed — sign in again',
+      'permission-denied' =>
+        'Refused — either the target is not yours, or the app is shut out '
+            'of this function',
+      'not-found' => 'That target no longer exists',
+      _ => null,
+    };
+    final detail = (error.message ?? '').trim();
+    return plain != null
+        ? '$plain (${error.code})'
+        : 'Delete failed: ${error.code}'
+            '${detail.isEmpty ? '' : ' — $detail'}';
+  }
+  if (error is FirebaseException) {
+    final detail = (error.message ?? '').trim();
+    return 'Delete failed: ${error.code}'
+        '${detail.isEmpty ? '' : ' — $detail'}';
+  }
+  return 'Delete failed: $error';
+}
+
+/// Deletes a target and its phases for good, through
+/// `functions/goals.js`'s `deleteCompoundTarget`.
+///
+/// A callable rather than a client delete because the phases are a
+/// subcollection — deleting the target document alone would leave them
+/// orphaned — and because who may delete one is the server's decision
+/// (`requireGoalAccess`: the target's own guide, or a HOD).
+///
+/// Returns how many phase documents went with it, for the confirmation.
+Future<int> callDeleteCompoundTarget({
+  required String guideId,
+  required String targetId,
+}) async {
+  final result = await FirebaseFunctions.instanceFor(region: kFunctionsRegion)
+      .httpsCallable('deleteCompoundTarget')
+      .call<Map<String, dynamic>>({'guideId': guideId, 'targetId': targetId});
+  final n = result.data['phasesDeleted'];
+  return n is num ? n.toInt() : 0;
+}
 
 /// Calls `functions/goals.js`'s `generateCompoundPlan` callable — the ONLY
 /// place the real AI call happens (server-side, per `PhasePlanService.dart`'s
