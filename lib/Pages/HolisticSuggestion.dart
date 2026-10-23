@@ -6,6 +6,7 @@ import '../Services/GeminiService.dart';
 import '../Services/UpdateFCM.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
+import '../utils/StudentSuggestions.dart';
 import '../theme/GuideTheme.dart';
 import '../utils/GuideDb.dart';
 import '../utils/LeaderboardData.dart' show dottedField;
@@ -75,13 +76,31 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
   /// and `booksRead` — plus the two Phase 5 collections. No new ABCDE
   /// collection is introduced, and none of these reads happen until the guide
   /// presses the button.
-  Future<String> _gatherContext() async {
+  /// [guideId] is the SIGNED-IN guide, not the student's assigned one —
+  /// the targets that belong in the prompt are the goals of whoever is
+  /// asking, since they are what he is trying to move.
+  Future<String> _gatherContext(String? guideId) async {
     final lines = <String>[];
 
     final role = (widget.profileData['role'] ?? '').toString();
-    final guideId = (widget.profileData['guideId'] ?? '').toString();
+    final assignedGuide = (widget.profileData['guideId'] ?? '').toString();
     if (role.isNotEmpty) lines.add("Residence: $role");
-    if (guideId.isNotEmpty) lines.add("Assigned guide: $guideId");
+    if (assignedGuide.isNotEmpty) lines.add("Assigned guide: $assignedGuide");
+
+    // --- What this student has committed to -----------------------------
+    //
+    // A suggestion that asks for more than they already promised, or that
+    // ignores a promise they are keeping, is not a useful one.
+    final rounds = widget.profileData['commitmentRounds'];
+    final reading = widget.profileData['readingCommitmentMinutes'];
+    final commitments = <String>[
+      if (rounds is num && rounds > 0) "${rounds.toInt()} rounds a day",
+      if (reading is num && reading > 0)
+        "${reading.toInt()} minutes of reading a day",
+    ];
+    lines.add(commitments.isEmpty
+        ? "Their own commitments: none set yet."
+        : "Their own commitments: ${commitments.join('; ')}.");
 
     // --- Sadhana points of this month (the new point system, `competition/{name}`) ---------
     try {
@@ -336,6 +355,55 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
       // Ignore — a suggestion without a LIT reading is still useful.
     }
 
+    // --- The asking guide's own active targets ---------------------------
+    //
+    // Master 1 B: "the guide's active targets (the guide's goals and
+    // mindset)". A suggestion that also moves a target the guide is
+    // already working on is worth more to him than one that does not —
+    // the prompt is explicit that this must never be at the student's
+    // expense.
+    if (guideId != null && guideId.isNotEmpty) {
+      try {
+        final targets = await _firestore
+            .collection('guideTargets')
+            .doc(guideId)
+            .collection('targets')
+            .where('status', isEqualTo: 'active')
+            .get();
+
+        if (targets.docs.isNotEmpty) {
+          lines.add("");
+          lines.add(
+            "Your own active targets — the goals you are working toward "
+            "with this whole group:",
+          );
+          for (final doc in targets.docs) {
+            final t = doc.data();
+            final metric = (t['metric'] ?? '').toString();
+            final unit = metric == 'books' ? 'books finished' : 'rounds';
+            final students = t['studentCountGoal'];
+            final value = t['perStudentValueGoal'];
+            final end = t['endDate'];
+            final by = end is Timestamp
+                ? " by ${DateFormat('dd MMM yyyy').format(end.toDate())}"
+                : "";
+            final phase = t['currentPhase'];
+            final total = t['totalPhases'];
+            final where = (phase is num && total is num)
+                ? " (on phase ${phase.toInt()} of ${total.toInt()})"
+                : "";
+            lines.add(
+              "- $metric: ${students ?? '?'} students each at "
+              "${value ?? '?'} $unit$by$where",
+            );
+          }
+        }
+      } catch (_) {
+        // A guide with no targets, or a read that failed, simply leaves
+        // this out — the suggestion is still useful without it.
+      }
+    }
+
     return lines.join('\n');
   }
 
@@ -348,24 +416,32 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
 
     try {
       final guide = await UpdateTokenService().getSavedGuide();
-      final context_ = await _gatherContext();
+      final context_ = await _gatherContext(guide);
 
       final result = await GeminiService().suggestNextAction(
         contextText: context_,
         studentName: widget.studentName,
       );
 
+      final suggestions = parseSuggestions(result['suggestions']);
+
       await _docRef.set({
         'studentUid': widget.studentUid,
         'studentName': widget.studentName,
         'generatedBy': guide ?? '',
+        'suggestions': suggestions.map((x) => x.toMap()).toList(),
+        // Still written so a Guide app build older than this one keeps
+        // showing the card it knows how to read.
         'recommendedNextAction': result['recommendedNextAction'] ?? '',
         'recommendedReasoning': result['recommendedReasoning'] ?? '',
         'generatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
       if (!mounted) return;
-      showSnackbar(context, "Suggestion generated", Colors.green,
+      showSnackbar(
+          context,
+          "${suggestions.length} suggestions generated",
+          Colors.green,
           Icons.check_circle);
     } on GeminiException catch (e) {
       if (mounted) showSnackbar(context, e.message, Colors.red, Icons.error);
@@ -389,11 +465,10 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
       stream: _docRef.snapshots(),
       builder: (context, snapshot) {
         final data = snapshot.data?.data();
-        final action = (data?['recommendedNextAction'] ?? '').toString();
-        final reasoning = (data?['recommendedReasoning'] ?? '').toString();
+        final suggestions = suggestionsOf(data);
         final generatedAt = data?['generatedAt'];
         final generatedBy = (data?['generatedBy'] ?? '').toString();
-        final hasSuggestion = action.isNotEmpty || reasoning.isNotEmpty;
+        final hasSuggestion = suggestions.isNotEmpty;
 
         return Container(
           width: double.infinity,
@@ -407,24 +482,9 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (hasSuggestion) ...[
-                Text(
-                  action.isEmpty ? "No action suggested" : action,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    height: 1.35,
-                  ),
-                ),
-                if (reasoning.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    reasoning,
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.45,
-                      color: context.g.text,
-                    ),
-                  ),
+                for (var i = 0; i < suggestions.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 14),
+                  _suggestionTile(i + 1, suggestions[i]),
                 ],
                 const SizedBox(height: 12),
                 _disclaimer(),
@@ -441,9 +501,11 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
                   ),
               ] else
                 Text(
-                  "Draws on this student's sadhana counters, book progress, "
-                  "approved interaction logs and most recent LIT reading. "
-                  "Runs only when you ask.",
+                  "Three to five things you could do with this student, "
+                  "each with why and a first step. Draws on their sadhana "
+                  "counters, book progress, approved interaction logs, most "
+                  "recent LIT reading and your own active targets. Runs only "
+                  "when you ask.",
                   style: TextStyle(fontSize: 13, color: context.g.mutedText),
                 ),
               const SizedBox(height: 14),
@@ -452,15 +514,15 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
                 child: _working
                     ? const Padding(
                         padding: EdgeInsets.symmetric(vertical: 10),
-                        child: const GuideWait(),
+                        child: GuideWait(),
                       )
                     : OutlinedButton.icon(
                         onPressed: _generate,
                         icon: const Icon(Icons.auto_awesome, size: 18),
                         label: Text(
                           hasSuggestion
-                              ? "Regenerate suggestion"
-                              : "Get suggested next action",
+                              ? "Refresh suggestions"
+                              : "Generate suggestions",
                         ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: context.g.brass,
@@ -472,6 +534,77 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
           ),
         );
       },
+    );
+  }
+
+  /// One suggestion: what to do, why, and the first step.
+  ///
+  /// The step is the part a guide actually acts on, so it is given its own
+  /// labelled line rather than being folded into the reasoning where it
+  /// would be easy to skim past.
+  Widget _suggestionTile(int number, StudentSuggestion s) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 1),
+          child: Text(
+            "$number.",
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: context.g.brass,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                s.action,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
+              ),
+              if (s.why.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  s.why,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.45,
+                    color: context.g.mutedText,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 5),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.arrow_right_alt,
+                      size: 16, color: context.g.success),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      s.next,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.4,
+                        color: context.g.text,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -492,7 +625,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              "AI-generated suggestion — guide judgment decides the actual "
+              "AI-generated suggestions — guide judgment decides the actual "
               "next step.",
               style: TextStyle(
                 fontSize: 11,

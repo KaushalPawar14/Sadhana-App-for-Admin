@@ -71,7 +71,7 @@ class GeminiService {
   /// ONE current suggested next action, given a student's history
   /// ([contextText] is assembled by the caller and already free of raw
   /// dictation and of any combined LIT figure).
-  Future<Map<String, String>> suggestNextAction({
+  Future<Map<String, dynamic>> suggestNextAction({
     required String contextText,
     required String studentName,
   }) async {

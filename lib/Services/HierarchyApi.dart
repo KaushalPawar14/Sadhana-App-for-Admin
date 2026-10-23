@@ -186,13 +186,21 @@ class HierarchyApi {
     return Map<String, dynamic>.from(draft);
   }
 
-  Future<Map<String, String>> geminiSuggestNextAction({
+  /// Master 1 B — three to five suggestions, each with a why and a
+  /// concrete next step. The two flat fields are still returned by the
+  /// server (built from the first suggestion) so nothing that reads them
+  /// breaks; new callers should read 'suggestions'.
+  Future<Map<String, dynamic>> geminiSuggestNextAction({
     required String contextText,
     required String studentName,
   }) async {
     final r = await _call('geminiSuggestNextAction',
         {'contextText': contextText, 'studentName': studentName});
+    final raw = r['suggestions'];
     return {
+      'suggestions': raw is List
+          ? raw.whereType<Map>().map(Map<String, dynamic>.from).toList()
+          : const <Map<String, dynamic>>[],
       'recommendedNextAction': (r['recommendedNextAction'] ?? '').toString(),
       'recommendedReasoning': (r['recommendedReasoning'] ?? '').toString(),
     };
