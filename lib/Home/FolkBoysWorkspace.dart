@@ -509,6 +509,11 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       ValueNotifier<Map<String, Set<String>>>(const {});
   StreamSubscription<Map<String, Set<String>>>? _commitmentSub;
 
+  /// Students whose NEW suggestions (made by the server after an interaction) are not opened yet: the
+  /// profile icon of each one's card shows a dot, and the profile itself says "New suggestions ready".
+  final ValueNotifier<Set<String>> _suggestionsUnseen = ValueNotifier<Set<String>>(const {});
+  StreamSubscription<Set<String>>? _suggestionsSub;
+
   /// Books already sent to be marked seen (so a rebuild never writes twice).
   final Set<String> _sentSeen = {};
   final Map<String, Timer> _seenTimers = {};
@@ -552,11 +557,17 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       (uids) => _commitmentUnseen.value = uids,
       onError: (_) {},
     );
+    _suggestionsSub = BoardData.instance.unseenSuggestions(_guide).listen(
+      (uids) => _suggestionsUnseen.value = uids,
+      onError: (_) {},
+    );
   }
 
   @override
   void dispose() {
     _commitmentSub?.cancel();
+    _suggestionsSub?.cancel();
+    _suggestionsUnseen.dispose();
     for (final t in _seenTimers.values) {
       t.cancel();
     }
@@ -3249,17 +3260,27 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                               }),
                     ),
                   ),
-                  GuideCardIconButton(
-                    icon: Icons.person_outline_rounded,
-                    tooltip: "Profile",
-                    onTap: forceCollapsed
-                        ? null
-                        : () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => StudentProfilePage(studentUid: boy.uid),
+                  // The orange dot trail for "New suggestions ready": it ends in the profile, where the label
+                  // under the picture says so; it clears only when the guide opens those suggestions.
+                  ValueListenableBuilder<Set<String>>(
+                    valueListenable: _suggestionsUnseen,
+                    builder: (context, unseen, child) => UnseenBadge(
+                      show: unseen.contains(boy.uid),
+                      offset: const Offset(10, 10),
+                      child: child!,
+                    ),
+                    child: GuideCardIconButton(
+                      icon: Icons.person_outline_rounded,
+                      tooltip: "Profile",
+                      onTap: forceCollapsed
+                          ? null
+                          : () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => StudentProfilePage(studentUid: boy.uid),
+                                ),
                               ),
-                            ),
+                    ),
                   ),
                 ],
               ),

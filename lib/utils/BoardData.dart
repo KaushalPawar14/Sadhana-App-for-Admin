@@ -71,6 +71,10 @@ abstract class BoardData {
 
   /// These books of [studentUid] have been seen by [guide] (written per book).
   Future<void> markBooksSeen(String guide, String studentUid, Iterable<String> bookDocIds);
+
+  /// The students (on this admin's board) whose new, server-made suggestions are not opened yet: the
+  /// card's profile icon shows a dot for each.
+  Stream<Set<String>> unseenSuggestions(String guide);
 }
 
 class FirestoreBoardData implements BoardData {
@@ -142,6 +146,10 @@ class FirestoreBoardData implements BoardData {
   @override
   Future<void> markBooksSeen(String guide, String studentUid, Iterable<String> bookDocIds) =>
       SeenMarkers.markSeenBooks(guide, studentUid, bookDocIds);
+
+  @override
+  Stream<Set<String>> unseenSuggestions(String guide) =>
+      UnseenAggregates.suggestionsReadyUnseenUids(guide);
 
   @override
   Widget commentsBadge({required String studentUid, required Widget child}) =>

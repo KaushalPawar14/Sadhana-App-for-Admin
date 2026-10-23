@@ -14,6 +14,7 @@ import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideDialog.dart';
+import '../widgets/OwnedBy.dart';
 import '../widgets/GuideWait.dart';
 import '../widgets/GuideMeta.dart';
 import '../widgets/GuideSheet.dart';
@@ -595,7 +596,7 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
+      builder: ownedBy([noteController], (sheetContext) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
             Future<void> saveStatus(String newStatus) async {
@@ -767,9 +768,7 @@ class _AssignedTabBodyState extends State<_AssignedTabBody> {
             );
           },
         );
-      },
+      }),
     );
-
-    noteController.dispose();
   }
 }

@@ -7,6 +7,7 @@ import '../Pages/ExpeditionManager.dart';
 import '../Pages/FlaggedMessages.dart';
 import '../Pages/PriorityStudents.dart';
 import '../Pages/StudentDoubtsPage.dart';
+import '../Pages/StudentProfilePage.dart';
 import '../Pages/CompoundGoalRoadmapPage.dart';
 import '../Pages/SubmissionStatus.dart';
 import '../Pages/GuideCalendarPage.dart';
@@ -198,6 +199,15 @@ void _dispatch(Map<String, dynamic> data) {
         final doubtId = str('doubtId');
         navState.push(MaterialPageRoute(
           builder: (_) => StudentDoubtsPage(openDoubtId: doubtId.isEmpty ? null : doubtId),
+        ));
+        break;
+
+      case 'guide_suggestions':
+        // New suggestions are ready for a student: that student's profile, at the suggestions.
+        final studentUid = str('studentUid');
+        if (studentUid.isEmpty) return;
+        navState.push(MaterialPageRoute(
+          builder: (_) => StudentProfilePage(studentUid: studentUid, focusSuggestions: true),
         ));
         break;
 

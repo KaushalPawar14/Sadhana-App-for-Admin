@@ -8,7 +8,7 @@
 /// Each one has to answer three questions or it is not worth showing:
 /// WHAT to do, WHY it follows from this student's own record, and what the
 /// first concrete step is — what to say or do, when, and how much. The server
-/// drops any that cannot (`functions/gemini.js`, `normaliseSuggestions`), so
+/// drops any that cannot (`functions/interactionAI.js`, `normaliseSuggestions`), so
 /// anything that arrives here is already meant to be actionable.
 library;
 

@@ -2,29 +2,36 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/Pages/InteractionLogger.dart' as logger;
-import 'package:folk_guide_app/Services/GeminiService.dart';
+import 'package:folk_guide_app/Services/GuideAi.dart';
 import 'package:folk_guide_app/Services/HierarchyApi.dart';
 import 'package:folk_guide_app/actions/InteractionActions.dart';
+import 'package:folk_guide_app/actions/SuggestionActions.dart';
 import 'package:folk_guide_app/utils/GuideDb.dart';
 
 /// Saving an interaction, as one shared write.
 ///
-/// `InteractionLoggerPage` and the AI agent both call [saveInteraction]. These pin
-/// what the screen always did — read off its own code before it moved: the
-/// record is saved FIRST and complete, the notification carries the fact and
-/// nothing else, the AI fills in details afterwards, and a failure of the AI can
-/// never lose what the guide wrote.
+/// `InteractionLoggerPage` and the AI agent both call [saveInteraction]. These pin what the guide gets:
+/// the record is saved FIRST and complete, the notification carries the fact and nothing else, and the AI
+/// work (analysing the note, making suggestions) is the SERVER's, afterwards, without a screen — the app
+/// itself never calls an AI to save a note.
 
 void main() {
   late FakeFirebaseFirestore db;
   late List<Map<String, dynamic>> pushes;
+  late List<String> calls;
+  Object? failWith;
 
   setUp(() {
     db = FakeFirebaseFirestore();
     GuideDb.useForTests(db);
     pushes = [];
+    calls = [];
+    failWith = null;
     HierarchyApi.useForTests((name, args) async {
+      calls.add(name);
       if (name == 'sendStudentNotification') pushes.add(args);
+      if (failWith != null && name != 'sendStudentNotification') throw failWith!;
+      if (name == 'generateStudentSuggestions') return {'count': 4};
       return <String, dynamic>{};
     });
   });
@@ -35,25 +42,14 @@ void main() {
 
   final when = DateTime(2026, 10, 22, 18, 0);
 
-  Future<SavedInteraction> save({
-    DateTime? followUp,
-    Future<Map<String, dynamic>> Function(String, String)? extract,
-  }) =>
-      saveInteraction(
+  Future<SavedInteraction> save({DateTime? followUp, String type = 'Call'}) => saveInteraction(
         guideId: 'G',
         studentUid: 's1',
         studentName: 'Arjun Kumar',
         raw: 'Met after the evening program. He is struggling in exam week.',
-        interactionType: 'Call',
+        interactionType: type,
         interactionDate: when,
         followUpDate: followUp,
-        extract: extract ?? (r, n) async => {
-              'themes': ['exams'],
-              'studentConcerns': 'exam week',
-              'possibleLitEvidence': 'Time is limited',
-              'interactionType': 'WhatsApp', // the AI's guess — must be overridden
-              'recommendedNextAction': 'Check in on Friday',
-            },
       );
 
   Future<Map<String, dynamic>> read(String id) async =>
@@ -65,43 +61,46 @@ void main() {
     expect(logger.kInteractionTypes, kInteractionTypes);
   });
 
-  test('saves the complete record first, with the fields every reader expects', () async {
-    String? seenWhileExtracting;
-    final saved = await save(extract: (r, n) async {
-      // By the time the AI is asked, the note must already be safely stored.
-      final snap = await db.collection('interactionLogs').get();
-      seenWhileExtracting = snap.docs.single.data()['rawDictation'] as String?;
-      return {'themes': <String>[]};
-    });
-    expect(seenWhileExtracting, contains('Met after the evening program'),
-        reason: 'saved BEFORE extraction, so an AI failure can never lose it');
-
+  test('saves the complete record in ONE write, with the fields every reader expects', () async {
+    final saved = await save();
     final d = await read(saved.id);
     expect(d['studentUid'], 's1');
     expect(d['studentName'], 'Arjun Kumar');
     expect(d['guideId'], 'G');
     expect(d['status'], 'approved', reason: 'no draft, no approval step');
     expect(d['extractedDraft'], isNull);
+    expect(d['rawDictation'], contains('Met after the evening program'), reason: 'the note, for the server to analyse');
     expect((d['interactionDate'] as Timestamp).toDate(), when);
     expect(d['createdAt'], isNotNull);
     expect(d['approvedAt'], isNotNull);
+    expect((await db.collection('interactionLogs').get()).docs.length, 1);
   });
 
-  test("the guide's own choices beat the AI's guesses", () async {
+  test('it is queued for the server to analyse — the app calls no AI at all', () async {
+    final saved = await save();
+    expect((await read(saved.id))['analysis'], 'queued');
+    expect(calls, ['sendStudentNotification'], reason: 'nothing but the "logged" notification leaves the phone');
+  });
+
+  test("the guide's own choices are in the record from the first write", () async {
     final saved = await save(followUp: DateTime(2026, 10, 30));
     final summary = (await read(saved.id))['approvedSummary'] as Map<String, dynamic>;
-    expect(summary['interactionType'], 'Call', reason: "not the AI's 'WhatsApp'");
+    expect(summary['interactionType'], 'Call');
     expect((summary['interactionDateTime'] as Timestamp).toDate(), when);
     expect((summary['followUpDate'] as Timestamp).toDate(), DateTime(2026, 10, 30));
-    expect(summary['themes'], ['exams'], reason: 'what the AI filled in is kept');
-    expect(summary['recommendedNextAction'], 'Check in on Friday');
+    expect(summary['themes'], isEmpty, reason: 'the server fills these in later');
   });
 
-  test('once the details are filled in the raw dictation is dropped', () async {
-    final saved = await save();
-    expect((await read(saved.id)).containsKey('rawDictation'), isFalse);
-    expect(saved.extractionError, isNull);
-    expect(saved.litPrefill, 'Time is limited');
+  test('how they connected is optional', () async {
+    final saved = await saveInteraction(
+      guideId: 'G',
+      studentUid: 's1',
+      studentName: 'Arjun Kumar',
+      raw: 'Chatted after class.',
+      interactionDate: when,
+    );
+    final summary = (await read(saved.id))['approvedSummary'] as Map<String, dynamic>;
+    expect(summary['interactionType'], '');
   });
 
   test('the notification carries the fact and none of the content', () async {
@@ -112,50 +111,42 @@ void main() {
     expect(sent.contains('Met after'), isFalse);
   });
 
-  test('the notification goes out BEFORE the AI is asked', () async {
-    int? pushesWhenAsked;
-    await save(extract: (r, n) async {
-      pushesWhenAsked = pushes.length;
-      return {};
-    });
-    expect(pushesWhenAsked, 1,
-        reason: 'at least as reliable as before: never lost to an AI failure');
+  test('a failed notification never undoes the save', () async {
+    HierarchyApi.useForTests((name, args) async => throw StateError('offline'));
+    final saved = await save();
+    expect((await read(saved.id))['analysis'], 'queued');
   });
 
-  test('when the AI fails the note still stands, with its dictation, and says why', () async {
-    final saved = await save(extract: (r, n) async => throw GeminiException('Gemini returned 429.'));
-    expect(saved.extractionError, 'Gemini returned 429.');
-    final d = await read(saved.id);
-    expect(d['rawDictation'], contains('Met after'),
-        reason: 'kept, so the guide can Re-extract from the entry later');
-    expect(d['status'], 'approved');
-  });
-
-  test('any other AI failure is reported too, not swallowed or fatal', () async {
-    final saved = await save(extract: (r, n) async => throw StateError('boom'));
-    expect(saved.extractionError, startsWith('Extraction failed'));
-    expect((await db.collection('interactionLogs').get()).docs.length, 1);
-  });
-
-  test('a failure of the first write throws — and nothing else happens', () async {
-    // A Firestore that refuses the add.
+  test('a failure of the first write throws — and nobody is told', () async {
     GuideDb.useForTests(_Refusing(db));
-    var asked = false;
-    await expectLater(
-      save(extract: (r, n) async {
-        asked = true;
-        return {};
-      }),
-      throwsA(anything),
-    );
-    expect(asked, isFalse, reason: 'no AI call for a note that was not saved');
-    expect(pushes, isEmpty, reason: 'and nobody is told about a note that does not exist');
+    await expectLater(save(), throwsA(anything));
+    expect(pushes, isEmpty, reason: 'nobody is told about a note that does not exist');
   });
 
   test('no follow-up date means none is stored', () async {
     final saved = await save();
     final summary = (await read(saved.id))['approvedSummary'] as Map<String, dynamic>;
     expect(summary['followUpDate'], isNull);
+  });
+
+  test('re-extracting asks the SERVER, which saves the result; the app only reports the outcome', () async {
+    await reExtractInteraction('log1');
+    expect(calls, ['analyseInteraction']);
+  });
+
+  test('a re-extract the server refuses says why, readably', () async {
+    failWith = HierarchyException('resource-exhausted', "The server's OpenAI account has no credit left.");
+    await expectLater(
+      reExtractInteraction('log1'),
+      throwsA(isA<AiException>().having((e) => e.message, 'message', contains('no credit left'))),
+    );
+  });
+
+  test('"Generate / Refresh suggestions" asks the server and reports how many', () async {
+    expect(await generateStudentSuggestions(studentUid: 's1'), 4);
+    expect(calls, ['generateStudentSuggestions']);
+    failWith = HierarchyException('permission-denied', "I can't find that student among your students.");
+    await expectLater(generateStudentSuggestions(studentUid: 's2'), throwsA(isA<AiException>()));
   });
 
   test('dates round-trip between the AI draft and Firestore', () {

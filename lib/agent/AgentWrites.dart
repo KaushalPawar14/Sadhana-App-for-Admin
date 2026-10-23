@@ -145,10 +145,7 @@ Future<AgentResult> interactionAdd(Map<String, dynamic> a, AgentEnv env) async {
     interactionDate: when,
     followUpDate: a['followUpDate'] == null ? null : agentDay(a['followUpDate']),
   );
-  final tail = saved.extractionError == null
-      ? "The app's AI has filled in the details."
-      : "Your notes are saved; the AI could not fill in the details (${saved.extractionError}) — you can retry from the interaction.";
-  return _done('Interaction with ${_s(s['name'])} logged for ${_when.format(when)}. $tail',
+  return _done('Interaction with ${_s(s['name'])} logged for ${_when.format(when)}. The AI analyses it in the background and will have new suggestions ready for them shortly.',
       entities: [AgentEntity('interaction', saved.id, 'Interaction with ${_s(s['name'])} on ${_day.format(when)}')]);
 }
 
@@ -173,15 +170,8 @@ Future<AgentResult> interactionReextract(Map<String, dynamic> a, AgentEnv env) a
   final m = await _aboutStudent(env, 'interactionLogs', _s(a['interactionId']), what: 'interaction');
   final raw = _s(m.data['rawDictation']);
   if (raw.trim().isEmpty) throw AgentFailure('That interaction has no original notes to run the AI on again.');
-  final summary = m.data['approvedSummary'];
-  await reExtractInteraction(
-    m.snap.id,
-    rawDictation: raw,
-    studentName: _s(m.student['name']),
-    interactionType: summary is Map ? summary['interactionType']?.toString() : null,
-    interactionDateTime: m.data['interactionDate'] is Timestamp ? (m.data['interactionDate'] as Timestamp).toDate() : null,
-  );
-  return _done("The AI has filled in the details of the interaction with ${_s(m.student['name'])} again.");
+  await reExtractInteraction(m.snap.id);
+  return _done("The AI has read the interaction with ${_s(m.student['name'])} again and updated its details.");
 }
 
 Future<AgentResult> interactionDelete(Map<String, dynamic> a, AgentEnv env) async {
@@ -421,7 +411,7 @@ Future<AgentResult> submissionRemind(Map<String, dynamic> a, AgentEnv env) async
 Future<AgentResult> suggestionsGenerate(Map<String, dynamic> a, AgentEnv env) async {
   final uid = _s(a['studentUid']);
   final s = await env.student(uid);
-  final n = await generateStudentSuggestions(studentUid: uid, studentName: _s(s['name']), profileData: s);
+  final n = await generateStudentSuggestions(studentUid: uid);
   return _done('$n suggestion${n == 1 ? '' : 's'} generated for ${_s(s['name'])}; open their profile to read them.');
 }
 

@@ -162,8 +162,8 @@ void main() {
     });
 
     test('a server fault names its reason', () {
-      final m = voiceFailureMessage(HierarchyException('internal', 'Something went wrong: Gemini returned 500.'));
-      expect(m, contains('internal: Something went wrong: Gemini returned 500.'));
+      final m = voiceFailureMessage(HierarchyException('internal', 'Something went wrong: OpenAI returned 500.'));
+      expect(m, contains('internal: Something went wrong: OpenAI returned 500.'));
     });
 
     test('a bare "INTERNAL" is shown as just the code, not twice', () {

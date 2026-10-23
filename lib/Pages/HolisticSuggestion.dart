@@ -1,9 +1,15 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../actions/SuggestionActions.dart';
-import '../Services/GeminiService.dart';
+import '../Services/GuideAi.dart';
+import '../utils/AdminProfile.dart';
+import '../utils/SuggestionsReady.dart';
+import '../utils/UnseenDot.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentSuggestions.dart';
 import '../theme/GuideTheme.dart';
@@ -12,33 +18,30 @@ import '../widgets/GuideWait.dart';
 
 /// Holistic "suggested next action" (Phase 5, item 1 — final piece).
 ///
-/// Pulls together what this profile page already shows about a student, plus
-/// their approved interaction logs and most recent LIT reading, and asks Gemini
-/// for ONE current suggested next step with reasoning.
+/// Three to five specific things the guide could do with this student, each with why and a first
+/// step, made by the SERVER (OpenAI, `functions/interactionAI.js`) from everything recorded about the
+/// student: sadhana points, books, meetings, expeditions and what they wrote about them, the latest
+/// interactions, the latest LIT reading and the guide's own active targets.
 ///
-/// **On demand only.** Nothing here runs on page view. Gemini is called only
-/// when the guide presses the button, and the result is cached in Firestore so
-/// reopening the profile costs nothing.
+/// **They arrive by themselves.** Every saved interaction is analysed on the server, which then makes
+/// new suggestions for that student and tells their guide ("New suggestions ready for <student>").
+/// Until the guide opens them this card says so and the orange dot trail leads here (see
+/// `utils/SuggestionsReady.dart`); it clears when the card has been on screen for a moment. The
+/// "Refresh suggestions" button is for asking again right now. Nothing runs when the page opens.
 ///
 /// **Guidance, never a decision** (Section 1). The output carries a permanent
 /// disclaimer and is never shown to a student.
 ///
-/// **LIT is passed as three separate readings.** `L`, `I` and `T` go into the
-/// prompt as three independent lines and the prompt forbids combining them.
-/// Nothing here computes a total, average, level or tier.
+/// **LIT is given as three separate readings.** `L`, `I` and `T` go into the prompt as three independent
+/// lines and the prompt forbids combining them. Nothing here computes a total, average, level or tier.
 class HolisticSuggestionSection extends StatefulWidget {
   final String studentUid;
   final String studentName;
-
-  /// The `users/{uid}` map this page has already streamed. Passed in rather
-  /// than re-queried, so opening the profile triggers no extra read.
-  final Map<String, dynamic> profileData;
 
   const HolisticSuggestionSection({
     super.key,
     required this.studentUid,
     required this.studentName,
-    required this.profileData,
   });
 
   @override
@@ -50,6 +53,77 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
   final FirebaseFirestore _firestore = GuideDb.instance;
 
   bool _working = false;
+
+  /// This admin's id (their seen markers are keyed by it); empty when no profile is loaded.
+  String get _me => AdminProfileProvider.current?.id ?? '';
+
+  /// Are the suggestions on this card new to this admin (made by the server, not yet opened)?
+  late final Stream<bool> _unseenStream = SuggestionsReady.unseenFor(_me, widget.studentUid);
+  StreamSubscription<bool>? _unseenSub;
+  bool _unseen = false;
+  Timer? _openTimer;
+  ScrollPosition? _position;
+
+  @override
+  void initState() {
+    super.initState();
+    _unseenSub = _unseenStream.listen((v) {
+      if (!mounted) return;
+      setState(() => _unseen = v);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _checkVisible());
+    }, onError: (_) {});
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final p = Scrollable.maybeOf(context)?.position;
+    if (p != _position) {
+      _position?.removeListener(_checkVisible);
+      _position = p;
+      _position?.addListener(_checkVisible);
+    }
+  }
+
+  @override
+  void dispose() {
+    _unseenSub?.cancel();
+    _openTimer?.cancel();
+    _position?.removeListener(_checkVisible);
+    super.dispose();
+  }
+
+  /// "Opened": more than half of the card has been on screen for a moment. Only then does the dot trail clear.
+  void _checkVisible() {
+    if (!mounted || !_unseen) {
+      _openTimer?.cancel();
+      _openTimer = null;
+      return;
+    }
+    try {
+      final box = context.findRenderObject();
+      final scrollBox = Scrollable.maybeOf(context)?.context.findRenderObject();
+      if (box is! RenderBox || !box.hasSize || scrollBox is! RenderBox || !scrollBox.hasSize) return;
+      final top = box.localToGlobal(Offset.zero, ancestor: scrollBox).dy;
+      final h = box.size.height;
+      final shown = math.max(0.0, math.min(top + h, scrollBox.size.height) - math.max(top, 0.0));
+      final enough = h > 0 && shown >= math.min(h, scrollBox.size.height) * 0.5;
+      if (enough) {
+        _openTimer ??= Timer(const Duration(milliseconds: 1200), _opened);
+      } else {
+        _openTimer?.cancel();
+        _openTimer = null;
+      }
+    } catch (_) {
+      // Not laid out yet: the next frame or scroll checks again.
+    }
+  }
+
+  void _opened() {
+    _openTimer = null;
+    if (!mounted || !_unseen) return;
+    SuggestionsReady.markOpened(_me, widget.studentUid).catchError((_) {});
+  }
 
   DocumentReference<Map<String, dynamic>> get _docRef =>
       _firestore.collection('holisticSuggestions').doc(widget.studentUid);
@@ -63,12 +137,8 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
 
     try {
       // One shared function (actions/SuggestionActions.dart): the AI agent generates suggestions
-      // through exactly this.
-      final count = await generateStudentSuggestions(
-        studentUid: widget.studentUid,
-        studentName: widget.studentName,
-        profileData: widget.profileData,
-      );
+      // through exactly this. The server does the work.
+      final count = await generateStudentSuggestions(studentUid: widget.studentUid);
 
       if (!mounted) return;
       showSnackbar(
@@ -76,7 +146,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
           "$count suggestions generated",
           Colors.green,
           Icons.check_circle);
-    } on GeminiException catch (e) {
+    } on AiException catch (e) {
       if (mounted) showSnackbar(context, e.message, Colors.red, Icons.error);
     } catch (e) {
       if (mounted) {
@@ -114,6 +184,25 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (_unseen && hasSuggestion) ...[
+                Row(
+                  children: [
+                    const UnseenDot(size: 9),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        SuggestionsReady.label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: context.g.attention,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
               if (hasSuggestion) ...[
                 for (var i = 0; i < suggestions.length; i++) ...[
                   if (i > 0) const SizedBox(height: 14),
@@ -136,9 +225,10 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
                 Text(
                   "Three to five things you could do with this student, "
                   "each with why and a first step. Draws on their sadhana "
-                  "counters, book progress, approved interaction logs, most "
-                  "recent LIT reading and your own active targets. Runs only "
-                  "when you ask.",
+                  "counters, book progress, interactions, most recent LIT "
+                  "reading and your own active targets. New ones appear here "
+                  "by themselves after you save an interaction; tap Generate "
+                  "to ask for them now.",
                   style: TextStyle(fontSize: 13, color: context.g.mutedText),
                 ),
               const SizedBox(height: 14),

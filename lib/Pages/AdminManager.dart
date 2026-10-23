@@ -7,6 +7,7 @@ import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideDialog.dart';
+import '../widgets/OwnedBy.dart';
 import '../widgets/GuideWait.dart';
 import '../widgets/GuideEntry.dart';
 
@@ -201,7 +202,7 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
 
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) {
+      builder: ownedBy([nameController, emailController], (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             Future<void> save() async {
@@ -358,11 +359,9 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
             );
           },
         );
-      },
+      }),
     );
 
-    nameController.dispose();
-    emailController.dispose();
     if (added) {
       _toast('Admin added');
       _reload();
@@ -387,7 +386,7 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
 
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) {
+      builder: ownedBy([nameController, emailController], (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             Future<void> save() async {
@@ -528,11 +527,9 @@ class _AdminManagerPageState extends State<AdminManagerPage> {
             );
           },
         );
-      },
+      }),
     );
 
-    nameController.dispose();
-    emailController.dispose();
     if (changed) {
       _toast('Saved');
       _reload();

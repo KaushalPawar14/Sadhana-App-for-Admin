@@ -82,8 +82,8 @@ void main() {
           return {'deleted': true, 'registrationsDeleted': 1};
         case 'checkMobileTaken':
           return {'taken': false};
-        case 'geminiExtractInteraction':
-          return {'draft': {'themes': ['health'], 'studentConcerns': 'none', 'possibleLitEvidence': '', 'recommendedNextAction': 'call again'}};
+        case 'generateStudentSuggestions':
+          return {'count': 4};
         case 'sendStudentNotification':
           return {'sent': 1, 'total': 1};
         default:
@@ -137,19 +137,18 @@ void main() {
   });
 
   group('interactions, flagged, doubts', () {
-    test('interaction_add saves the record first, then asks the AI for details', () async {
+    test('interaction_add saves the record, queued for the server to analyse (the phone calls no AI)', () async {
       final r = await all['interaction_add']!({'studentUid': 'u1', 'notes': 'Spoke today', 'interactionType': 'Call', 'date': '2026-10-22'}, env());
       expect(r.ok, isTrue);
       final d = (await db.collection('interactionLogs').where('rawDictation', isEqualTo: 'Spoke today').get()).docs;
-      expect(d.length + (await db.collection('interactionLogs').get()).docs.where((x) => x.data()['approvedSummary'] is Map && (x.data()['approvedSummary'] as Map)['themes'] != null).length, greaterThan(0));
+      expect(d.length, 1);
+      expect(d.single.data()['analysis'], 'queued');
       expect(calls.any((c) => c['_call'] == 'sendStudentNotification' && c['kind'] == 'interaction_logged'), isTrue);
+      expect(calls.any((c) => '${c['_call']}'.contains('gemini')), isFalse);
     });
-    test('interaction_reextract runs the AI again and keeps the guide\'s own type', () async {
+    test('interaction_reextract asks the server to analyse the notes again', () async {
       await all['interaction_reextract']!({'interactionId': 'i1'}, env());
-      final d = (await doc('interactionLogs/i1'))!;
-      expect((d['approvedSummary'] as Map)['interactionType'], 'Call');
-      expect((d['approvedSummary'] as Map)['studentConcerns'], 'none');
-      expect(d.containsKey('rawDictation'), isFalse, reason: 'the original is dropped once the details are saved');
+      expect(calls.where((c) => c['_call'] == 'analyseInteraction').single['logId'], 'i1');
     });
     test('flagged_mark_reviewed and doubt_answer', () async {
       final e = env();
@@ -169,23 +168,10 @@ void main() {
       await all['submission_remind']!({'studentUids': ['u1']}, e);
       expect(calls.where((c) => c['kind'] == 'submission_nudge').single['studentUid'], 'u1');
     });
-    test('suggestions_generate asks the AI and caches the result for the student', () async {
-      HierarchyApi.useForTests((name, args) async {
-        if (name == 'geminiSuggestNextAction') {
-          return {'suggestions': [{'title': 'Call him', 'reason': 'It has been a while'}], 'recommendedNextAction': 'Call him', 'recommendedReasoning': 'x'};
-        }
-        return <String, dynamic>{};
-      });
-      try {
-        final r = await all['suggestions_generate']!({'studentUid': 'u1'}, env());
-        expect(r.ok, isTrue);
-        expect((await doc('holisticSuggestions/u1')), isNotNull);
-      } on AgentFailure {
-        rethrow;
-      } catch (e) {
-        // the AI call may not parse in the test world; what matters is that nothing half-written is left behind
-        expect(await doc('holisticSuggestions/u1'), isNull);
-      }
+    test('suggestions_generate asks the server, which makes and stores the suggestions', () async {
+      final r = await all['suggestions_generate']!({'studentUid': 'u1'}, env());
+      expect(r.ok, isTrue);
+      expect(calls.where((c) => c['_call'] == 'generateStudentSuggestions').single['studentUid'], 'u1');
     });
   });
 

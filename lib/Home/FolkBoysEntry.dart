@@ -112,6 +112,7 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
         _boardUnseen = UnseenAggregates.anyOf([
           UnseenAggregates.studentCommentsRosterUnseen(guide, isHod),
           UnseenAggregates.bookCommitmentsRosterUnseen(guide, isHod),
+          UnseenAggregates.suggestionsReadyRosterUnseen(guide, isHod),
         ]);
       }
     });
@@ -379,8 +380,9 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
       );
       if (placeholder) return tile;
       // The dot counts what this admin can open from the board: a book commitment set by a
-      // guide (a dot on that student's card) or a comment someone else wrote (a dot on that
-      // card's Comments icon), for students on this admin's board only.
+      // guide (a dot on that student's card), a comment someone else wrote (a dot on that
+      // card's Comments icon) or new suggestions made by the server (a dot on the card's profile
+      // icon), for students on this admin's board only.
       return StreamBuilder<bool>(
         stream: _boardUnseen,
         builder: (context, snap) => UnseenBadge(

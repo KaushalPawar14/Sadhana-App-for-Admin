@@ -172,39 +172,18 @@ class HierarchyApi {
     return (taken: r['taken'] == true, name: (r['name'] ?? '').toString());
   }
 
-  /// Gemini runs on the server (the API key is no longer in the app).
-  /// Returns the normalised draft map; throws [HierarchyException] with a
-  /// message that is safe to show the guide.
-  Future<Map<String, dynamic>> geminiExtractInteraction({
-    required String rawText,
-    required String studentName,
-  }) async {
-    final r = await _call('geminiExtractInteraction',
-        {'rawText': rawText, 'studentName': studentName});
-    final draft = r['draft'];
-    if (draft is! Map) throw HierarchyException('internal', 'Gemini returned the wrong shape. Try Extract again.');
-    return Map<String, dynamic>.from(draft);
+  /// New suggestions for a student, made now by the server (OpenAI) and stored for the profile to read.
+  /// Returns how many; throws [HierarchyException] with a message that is safe to show the guide.
+  Future<int> generateStudentSuggestions(String studentUid) async {
+    final r = await _call('generateStudentSuggestions', {'studentUid': studentUid});
+    final n = r['count'];
+    return n is num ? n.toInt() : 0;
   }
 
-  /// Master 1 B — three to five suggestions, each with a why and a
-  /// concrete next step. The two flat fields are still returned by the
-  /// server (built from the first suggestion) so nothing that reads them
-  /// breaks; new callers should read 'suggestions'.
-  Future<Map<String, dynamic>> geminiSuggestNextAction({
-    required String contextText,
-    required String studentName,
-  }) async {
-    final r = await _call('geminiSuggestNextAction',
-        {'contextText': contextText, 'studentName': studentName});
-    final raw = r['suggestions'];
-    return {
-      'suggestions': raw is List
-          ? raw.whereType<Map>().map(Map<String, dynamic>.from).toList()
-          : const <Map<String, dynamic>>[],
-      'recommendedNextAction': (r['recommendedNextAction'] ?? '').toString(),
-      'recommendedReasoning': (r['recommendedReasoning'] ?? '').toString(),
-    };
-  }
+  /// Runs the AI analysis again over an interaction whose original notes are still stored; the
+  /// server saves the result.
+  Future<void> analyseInteraction(String interactionId) =>
+      _call('analyseInteraction', {'logId': interactionId});
 
   /// Deletes a trip and every registration for it (the trip's creator, or a HOD; the server checks).
   /// Used for an active trip and for a History card alike. Nothing else is touched.

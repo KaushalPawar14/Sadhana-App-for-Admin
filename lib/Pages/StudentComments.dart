@@ -21,7 +21,7 @@ import '../widgets/GuideWait.dart';
 /// candidate was checked and each fails on its own terms:
 ///
 ///  * `interactionLogs` — models ONE guide's record of ONE meeting with a
-///    student: Gemini-extracted fields, a follow-up date, LIT evidence, a
+///    student: AI-extracted fields, a follow-up date, LIT evidence, a
 ///    recommended next action. It is a per-event report, not a conversation
 ///    between guides, and it carries `guideId` as the *author of that meeting*.
 ///    Writing guide-to-guide chatter into it would corrupt the input to

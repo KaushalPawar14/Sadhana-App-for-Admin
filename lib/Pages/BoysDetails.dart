@@ -14,6 +14,7 @@ import 'AdminManager.dart';
 import 'NotificationSettings.dart';
 import 'SubmissionStatus.dart';
 import '../widgets/GuideDialog.dart';
+import '../widgets/OwnedBy.dart';
 import '../widgets/GuideWait.dart';
 import '../widgets/GuideEntry.dart';
 import 'AgentLogPage.dart';
@@ -137,7 +138,7 @@ class _AdminControlPageState extends State<AdminControlPage> {
 
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) {
+      builder: ownedBy([nameController, mobileController, roundsController], (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             Future<void> save() async {
@@ -342,12 +343,8 @@ class _AdminControlPageState extends State<AdminControlPage> {
             );
           },
         );
-      },
+      }),
     );
-
-    nameController.dispose();
-    mobileController.dispose();
-    roundsController.dispose();
 
     // Shown here, not from inside the dialog — see this method's own header.
     // `context`/`mounted` here are the PAGE's own, unrelated to the

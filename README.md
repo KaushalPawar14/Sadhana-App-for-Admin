@@ -21,8 +21,8 @@ Guides sign in with Google. The app matches their email to an admin record, whic
 
 **Assessment and follow-up**
 - **LIT assessment**: a private, guide-only record with three independent 1–5 axes. The axes are never combined into a single score.
-- **Interaction logger**: the guide writes free-text notes, and Gemini (`gemini-2.5-flash`) pulls out themes, concerns, commitments and a suggested next action. The result is saved as a draft that the guide must approve.
-- **Holistic suggestion**: Gemini proposes one next step for a student, based on their profile, approved logs and latest LIT reading.
+- **Interaction logger**: the guide types or speaks what was discussed and taps Save — nothing else is shown. The server (OpenAI) then analyses the note in the background (themes, concerns, commitments, a suggested next action), fills in the record, and makes new suggestions for that student.
+- **Holistic suggestion**: three to five specific suggestions per student, made by the server (OpenAI) from everything recorded about them and delivered by themselves after each saved interaction ("New suggestions ready", with an orange dot trail from the board to the student's profile). A button asks for a refresh on demand.
 - **Flagged messages**: shows student chat messages that the backend `studentChat` function flagged for distress.
 - **Priority students** (a checklist that lists each reason a student needs attention, with no blended score), **overdue associations**, **submission status** and a **Monday weekly-planning** overview.
 
@@ -48,7 +48,7 @@ Guides sign in with Google. The app matches their email to an admin record, whic
 |---|---|
 | App | Flutter (Dart SDK ^3.6), Material 3, Provider, Sizer |
 | Backend | Firebase Auth (Google Sign-In), Cloud Firestore, Cloud Functions (callable), Firebase Cloud Messaging |
-| AI | Google Gemini API (`gemini-2.5-flash`) for note extraction and suggestions; plan generation runs server-side in Cloud Functions |
+| AI | OpenAI, called only from the Cloud Functions (note analysis, suggestions, voice notes, the assistant); the app holds no AI key |
 | UI | `fl_chart`, `table_calendar`, `lottie`, `curved_navigation_bar`, `flutter_staggered_animations` |
 | Platform | Android (release signing through `key.properties`), `package_info_plus` and `url_launcher` for forced updates |
 
@@ -62,7 +62,7 @@ flowchart LR
   CF --> FS
   CF -->|distress flags| FS
   M -->|HTTP v1| FCM[FCM] --> S
-  M -->|notes, suggestions| G[Gemini API]
+  CF -->|notes, suggestions, voice| G[OpenAI API]
 ```
 
 The Cloud Functions source is not in this repo. This app only calls the functions.
@@ -74,7 +74,7 @@ lib/
 ├── main.dart            # Firebase init, splash, force-update check, FCM setup
 ├── Home/                # Board workspace, FOLK Boys entry, student calendar & scores
 ├── Pages/               # Feature screens (assessment, goals, calendar, managers, admin)
-├── Services/            # FCM send/receive, access token, Gemini, local notifications
+├── Services/            # FCM send/receive, access token, server AI calls, local notifications
 └── utils/               # Firestore query helpers, auth gate, roster, badges, providers
 assets/                  # Lottie animations, Satoshi font
 android/                 # Android project (org.folksurat.guides)
@@ -94,9 +94,8 @@ flutter pub get
 The app reads secrets from files that are gitignored and not included in this repo:
 
 1. Create `credentials/service-account.json`, the service account the app uses for FCM sends.
-2. Create `credentials/gemini-key.json` in the form `{ "apiKey": "..." }`.
-3. Copy `.env.template` to `.env` and fill in the values.
-4. For release builds, add `android/key.properties` and your keystore.
+2. Copy `.env.template` to `.env` and fill in the values.
+3. For release builds, add `android/key.properties` and your keystore.
 
 Then run or build:
 
