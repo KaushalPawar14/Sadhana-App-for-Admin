@@ -16,6 +16,7 @@ import '../utils/AiMarkdown.dart';
 import '../widgets/AiText.dart';
 import '../widgets/GuideWait.dart';
 import '../widgets/VoiceNoteButton.dart';
+import 'AgentChatsPage.dart';
 import 'AgentLogPage.dart';
 
 /// The assistant: one chat page, reached from the floating button on any screen.
@@ -77,7 +78,7 @@ class _AgentPageState extends State<AgentPage> {
   }
   Future<void> _send([String? text]) async {
     final t = (text ?? _input.text).trim();
-    if (t.isEmpty || _c.busy) return;
+    if (t.isEmpty || !_c.canAsk) return;
     _input.clear();
     await _c.send(t);
   }
@@ -139,6 +140,12 @@ class _AgentPageState extends State<AgentPage> {
               icon: Icon(Icons.history, color: g.text),
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentLogPage())),
             ),
+          IconButton(
+            key: const ValueKey('agent-chats'),
+            tooltip: 'Chat history',
+            icon: Icon(Icons.forum_outlined, color: g.text),
+            onPressed: _c.busy ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => AgentChatsPage(controller: _c))),
+          ),
           IconButton(
             key: const ValueKey('agent-new-chat'),
             tooltip: 'New chat',
@@ -311,8 +318,19 @@ class _AgentPageState extends State<AgentPage> {
     }
   }
 
+  /// Why the box is closed, in the guide's words; null while they can ask.
+  String? get _closedReason {
+    if (_c.sessionGone) return 'This conversation has ended — start a New chat';
+    if (_c.dailyLimit) return 'Daily limit reached — try again tomorrow';
+    if (_c.sessionFull) return 'This session is full — start a New chat';
+    return null;
+  }
+
   Widget _composer(BuildContext context) {
     final g = context.g;
+    final t = context.gText;
+    final closed = _closedReason;
+    final left = _c.questionsLeft;
     return SafeArea(
       top: false,
       child: Container(
@@ -321,9 +339,38 @@ class _AgentPageState extends State<AgentPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (closed != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 16, color: g.warning),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        closed,
+                        key: ValueKey(_c.sessionGone ? 'agent-session-gone' : _c.dailyLimit ? 'agent-daily-limit' : 'agent-session-full'),
+                        style: t.small.copyWith(color: g.warning, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 2, 4, 0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '$left ${left == 1 ? 'question' : 'questions'} left in this session',
+                    key: const ValueKey('agent-questions-left'),
+                    style: t.caption,
+                  ),
+                ),
+              ),
             VoiceNoteButton(
               purpose: VoicePurpose.assistant,
-              enabled: !_c.busy,
+              enabled: !_c.busy && closed == null,
               existingText: () => _input.text,
               onText: (spoken) {
                 _input.text = appendNote(_input.text, spoken);
@@ -343,15 +390,16 @@ class _AgentPageState extends State<AgentPage> {
                     maxLines: 5,
                     maxLength: 2000,
                     textInputAction: TextInputAction.newline,
-                    decoration: const InputDecoration(hintText: 'Ask me, or tell me what to do', counterText: ''),
+                    enabled: closed == null,
+                    decoration: InputDecoration(hintText: closed ?? 'Ask me, or tell me what to do', counterText: ''),
                   ),
                 ),
                 const SizedBox(width: 6),
                 IconButton(
                   key: const ValueKey('agent-send'),
                   tooltip: 'Send',
-                  onPressed: _c.busy ? null : _send,
-                  icon: Icon(Icons.send_rounded, color: _c.busy ? g.mutedText : g.agent),
+                  onPressed: _c.canAsk ? _send : null,
+                  icon: Icon(Icons.send_rounded, color: _c.canAsk ? g.agent : g.mutedText),
                 ),
               ],
             ),
@@ -404,6 +452,7 @@ class _ProposalCard extends StatelessWidget {
                     ProposalState.running => 'Doing it…',
                     ProposalState.done => 'Done',
                     ProposalState.cancelled => 'Cancelled — nothing was changed',
+                    ProposalState.expired => 'Not confirmed — nothing was changed',
                   },
                   style: t.cardTitle,
                 ),
@@ -531,6 +580,7 @@ class _ProposalCard extends StatelessWidget {
         ]);
       case ProposalState.done:
       case ProposalState.cancelled:
+      case ProposalState.expired:
         return const SizedBox.shrink();
     }
   }

@@ -65,13 +65,17 @@ class ErrorEntry extends ChatEntry {
   final String text;
 }
 
-enum ProposalState { waiting, running, done, cancelled }
+/// [expired]: shown in an old chat and not answered in time (or the guide moved on): nothing was changed, and it can no longer be confirmed.
+enum ProposalState { waiting, running, done, cancelled, expired }
 
 /// A change proposed and waiting for the guide, then what came of it.
 class ProposalEntry extends ChatEntry {
-  ProposalEntry(this.proposal, this.advice);
+  ProposalEntry(this.proposal, this.advice, {this.atMs});
 
   final AgentProposal proposal;
+
+  /// When it was proposed (from a saved chat); a card older than [AgentController.proposalStale] cannot be confirmed.
+  final int? atMs;
 
   /// Notes worked out on the phone, from the guide's own data.
   final List<String> advice;
@@ -109,18 +113,113 @@ class AgentController extends ChangeNotifier {
   /// The most look-up rounds one message may cost, so a confused model cannot spin the phone.
   static const int maxRounds = 12;
 
+  /// The sub-collection of a saved chat that holds its lines (read only here; the server writes it).
+  static const String _chatLines = 'entries';
+
+  /// A change proposed longer ago than this is shown as not confirmed in an old chat (the server's own rule).
+  static const Duration proposalStale = Duration(hours: 6);
+
+  /// The most questions one session takes (the server's number; it repeats it in every reply).
+  static const int defaultQuestionLimit = 20;
+
   final List<ChatEntry> entries = [];
   String? _sessionId;
   bool _busy = false;
   bool get busy => _busy;
 
-  /// Starts afresh: a new conversation.
+  /// This session's id; null before its first question.
+  String? get sessionId => _sessionId;
+
+  int questionLimit = defaultQuestionLimit;
+  int questionsLeft = defaultQuestionLimit;
+
+  /// The conversation is gone from the server: only a New chat helps, and only the guide starts one.
+  bool sessionGone = false;
+
+  /// The day the daily cap was reached (a date), so the notice ends by itself tomorrow.
+  String? _limitDay;
+  String _today() {
+    final n = env.now;
+    return '${n.year}-${n.month}-${n.day}';
+  }
+
+  bool get dailyLimit => _limitDay == _today();
+
+  bool get sessionFull => questionsLeft <= 0;
+
+  /// Can a question be asked now? (A card already shown can still be confirmed or cancelled either way.)
+  bool get canAsk => !_busy && !dailyLimit && !sessionGone && !sessionFull;
+
+  /// Starts afresh: a new conversation. Only ever called from the "New chat" button.
   void reset() {
     entries.clear();
     _sessionId = null;
     _busy = false;
+    sessionGone = false;
+    questionLimit = defaultQuestionLimit;
+    questionsLeft = defaultQuestionLimit;
     env.invalidate();
     notifyListeners();
+  }
+
+  /// Opens one of this guide's saved chats exactly as it looked, ready to continue (the server still has its context).
+  /// Throws an [AgentFailure] in words when it cannot.
+  Future<void> openChat(String id) async {
+    if (_busy) return;
+    final ref = env.db.collection('agentChats').doc(id);
+    final snap = await ref.get();
+    final chat = snap.data();
+    if (chat == null || chat['adminId'] != env.me.id) throw AgentFailure('That chat is not available.');
+    final lines = await ref.collection(_chatLines).orderBy('seq').get();
+    final rebuilt = <ChatEntry>[];
+    for (final d in lines.docs) {
+      final e = _entryFrom(d.data());
+      if (e != null) rebuilt.add(e);
+    }
+    entries
+      ..clear()
+      ..addAll(rebuilt);
+    _sessionId = id;
+    sessionGone = false;
+    questionLimit = (chat['questionLimit'] as num?)?.toInt() ?? defaultQuestionLimit;
+    questionsLeft = (questionLimit - ((chat['questions'] as num?)?.toInt() ?? 0)).clamp(0, questionLimit);
+    env.invalidate();
+    notifyListeners();
+  }
+
+  ChatEntry? _entryFrom(Map<String, dynamic> m) {
+    switch (m['kind']) {
+      case 'user':
+        return UserEntry((m['text'] ?? '').toString());
+      case 'assistant':
+        return AssistantEntry(
+          (m['text'] ?? '').toString(),
+          [for (final l in (m['links'] as List? ?? const []).whereType<Map>()) AgentLink.fromMap(l)],
+        );
+      case 'proposal':
+        final raw = m['proposal'];
+        if (raw is! Map) return null;
+        final atMs = (m['atMs'] as num?)?.toInt();
+        final entry = ProposalEntry(
+          AgentProposal.fromMap(raw),
+          [for (final a in (m['advice'] as List? ?? const [])) a.toString()],
+          atMs: atMs,
+        );
+        entry.state = switch (m['state']) {
+          'done' => ProposalState.done,
+          'cancelled' => ProposalState.cancelled,
+          'expired' => ProposalState.expired,
+          _ => atMs != null && env.now.difference(DateTime.fromMillisecondsSinceEpoch(atMs)) > proposalStale ? ProposalState.expired : ProposalState.waiting,
+        };
+        final results = m['results'];
+        if (results is Map) {
+          results.forEach((k, v) {
+            if (v is Map) entry.results[k.toString()] = (v['ok'] == true, (v['text'] ?? '').toString());
+          });
+        }
+        return entry;
+    }
+    return null;
   }
 
   void _add(ChatEntry e) {
@@ -132,13 +231,15 @@ class AgentController extends ChangeNotifier {
     final raw = await api.guideAgentTurn({if (_sessionId != null) 'sessionId': _sessionId, ...data});
     final reply = AgentReply.fromMap(raw);
     if (reply.sessionId != null) _sessionId = reply.sessionId;
+    if (reply.questionLimit != null) questionLimit = reply.questionLimit!;
+    if (reply.questionsLeft != null) questionsLeft = reply.questionsLeft!;
     return reply;
   }
 
   /// The guide said something.
   Future<void> send(String text) async {
     final clean = text.trim();
-    if (clean.isEmpty || _busy) return;
+    if (clean.isEmpty || !canAsk) return;
     _busy = true;
     _add(UserEntry(clean));
     try {
@@ -155,10 +256,13 @@ class AgentController extends ChangeNotifier {
   Future<void> _handle(AgentReply first) async {
     var reply = first;
     for (var round = 0; round < maxRounds; round++) {
-      if (reply.ended) _sessionId = null;
+      // The conversation is gone from the server: say so; a New chat is the guide's to start, never started for them.
+      if (reply.ended) sessionGone = true;
       switch (reply.status) {
         case AgentStatus.message:
         case AgentStatus.limit:
+        case AgentStatus.full:
+          if (reply.status == AgentStatus.limit && reply.why != 'hour') _limitDay = _today();
           if (reply.text != null || reply.links.isNotEmpty) _add(AssistantEntry(reply.text ?? '', reply.links));
           return;
 
@@ -214,6 +318,7 @@ class AgentController extends ChangeNotifier {
         'outcome': 'executed',
         'confirmations': confirmations,
         'results': results,
+        ..._shown(entry),
       }));
     } catch (e) {
       entry.state = ProposalState.done;
@@ -231,7 +336,7 @@ class AgentController extends ChangeNotifier {
     entry.state = ProposalState.cancelled;
     notifyListeners();
     try {
-      await _handle(await _turn({'proposalId': entry.proposal.id, 'outcome': 'cancelled', 'results': const []}));
+      await _handle(await _turn({'proposalId': entry.proposal.id, 'outcome': 'cancelled', 'results': const [], ..._shown(entry)}));
     } catch (e) {
       _add(ErrorEntry(agentFailureMessage(e)));
     } finally {
@@ -239,6 +344,15 @@ class AgentController extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  /// What the guide saw on the card, for the chat history: the advice beside it and the words of each result.
+  static Map<String, dynamic> _shown(ProposalEntry entry) => {
+        'advice': entry.advice,
+        'shown': [
+          for (final a in entry.proposal.actions)
+            if (entry.results[a.callId] case final r?) {'callId': a.callId, 'ok': r.$1, 'text': r.$2},
+        ],
+      };
 
   static String _sentence(Object? data) {
     if (data is Map && data['done'] is String) return data['done'] as String;

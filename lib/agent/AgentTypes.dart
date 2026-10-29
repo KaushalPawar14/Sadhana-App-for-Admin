@@ -162,7 +162,7 @@ class AgentRead {
       );
 }
 
-enum AgentStatus { message, needReads, confirm, limit }
+enum AgentStatus { message, needReads, confirm, limit, full }
 
 /// The server's answer to one step.
 class AgentReply {
@@ -174,6 +174,9 @@ class AgentReply {
     this.reads = const [],
     this.proposal,
     this.ended = false,
+    this.why,
+    this.questionsLeft,
+    this.questionLimit,
   });
 
   final String? sessionId;
@@ -183,14 +186,22 @@ class AgentReply {
   final List<AgentRead> reads;
   final AgentProposal? proposal;
 
-  /// The conversation was gone (it lapsed): start afresh.
+  /// The conversation is gone from the server: the guide starts a New chat (never done for them).
   final bool ended;
+
+  /// With [AgentStatus.limit]: "day" (the daily cap) or "hour".
+  final String? why;
+
+  /// How many more questions this session takes, and its limit (the server says so in every reply).
+  final int? questionsLeft;
+  final int? questionLimit;
 
   factory AgentReply.fromMap(Map<String, dynamic> m) {
     final status = switch (m['status']) {
       'need_reads' => AgentStatus.needReads,
       'confirm' => AgentStatus.confirm,
       'limit' => AgentStatus.limit,
+      'full' => AgentStatus.full,
       _ => AgentStatus.message,
     };
     return AgentReply(
@@ -201,6 +212,9 @@ class AgentReply {
       reads: [for (final r in (m['reads'] as List? ?? const [])) AgentRead.fromMap(r as Map)],
       proposal: m['proposal'] is Map ? AgentProposal.fromMap(m['proposal'] as Map) : null,
       ended: m['ended'] == true,
+      why: m['why']?.toString(),
+      questionsLeft: (m['questionsLeft'] as num?)?.toInt(),
+      questionLimit: (m['questionLimit'] as num?)?.toInt(),
     );
   }
 }
