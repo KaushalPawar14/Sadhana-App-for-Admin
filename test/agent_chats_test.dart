@@ -8,6 +8,7 @@ import 'package:folk_guide_app/Services/HierarchyApi.dart';
 import 'package:folk_guide_app/agent/AgentController.dart';
 import 'package:folk_guide_app/agent/AgentEnv.dart';
 import 'package:folk_guide_app/agent/AgentOverlay.dart';
+import 'package:folk_guide_app/widgets/GuideSurface.dart';
 
 import 'support/app_harness.dart';
 import 'support/guide_test_support.dart';
@@ -96,6 +97,24 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('agent-chats')));
     await tester.pump();
     await letDataArrive(tester);
+  }
+
+  /// Level 1: opens a session's card.
+  Future<void> expandChat(WidgetTester tester, String id) async {
+    await tester.tap(find.byKey(ValueKey('agent-chat-title-$id')));
+    await tester.pump();
+    await letDataArrive(tester);
+    await tester.pump(const Duration(milliseconds: 400));
+  }
+
+  /// "Open chat" inside an opened session.
+  Future<void> openChatFromHistory(WidgetTester tester, String id) async {
+    await expandChat(tester, id);
+    await tester.ensureVisible(find.byKey(ValueKey('agent-chat-open-$id')));
+    await tester.tap(find.byKey(ValueKey('agent-chat-open-$id')));
+    await tester.pump();
+    await letDataArrive(tester);
+    await tester.pump(const Duration(milliseconds: 500));
   }
 
   bool inputEnabled(WidgetTester tester) => tester.widget<TextField>(find.byKey(const ValueKey('agent-input'))).enabled ?? true;
@@ -374,16 +393,13 @@ void main() {
           ],
         );
 
-    testWidgets("a tap shows that chat as it looked: the messages, the cards, what came of each", (tester) async {
+    testWidgets("Open chat shows that chat as it looked: the messages, the cards, what came of each", (tester) async {
       final c = await wire(tester);
       await seedFull();
       await open(tester, c);
       tester.view.physicalSize = const Size(360, 2600); // tall, so every line is built and can be read
       await openHistory(tester);
-      await tester.tap(find.byKey(const ValueKey('agent-chat-chat1')));
-      await tester.pump();
-      await letDataArrive(tester);
-      await tester.pump(const Duration(milliseconds: 500));
+      await openChatFromHistory(tester, 'chat1');
       expect(find.byType(AgentPage), findsOneWidget);
       expect(find.byType(AgentChatsPage), findsNothing, reason: 'back on the chat');
       expect(c.entries.length, 6);
@@ -406,10 +422,7 @@ void main() {
       await open(tester, c);
       tester.view.physicalSize = const Size(360, 2600); // tall, so every line is built and can be read
       await openHistory(tester);
-      await tester.tap(find.byKey(const ValueKey('agent-chat-chat1')));
-      await tester.pump();
-      await letDataArrive(tester);
-      await tester.pump(const Duration(milliseconds: 500));
+      await openChatFromHistory(tester, 'chat1');
       replies.add(_reply('message', {'sessionId': 'chat1', 'text': 'Sure, I remember.', 'questionsLeft': 15}));
       await say(tester, 'what did we do?');
       expect(requests.single['sessionId'], 'chat1', reason: 'the saved session is its context');
@@ -426,8 +439,9 @@ void main() {
       ]);
       await open(tester, c);
       await openHistory(tester);
+      await expandChat(tester, 'fullchat');
       expect(find.text('Full — start a New chat to ask more'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('agent-chat-fullchat')));
+      await tester.tap(find.byKey(const ValueKey('agent-chat-open-fullchat')));
       await tester.pump();
       await letDataArrive(tester);
       await tester.pump(const Duration(milliseconds: 500));
@@ -445,10 +459,7 @@ void main() {
       ]);
       await open(tester, c);
       await openHistory(tester);
-      await tester.tap(find.byKey(const ValueKey('agent-chat-waiting')));
-      await tester.pump();
-      await letDataArrive(tester);
-      await tester.pump(const Duration(milliseconds: 500));
+      await openChatFromHistory(tester, 'waiting');
       expect(find.byKey(const ValueKey('agent-confirm')), findsOneWidget);
       replies.add(_reply('message', {'sessionId': 'waiting', 'text': 'Done.'}));
       await tester.tap(find.byKey(const ValueKey('agent-confirm')));
@@ -472,10 +483,7 @@ void main() {
       ]);
       await open(tester, c);
       await openHistory(tester);
-      await tester.tap(find.byKey(const ValueKey('agent-chat-stale')));
-      await tester.pump();
-      await letDataArrive(tester);
-      await tester.pump(const Duration(milliseconds: 500));
+      await openChatFromHistory(tester, 'stale');
       expect(find.text('Not confirmed — nothing was changed'), findsNWidgets(2));
       expect(find.byKey(const ValueKey('agent-confirm')), findsNothing);
     });
@@ -497,6 +505,200 @@ void main() {
       await tester.pump();
       expect(c.entries, isEmpty);
       expect(c.sessionId, isNull);
+    });
+  });
+
+  // ------------------------------------------------------------------------------------------ the two drop-down levels
+  group('the history drop-downs', () {
+    Map<String, dynamic> card(String proposalId, String state, Map<String, dynamic> results, {String title = 'Request a meeting with a student', List<Map<String, dynamic>>? lines, List<String> notifies = const <String>[]}) => {
+          'kind': 'proposal', 'proposalId': proposalId, 'state': state, 'advice': <String>[], 'results': results, 'atMs': _now.millisecondsSinceEpoch - 600000,
+          'proposal': {
+            'id': proposalId, 'tainted': false, 'headsUp': <String>[],
+            'actions': [
+              {
+                'callId': 'c1', 'tool': 'meeting_request', 'args': <String, dynamic>{}, 'title': title,
+                'lines': lines ?? [{'label': 'Student', 'value': 'Ravi Kumar', 'items': <String>[]}, {'label': 'When', 'value': 'Fri 5 PM', 'items': <String>[]}],
+                'notifies': notifies, 'double': false,
+              },
+            ],
+          },
+        };
+
+    Future<void> seedTasks() => saveChat('s1', title: 'Associations for Ravi', questions: 6, tasks: 2, successful: 1, failed: 1, entries: [
+          {'kind': 'user', 'text': 'set up a meeting with Ravi'},
+          card('p1', 'done', {'c1': {'ok': true, 'text': 'Meeting requested for Fri 5 PM.'}}, notifies: ["the student: 'Meeting Scheduled'"]),
+          {'kind': 'user', 'text': 'and one with Mohan'},
+          card('p2', 'done', {'c1': {'ok': false, 'text': 'Mohan is not in your team.'}}, lines: [{'label': 'Student', 'value': 'Mohan Das', 'items': <String>[]}]),
+          {'kind': 'user', 'text': 'and one more'},
+          card('p3', 'cancelled', <String, dynamic>{}),
+          {'kind': 'user', 'text': 'and another'},
+          card('p4', 'waiting', <String, dynamic>{}),
+        ]);
+
+    testWidgets('level 1 is collapsed: only date, title and counts; no tasks and no Open chat until a card is opened', (tester) async {
+      final c = await wire(tester);
+      await seedTasks();
+      await open(tester, c);
+      await openHistory(tester);
+      expect(find.byKey(const ValueKey('agent-chat-title-s1')), findsOneWidget);
+      expect(find.text('2 tasks · 1 successful · 1 failed'), findsOneWidget);
+      expect(find.byKey(const ValueKey('agent-chat-open-s1')), findsNothing, reason: 'nothing in full until opened');
+      expect(find.textContaining('Request a meeting with a student'), findsNothing);
+      expect(find.byIcon(Icons.check_circle), findsNothing);
+      expect(find.byIcon(Icons.cancel), findsNothing);
+    });
+
+    testWidgets('opening a session lists its TASKS (not the cancelled or unanswered cards), each collapsed, with a tick or a cross', (tester) async {
+      final c = await wire(tester);
+      await seedTasks();
+      await open(tester, c);
+      await openHistory(tester);
+      await expandChat(tester, 's1');
+      expect(find.byKey(const ValueKey('agent-chat-open-s1')), findsOneWidget);
+      expect(find.text('Request a meeting with a student — Ravi Kumar, Fri 5 PM'), findsOneWidget);
+      expect(find.text('Request a meeting with a student — Mohan Das'), findsOneWidget);
+      expect(find.byKey(const ValueKey('agent-task-status-ok')), findsOneWidget);
+      expect(find.byKey(const ValueKey('agent-task-status-failed')), findsOneWidget);
+      expect(find.byIcon(Icons.check_circle), findsOneWidget);
+      expect(find.byIcon(Icons.cancel), findsOneWidget);
+      expect(find.byKey(const ValueKey('agent-task-s1-1-c1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('agent-task-s1-3-c1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('agent-task-s1-5-c1')), findsNothing, reason: 'cancelled is not a task');
+      expect(find.byKey(const ValueKey('agent-task-s1-7-c1')), findsNothing, reason: 'unanswered is not a task');
+      // level 2 is collapsed: no details yet
+      expect(find.text('What was changed'), findsNothing);
+      expect(find.text('Meeting requested for Fri 5 PM.'), findsNothing);
+      expect(find.text("Mohan is not in your team."), findsNothing);
+    });
+
+    testWidgets('opening a task shows the whole action: what was changed, who was told, the result — or the error; opening it again closes it', (tester) async {
+      final c = await wire(tester);
+      await seedTasks();
+      await open(tester, c);
+      await openHistory(tester);
+      await expandChat(tester, 's1');
+
+      await tester.tap(find.text('Request a meeting with a student — Ravi Kumar, Fri 5 PM'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('What was changed'), findsOneWidget);
+      expect(find.text('Student'), findsOneWidget);
+      expect(find.text('Ravi Kumar'), findsOneWidget);
+      expect(find.text('When'), findsOneWidget);
+      expect(find.text('Who was told'), findsOneWidget);
+      expect(find.text("the student: 'Meeting Scheduled'"), findsOneWidget);
+      expect(find.text('Result'), findsOneWidget);
+      expect(find.text('Meeting requested for Fri 5 PM.'), findsOneWidget);
+
+      await tester.tap(find.text('Request a meeting with a student — Mohan Das'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Error'), findsOneWidget);
+      expect(find.text('Mohan is not in your team.'), findsOneWidget);
+
+      // closing: the details go
+      await tester.tap(find.text('Request a meeting with a student — Ravi Kumar, Fri 5 PM'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Meeting requested for Fri 5 PM.'), findsNothing);
+      expect(find.text('Who was told'), findsNothing);
+      expect(find.text('Mohan is not in your team.'), findsOneWidget, reason: 'the other task stays open');
+    });
+
+    testWidgets('a session opens and closes with an animation (no jump), and its card goes back to collapsed', (tester) async {
+      final c = await wire(tester);
+      await seedTasks();
+      await open(tester, c);
+      await openHistory(tester);
+      expect(find.byType(GuideAnimatedSize), findsWidgets, reason: 'the card animates its height');
+      await expandChat(tester, 's1');
+      expect(find.byKey(const ValueKey('agent-chat-open-s1')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('agent-chat-title-s1')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey('agent-chat-open-s1')), findsNothing);
+    });
+
+    testWidgets('a session with no confirmed task says so, and still offers Open chat', (tester) async {
+      final c = await wire(tester);
+      await saveChat('talk', title: 'Just questions', entries: [
+        {'kind': 'user', 'text': 'where do I add a trip?'},
+        {'kind': 'assistant', 'text': 'Open Analysis.'},
+      ]);
+      await open(tester, c);
+      await openHistory(tester);
+      await expandChat(tester, 'talk');
+      expect(find.byKey(const ValueKey('agent-chat-no-tasks-talk')), findsOneWidget);
+      expect(find.byKey(const ValueKey('agent-chat-open-talk')), findsOneWidget);
+    });
+
+    testWidgets('only one session needs to be read when opened: the others stay collapsed', (tester) async {
+      final c = await wire(tester);
+      await seedTasks();
+      await saveChat('other', title: 'Another', tasks: 1, successful: 1, entries: [card('p9', 'done', {'c1': {'ok': true, 'text': 'Done.'}})]);
+      await open(tester, c);
+      await openHistory(tester);
+      await expandChat(tester, 's1');
+      expect(find.byKey(const ValueKey('agent-chat-open-s1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('agent-chat-open-other')), findsNothing);
+    });
+
+    testWidgets('Open chat from the history continues in the same session', (tester) async {
+      final c = await wire(tester);
+      await seedTasks();
+      await open(tester, c);
+      await openHistory(tester);
+      await openChatFromHistory(tester, 's1');
+      expect(c.sessionId, 's1');
+      expect(find.byType(AgentChatsPage), findsNothing);
+      replies.add(_reply('message', {'sessionId': 's1', 'text': 'Yes.', 'questionsLeft': 13}));
+      await say(tester, 'continue');
+      expect(requests.single['sessionId'], 's1');
+    });
+
+    for (final scale in kScales) {
+      for (final dark in [false, true]) {
+        testWidgets('long titles, details and errors wrap neatly in both levels at text ${scale}x, ${dark ? 'dark' : 'light'}', (tester) async {
+          final c = await wire(tester);
+          const long = 'Assign the book "Bhagavad-gita As It Is" to Ravi Kumar, Mohan Das and eleven other students of the Sunday group by Friday evening';
+          await saveChat('long', title: 'A very long chat title about assigning several books to a large group of students this week', tasks: 1, failed: 1, successful: 0, entries: [
+            card('p1', 'done', {'c1': {'ok': false, 'text': 'Not saved: the book is not in the list your team can assign, and two of the students are in another guide\'s team. $long'}},
+                title: long, lines: [{'label': 'Students', 'value': long, 'items': <String>[]}], notifies: ['the students: "A new book was assigned to you, please collect it from the library on Friday"']),
+          ]);
+          await open(tester, c, scale: scale, dark: dark);
+          await openHistory(tester);
+          await expandChat(tester, 'long');
+          expectNoOverflow(tester, reason: 'level 1 opened');
+          await tester.tap(find.textContaining('Assign the book').first);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 400));
+          await tester.ensureVisible(find.text('Error'));
+          expect(find.text('Error'), findsOneWidget);
+          expectNoOverflow(tester, reason: 'level 2 opened');
+        });
+      }
+    }
+
+    test('task titles are short: the action and its first short details', () {
+      final lines = [
+        {
+          'kind': 'proposal', 'state': 'done', 'seq': 3, 'results': {'c1': {'ok': true, 'text': 'x'}},
+          'proposal': {
+            'id': 'p', 'actions': [
+              {'callId': 'c1', 'tool': 't', 'args': <String, dynamic>{}, 'title': 'Set an association', 'lines': [
+                {'label': 'Student', 'value': 'Ravi', 'items': <String>[]},
+                {'label': 'Note', 'value': 'A very long note that goes on and on and certainly is longer than thirty six characters', 'items': <String>[]},
+                {'label': 'When', 'value': 'Fri 5 PM', 'items': <String>[]},
+                {'label': 'Extra', 'value': 'ignored third', 'items': <String>[]},
+              ], 'notifies': <String>[], 'double': false},
+            ],
+          },
+        },
+      ];
+      final tasks = chatTasksOf(lines);
+      expect(tasks.single.shortTitle, 'Set an association — Ravi, Fri 5 PM');
+      expect(tasks.single.ok, isTrue);
+      expect(tasks.single.key, '3-c1');
     });
   });
 
