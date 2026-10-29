@@ -45,6 +45,11 @@ class GuideColors extends ThemeExtension<GuideColors> {
     required this.warning,
     required this.attention,
     required this.agent,
+    required this.agentTop,
+    required this.agentMid,
+    required this.agentBottom,
+    required this.onAgent,
+    required this.agentSoft,
     required this.scrim,
   });
 
@@ -105,9 +110,17 @@ class GuideColors extends ThemeExtension<GuideColors> {
   // The small dot that says there is something new (unseen content).
   final Color attention;
 
-  /// The AI assistant's own colour: its floating button and its page. A fuchsia, deliberately unlike
-  /// the Student app's assistant, so the two are never mistaken for each other.
+  /// The AI assistant's own colour, a rich SAFFRON (the app's warm family), for its floating button, its page, cards and chips. [agent] is the deep (light theme) or light (dark theme) saffron used for TEXT, icons and
+  /// borders on the page surface (contrast at least 4.5:1 with it). [agentTop] / [agentMid] / [agentBottom] are the rich
+  /// gradient for FILLS (the floating button, the guide's bubbles, primary buttons), warm saffron at the top to deep saffron at
+  /// the bottom; [onAgent] is the text and icon colour ON those fills (at least 4.5:1 with every stop); [agentSoft] is a tint
+  /// of it for quiet backgrounds.
   final Color agent;
+  final Color agentTop;
+  final Color agentMid;
+  final Color agentBottom;
+  final Color onAgent;
+  final Color agentSoft;
 
   // Behind modal sheets and dialogs.
   final Color scrim;
@@ -251,7 +264,12 @@ class GuideColors extends ThemeExtension<GuideColors> {
     success: Color(0xFF2F7D5B),
     warning: Color(0xFFA9812F),
     attention: Color(0xFFF57C00),
-    agent: Color(0xFFB0278F),
+    agent: Color(0xFF9A4A00),
+    agentTop: Color(0xFFFFC857),
+    agentMid: Color(0xFFFF9F1C),
+    agentBottom: Color(0xFFE8590C),
+    onAgent: Color(0xFF2B1500),
+    agentSoft: Color(0x1FFF9F1C),
     scrim: Color(0x8014192B),
   );
 
@@ -300,7 +318,12 @@ class GuideColors extends ThemeExtension<GuideColors> {
     success: Color(0xFF4FB38A),
     warning: Color(0xFFC9A24A),
     attention: Color(0xFFFFA43D),
-    agent: Color(0xFFE05CC0),
+    agent: Color(0xFFFFB347),
+    agentTop: Color(0xFFFFC857),
+    agentMid: Color(0xFFFF9F1C),
+    agentBottom: Color(0xFFE8590C),
+    onAgent: Color(0xFF2B1500),
+    agentSoft: Color(0x29FF9F1C),
     scrim: Color(0xB3000000),
   );
 

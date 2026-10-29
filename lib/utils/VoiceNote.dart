@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import 'package:flutter/widgets.dart';
+
 import '../Services/HierarchyApi.dart';
 
 /// Speak a note, get clean English text (Master Part 3).
@@ -40,6 +44,53 @@ String appendNote(String existing, String clean) {
   final base = existing.trimRight();
   if (base.isEmpty) return add;
   return '$base\n\n$add';
+}
+
+/// Puts [clean] after what [controller] holds (as [appendNote] does), appearing a few words at a time over a fraction of a second
+/// instead of all at once. With [animate] false - reduce-motion - it is simply there. Whatever happens, the field ends holding
+/// exactly the appended text with the cursor at its end; the caller's [done] runs then.
+void revealAppend(
+  TextEditingController controller,
+  String clean, {
+  required bool animate,
+  VoidCallback? done,
+  Duration total = const Duration(milliseconds: 420),
+}) {
+  final before = controller.text;
+  final full = appendNote(before, clean);
+  void finish() {
+    controller.text = full;
+    controller.selection = TextSelection.collapsed(offset: full.length);
+    done?.call();
+  }
+
+  if (!animate || full == before) {
+    finish();
+    return;
+  }
+  // the points (in characters) the text appears up to: after each word of what is new
+  final cuts = <int>[];
+  for (final m in RegExp(r'\S+\s*').allMatches(full.substring(before.length))) {
+    cuts.add(before.length + m.end);
+  }
+  if (cuts.length < 2) {
+    finish();
+    return;
+  }
+  final steps = cuts.length > 24 ? 24 : cuts.length;
+  var i = 0;
+  late Timer timer;
+  timer = Timer.periodic(Duration(microseconds: (total.inMicroseconds / steps).round()), (_) {
+    i++;
+    if (i >= steps) {
+      timer.cancel();
+      finish();
+      return;
+    }
+    final upTo = cuts[((i / steps) * cuts.length).ceil().clamp(1, cuts.length) - 1];
+    controller.text = full.substring(0, upTo);
+    controller.selection = TextSelection.collapsed(offset: upTo);
+  });
 }
 
 /// The microphone is not allowed. A separate type so the screen can explain how

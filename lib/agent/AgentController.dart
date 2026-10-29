@@ -7,6 +7,7 @@ import '../utils/VoiceNote.dart' show voiceReason;
 import 'AgentAdvisor.dart';
 import 'AgentEnv.dart';
 import 'AgentReads.dart';
+import 'TaskProgress.dart';
 import 'AgentTypes.dart';
 import 'AgentWrites.dart';
 import 'AgentWrites2.dart';
@@ -65,13 +66,31 @@ class ErrorEntry extends ChatEntry {
   final String text;
 }
 
+/// A task's progress card: its percentage, driven by the real steps the task goes through (see [TaskProgress]). It is made when the
+/// guide asks for something and follows that request all the way - through a confirmation, the saving and the result. It lives
+/// on the phone only; a saved chat does not carry it.
+class ProgressEntry extends ChatEntry {
+  ProgressEntry(this.request);
+
+  /// What the guide asked, shortened for the card.
+  final String request;
+  final TaskProgress progress = TaskProgress();
+
+  /// Words for the waiting step when it is not a confirmation ("Waiting for your answer"), and for the end when it is not "Done".
+  String? waitingText;
+  String? doneText;
+}
+
 /// [expired]: shown in an old chat and not answered in time (or the guide moved on): nothing was changed, and it can no longer be confirmed.
 enum ProposalState { waiting, running, done, cancelled, expired }
 
 /// A question the assistant asks with choices to tap ("which of these two?"). Tapping one sends its words as the guide's
 /// next message; [chosen] is the one tapped. In a saved chat that was answered it is shown read-only.
 class QuestionEntry extends ChatEntry {
-  QuestionEntry(this.question, this.choices, {this.chosen});
+  QuestionEntry(this.question, this.choices, {this.chosen, this.task});
+
+  /// The progress card of the request that led to this question; answering it finishes that card.
+  final ProgressEntry? task;
 
   final String question;
   final List<AgentChoice> choices;
@@ -82,7 +101,10 @@ class QuestionEntry extends ChatEntry {
 
 /// A change proposed and waiting for the guide, then what came of it.
 class ProposalEntry extends ChatEntry {
-  ProposalEntry(this.proposal, this.advice, {this.atMs});
+  ProposalEntry(this.proposal, this.advice, {this.atMs, this.task});
+
+  /// The progress card of the request that led to this card, so confirming or cancelling moves the same percentage on.
+  final ProgressEntry? task;
 
   final AgentProposal proposal;
 
@@ -135,6 +157,9 @@ class AgentController extends ChangeNotifier {
   static const int defaultQuestionLimit = 20;
 
   final List<ChatEntry> entries = [];
+
+  /// The progress card of the task being worked on right now.
+  ProgressEntry? _task;
   String? _sessionId;
   bool _busy = false;
   bool get busy => _busy;
@@ -264,10 +289,15 @@ class AgentController extends ChangeNotifier {
     if (clean.isEmpty || !canAsk) return;
     _busy = true;
     _add(UserEntry(clean));
+    final task = ProgressEntry(clean);
+    _task = task;
+    _add(task);
     try {
       await _handle(await _turn({'text': clean}));
     } catch (e) {
-      _add(ErrorEntry(agentFailureMessage(e)));
+      final message = agentFailureMessage(e);
+      task.progress.fail(message);
+      _add(ErrorEntry(message));
     } finally {
       _busy = false;
       notifyListeners();
@@ -282,30 +312,45 @@ class AgentController extends ChangeNotifier {
       if (reply.ended) sessionGone = true;
       switch (reply.status) {
         case AgentStatus.message:
+          _task?.progress.finish();
+          if (reply.text != null || reply.links.isNotEmpty) _add(AssistantEntry(reply.text ?? '', reply.links));
+          return;
+
         case AgentStatus.limit:
         case AgentStatus.full:
           if (reply.status == AgentStatus.limit && reply.why != 'hour') _limitDay = _today();
+          // the request was refused, not carried out: the card stops, with the reason
+          _task?.progress.fail(reply.text ?? 'This could not be done now.');
           if (reply.text != null || reply.links.isNotEmpty) _add(AssistantEntry(reply.text ?? '', reply.links));
           return;
 
         case AgentStatus.question:
+          _task?.waitingText = 'Waiting for your answer';
+          _task?.progress.enter(TaskStep.preparing);
+          _task?.progress.enter(TaskStep.confirming);
           if (reply.text != null) _add(AssistantEntry(reply.text!, const []));
-          _add(QuestionEntry(reply.question ?? '', reply.choices));
+          _add(QuestionEntry(reply.question ?? '', reply.choices, task: _task));
           return;
 
         case AgentStatus.confirm:
+          _task?.progress.enter(TaskStep.preparing);
           if (reply.text != null) _add(AssistantEntry(reply.text!, const []));
           final p = reply.proposal!;
           final advice = await adviseFor(p, env);
-          _add(ProposalEntry(p, [...p.headsUp, ...advice]));
+          _task?.progress.enter(TaskStep.confirming);
+          _add(ProposalEntry(p, [...p.headsUp, ...advice], task: _task));
           return;
 
         case AgentStatus.needReads:
+          _task?.progress.enter(TaskStep.finding);
           final results = await Future.wait(reply.reads.map(_runTool));
+          _task?.progress.enter(TaskStep.preparing);
           reply = await _turn({'toolResults': results});
       }
     }
-    _add(ErrorEntry('That took too many steps, so I stopped. Please say it again more simply.'));
+    const tooMany = 'That took too many steps, so I stopped. Please say it again more simply.';
+    _task?.progress.fail(tooMany);
+    _add(ErrorEntry(tooMany));
   }
 
   Future<Map<String, dynamic>> _runTool(AgentRead read) async => (await _run(read.tool, read.args)).toWire(read.callId);
@@ -324,6 +369,8 @@ class AgentController extends ChangeNotifier {
   Future<void> choose(QuestionEntry entry, int index) async {
     if (entry.answered || !canAsk || index < 0 || index >= entry.choices.length) return;
     entry.chosen = index;
+    entry.task?.doneText = 'Answered';
+    entry.task?.progress.finish();
     notifyListeners();
     await send(entry.choices[index].reply);
   }
@@ -337,6 +384,8 @@ class AgentController extends ChangeNotifier {
     }
     _busy = true;
     entry.state = ProposalState.running;
+    _task = entry.task;
+    _task?.progress.enter(TaskStep.saving);
     notifyListeners();
     try {
       final results = <Map<String, dynamic>>[];
@@ -348,6 +397,9 @@ class AgentController extends ChangeNotifier {
         notifyListeners();
       }
       entry.state = ProposalState.done;
+      // a change that did not go through stops the card, with the reason; finishing is only for what truly worked
+      final failed = entry.results.values.where((r) => !r.$1).toList();
+      if (failed.isNotEmpty) _task?.progress.fail(failed.first.$2);
       await _handle(await _turn({
         'proposalId': entry.proposal.id,
         'outcome': 'executed',
@@ -357,7 +409,9 @@ class AgentController extends ChangeNotifier {
       }));
     } catch (e) {
       entry.state = ProposalState.done;
-      _add(ErrorEntry(agentFailureMessage(e)));
+      final message = agentFailureMessage(e);
+      _task?.progress.fail(message);
+      _add(ErrorEntry(message));
     } finally {
       _busy = false;
       notifyListeners();
@@ -369,6 +423,8 @@ class AgentController extends ChangeNotifier {
     if (entry.state != ProposalState.waiting || _busy) return;
     _busy = true;
     entry.state = ProposalState.cancelled;
+    _task = entry.task;
+    _task?.progress.cancel();
     notifyListeners();
     try {
       await _handle(await _turn({'proposalId': entry.proposal.id, 'outcome': 'cancelled', 'results': const [], ..._shown(entry)}));

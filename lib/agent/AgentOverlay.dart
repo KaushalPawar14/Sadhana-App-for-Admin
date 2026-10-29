@@ -5,9 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../Pages/AgentPage.dart';
 import '../main.dart' show guideNavigatorKey;
-import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
+import '../widgets/AgentFab.dart';
 import 'AgentController.dart';
 
 /// The route name of the assistant's page, so the button can step aside there.
@@ -74,7 +74,7 @@ class AgentSession {
 ///
 /// Position: draggable, saved as a FRACTION of the screen (so it survives rotation and another phone),
 /// clear of the floating navigation by default, never off-screen. A colour of its own — the assistant's
-/// fuchsia — so it is never mistaken for the Student app's.
+/// saffron, drawn as a glossy 3D button with a light shine that sweeps across it every few seconds.
 class AgentOverlay extends StatelessWidget {
   const AgentOverlay({super.key, required this.child, this.signedIn, this.onOpen});
 
@@ -128,6 +128,7 @@ class _DraggableAgentButtonState extends State<_DraggableAgentButton> {
   Offset? _pendingFraction;
   bool _loaded = false;
   bool _dragging = false;
+  bool _pressed = false;
 
   @override
   void initState() {
@@ -183,7 +184,6 @@ class _DraggableAgentButtonState extends State<_DraggableAgentButton> {
   @override
   Widget build(BuildContext context) {
     if (!_loaded) return const SizedBox.shrink();
-    final g = context.g;
     final media = MediaQuery.of(context);
     final screen = media.size;
     // clear of the floating navigation at the bottom, like every other floating thing in the app
@@ -212,22 +212,16 @@ class _DraggableAgentButtonState extends State<_DraggableAgentButton> {
               _persist(Offset(p.dx / screen.width, p.dy / screen.height));
             },
             onTap: _open,
+            onTapDown: (_) => setState(() => _pressed = true),
+            onTapUp: (_) => setState(() => _pressed = false),
+            onTapCancel: () => setState(() => _pressed = false),
             child: Semantics(
               button: true,
               label: 'AI assistant',
               child: AnimatedScale(
                 scale: _dragging ? 1.08 : 1.0,
                 duration: const Duration(milliseconds: 120),
-                child: Container(
-                  width: kAgentButtonSize,
-                  height: kAgentButtonSize,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: g.agent,
-                    boxShadow: g.cardShadow,
-                  ),
-                  child: Icon(Icons.auto_awesome, color: g.onPrimary, size: 26),
-                ),
+                child: AgentFab(key: const ValueKey('agent-fab'), size: kAgentButtonSize, pressed: _pressed && !_dragging),
               ),
             ),
           ),

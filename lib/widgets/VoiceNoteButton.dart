@@ -8,7 +8,8 @@ import '../Services/VoiceRecorder.dart';
 import '../theme/GuideTheme.dart';
 import '../utils/AiMarkdown.dart';
 import '../utils/VoiceNote.dart';
-import 'GuideWait.dart';
+import 'ThinkingDots.dart';
+import 'VoiceWaveform.dart';
 
 /// A mic for a text field: speak, get clean English text (Master Part 3).
 ///
@@ -64,9 +65,30 @@ class _VoiceNoteButtonState extends State<VoiceNoteButton> {
   /// failure. Dropped on success, on Cancel and on dispose.
   VoiceClip? _clip;
 
+  /// How loud the voice is, for the live waveform; fed while recording by a recorder that can say ([VoiceLevels]).
+  final VoiceLevelTrail _trail = VoiceLevelTrail();
+  StreamSubscription<double>? _levels;
+
+  void _listenForLevels() {
+    _levels?.cancel();
+    _trail.clear();
+    final rec = VoiceRecorder.instance;
+    if (rec is! VoiceLevels) return;
+    try {
+      _levels = (rec as VoiceLevels).levels.listen(_trail.add, onError: (_) {});
+    } catch (_) {/* a waveform is a courtesy */}
+  }
+
+  void _stopLevels() {
+    _levels?.cancel();
+    _levels = null;
+  }
+
   @override
   void dispose() {
     _ticker?.cancel();
+    _stopLevels();
+    _trail.dispose();
     _clip = null;
     // A guide who leaves mid-recording must not leave the mic open.
     if (_phase == _Phase.recording || _phase == _Phase.paused) {
@@ -99,6 +121,9 @@ class _VoiceNoteButtonState extends State<VoiceNoteButton> {
       _seconds = 0;
     });
     _startTicker();
+    _listenForLevels();
+    // a head start: the server wakes up while the guide is speaking, not after they press Done
+    HierarchyApi.instance.warmVoice();
   }
 
   void _startTicker() {
@@ -115,6 +140,8 @@ class _VoiceNoteButtonState extends State<VoiceNoteButton> {
   Future<void> _pause() async {
     if (_phase != _Phase.recording) return;
     _ticker?.cancel();
+    _stopLevels();
+    _trail.clear();
     try {
       await VoiceRecorder.instance.pause();
     } catch (e) {
@@ -146,10 +173,12 @@ class _VoiceNoteButtonState extends State<VoiceNoteButton> {
     if (!mounted) return;
     setState(() => _phase = _Phase.recording);
     _startTicker();
+    _listenForLevels();
   }
 
   Future<void> _cancel() async {
     _ticker?.cancel();
+    _stopLevels();
     await VoiceRecorder.instance.cancel();
     if (!mounted) return;
     setState(() {
@@ -161,6 +190,7 @@ class _VoiceNoteButtonState extends State<VoiceNoteButton> {
   Future<void> _finish() async {
     if (_phase != _Phase.recording && _phase != _Phase.paused) return;
     _ticker?.cancel();
+    _stopLevels();
     setState(() => _phase = _Phase.processing);
     try {
       final clip = await VoiceRecorder.instance.stop();
@@ -253,7 +283,12 @@ class _VoiceNoteButtonState extends State<VoiceNoteButton> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: g.danger.withValues(alpha: .35)),
           ),
-          child: Wrap(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              VoiceWaveform(key: const ValueKey('voice-waveform'), trail: _trail, colour: paused ? g.mutedText : g.danger, paused: paused),
+              const SizedBox(height: 4),
+              Wrap(
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             runSpacing: 4,
@@ -300,6 +335,8 @@ class _VoiceNoteButtonState extends State<VoiceNoteButton> {
               ),
             ],
           ),
+            ],
+          ),
         );
 
       case _Phase.processing:
@@ -308,7 +345,7 @@ class _VoiceNoteButtonState extends State<VoiceNoteButton> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Row(
             children: [
-              const SizedBox(width: 18, height: 18, child: GuideBusyDot()),
+              ThinkingDots(key: const ValueKey('voice-dots'), colour: g.brass, dot: 3.6),
               const SizedBox(width: 12),
               Expanded(
                 child: Text('Turning your voice into text…',

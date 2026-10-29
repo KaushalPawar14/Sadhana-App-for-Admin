@@ -215,6 +215,14 @@ class HierarchyApi {
   /// The audio is sent once and not kept. [existingText] is whatever is already
   /// in the field, sent for context only (so names and terms match) and never
   /// returned. The result is the one field `text`; there is no raw transcript.
+  /// Tells the server a recording is about to arrive, so the sign-in and the function are already warm when the guide presses
+  /// Done and the first seconds of the wait are not spent waking them up. Does nothing else; a failure is ignored.
+  Future<void> warmVoice() async {
+    try {
+      await _call('voiceToEnglishText', {'warm': true});
+    } catch (_) {/* only a head start */}
+  }
+
   Future<String> voiceToEnglishText({
     required String audioBase64,
     required String mimeType,

@@ -1467,10 +1467,9 @@ class _MeetingNotesFieldState extends State<_MeetingNotesField> {
           studentName: widget.studentName,
           existingText: () => _controller.text,
           onText: (clean) {
-            _controller.text = appendNote(_controller.text, clean);
-            _controller.selection =
-                TextSelection.collapsed(offset: _controller.text.length);
-            widget.onChanged(_controller.text);
+            revealAppend(_controller, clean,
+                animate: !(MediaQuery.maybeDisableAnimationsOf(context) ?? false),
+                done: () => widget.onChanged(_controller.text));
           },
         ),
       ],

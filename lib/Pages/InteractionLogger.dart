@@ -693,11 +693,11 @@ class _EntrySheetState extends State<_EntrySheet> {
                       studentName: widget.studentName,
                       enabled: !_busy,
                       existingText: () => _controller.text,
-                      onText: (clean) => setState(() {
-                        _controller.text = appendNote(_controller.text, clean);
-                        _controller.selection = TextSelection.collapsed(
-                            offset: _controller.text.length);
-                      }),
+                      onText: (clean) => revealAppend(_controller, clean,
+                          animate: !(MediaQuery.maybeDisableAnimationsOf(context) ?? false),
+                          done: () {
+                            if (mounted) setState(() {});
+                          }),
                     ),
                   ],
                 ),

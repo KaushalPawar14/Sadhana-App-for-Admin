@@ -54,12 +54,19 @@ abstract class VoiceRecorder {
   Future<void> cancel();
 }
 
+/// A recorder that can say how loud the voice is, for the live waveform. Separate from [VoiceRecorder] so a test's own recorder
+/// need not implement it; the screen asks `recorder is VoiceLevels`.
+abstract class VoiceLevels {
+  /// Loudness readings, 0 (silence) to 1 (loud), about every 80 ms while recording. Ends when the recording does.
+  Stream<double> get levels;
+}
+
 /// [VoiceRecorder] over the `record` package.
 ///
 /// Mono, 16 kHz, 32 kbit/s AAC: speech, not music. That is intelligible to the
 /// model in three languages and keeps three minutes to well under a megabyte,
 /// so the upload stays quick on a mobile connection.
-class RecordPackageRecorder implements VoiceRecorder {
+class RecordPackageRecorder implements VoiceRecorder, VoiceLevels {
   RecordPackageRecorder();
 
   AudioRecorder? _recorder;
@@ -72,6 +79,10 @@ class RecordPackageRecorder implements VoiceRecorder {
   DateTime? _segmentStart;
 
   AudioRecorder get _rec => _recorder ??= AudioRecorder();
+
+  /// The microphone's level in decibels (about -50 for a quiet room to 0 for loud), as 0..1.
+  @override
+  Stream<double> get levels => _rec.onAmplitudeChanged(const Duration(milliseconds: 80)).map((a) => ((a.current + 50) / 50).clamp(0.0, 1.0));
 
   @override
   Future<bool> ensurePermission() => _rec.hasPermission();

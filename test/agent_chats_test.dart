@@ -118,7 +118,8 @@ void main() {
   }
 
   bool inputEnabled(WidgetTester tester) => tester.widget<TextField>(find.byKey(const ValueKey('agent-input'))).enabled ?? true;
-  bool sendEnabled(WidgetTester tester) => tester.widget<IconButton>(find.byKey(const ValueKey('agent-send'))).onPressed != null;
+  bool sendEnabled(WidgetTester tester) =>
+      tester.widget<InkWell>(find.descendant(of: find.byKey(const ValueKey('agent-send')), matching: find.byType(InkWell))).onTap != null;
 
   // ------------------------------------------------------------------------------------------ a new chat only by the button
   group('a New chat starts only when the guide presses the button', () {
@@ -131,7 +132,8 @@ void main() {
       await say(tester, 'second');
       expect(requests[0].containsKey('sessionId'), isFalse, reason: 'the first question opens the session');
       expect(requests[1]['sessionId'], 'sess12345', reason: 'the second continues it');
-      expect(c.entries.length, 4);
+      expect(c.entries.whereType<ProgressEntry>().length, 2, reason: 'each request has its progress card');
+      expect(c.entries.where((e) => e is! ProgressEntry).length, 4);
       expect(find.text('Second answer.'), findsOneWidget);
       expect(find.text('First answer.'), findsOneWidget);
     });
@@ -288,7 +290,7 @@ void main() {
       await open(tester, c);
       replies.add(_reply('limit', {'why': 'hour', 'text': "You've asked me a lot this hour, so I'm pausing for a little.", 'questionsLeft': 19}));
       await say(tester, 'hello');
-      expect(find.textContaining('this hour'), findsOneWidget);
+      expect(find.textContaining('this hour'), findsWidgets);
       expect(find.byKey(const ValueKey('agent-daily-limit')), findsNothing);
       expect(inputEnabled(tester), isTrue);
     });

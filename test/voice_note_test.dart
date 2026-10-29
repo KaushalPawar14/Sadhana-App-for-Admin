@@ -208,6 +208,7 @@ void main() {
   // -------------------------------------------------------------------------
   late FakeRecorder mic;
   late List<Map<String, dynamic>> calls;
+  late List<Map<String, dynamic>> warms;
   late Object? Function(Map<String, dynamic> args) answer;
 
   Future<void> pumpButton(
@@ -224,7 +225,13 @@ void main() {
     addTearDown(() => VoiceRecorder.useForTests(null));
     calls = [];
     answer = (_) => {'text': 'Arjun is keeping 8 rounds daily.'};
+    warms = [];
     HierarchyApi.useForTests((name, args) async {
+      // the head start the app sends when recording begins is not a recording: kept apart
+      if (args['warm'] == true) {
+        warms.add(args);
+        return {'text': '', 'warmed': true};
+      }
       calls.add({'name': name, 'args': args});
       final r = answer(args);
       if (r is Exception) throw r;
@@ -616,6 +623,7 @@ void main() {
     addTearDown(() => VoiceRecorder.useForTests(null));
     final sent = <Map<String, dynamic>>[];
     HierarchyApi.useForTests((name, args) async {
+      if (args['warm'] == true) return {'text': '', 'warmed': true};
       sent.add({'name': name, 'args': args});
       if (name == 'voiceToEnglishText') {
         return {'text': 'Ravi said he will chant 12 rounds from Monday.'};

@@ -13,7 +13,10 @@ import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideSurface.dart';
 import '../utils/AiMarkdown.dart';
+import '../theme/AgentLook.dart';
 import '../widgets/AiText.dart';
+import '../widgets/TaskProgressCard.dart';
+import '../widgets/ThinkingDots.dart';
 import '../widgets/GuideWait.dart';
 import '../widgets/VoiceNoteButton.dart';
 import 'AgentChatsPage.dart';
@@ -41,11 +44,15 @@ class _AgentPageState extends State<AgentPage> {
   final FocusNode _focus = FocusNode();
   int _seen = 0;
 
+  /// How many entries were already there when the page opened: those are drawn without an entrance, new ones ease in.
+  int _opened = 0;
+
   @override
   void initState() {
     super.initState();
     _c.addListener(_changed);
     _seen = _c.entries.length;
+    _opened = _c.entries.length;
   }
 
   @override
@@ -222,22 +229,20 @@ class _AgentPageState extends State<AgentPage> {
       controller: _scroll,
       padding: const EdgeInsets.fromLTRB(GuideSpace.lg, GuideSpace.lg, GuideSpace.lg, GuideSpace.sm),
       children: [
-        for (final e in _c.entries) Padding(padding: const EdgeInsets.only(bottom: 10), child: _entry(context, e)),
+        for (var i = 0; i < _c.entries.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _EntryIn(key: ObjectKey(_c.entries[i]), animate: i >= _opened, fromRight: _c.entries[i] is UserEntry, child: _entry(context, _c.entries[i])),
+          ),
         if (_c.busy) _working(context),
       ],
     );
   }
 
-  Widget _working(BuildContext context) => Padding(
-        key: const ValueKey('agent-working'),
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            const SizedBox(width: 18, height: 18, child: GuideBusyDot()),
-            const SizedBox(width: 12),
-            Expanded(child: Text('Working on it…', style: context.gText.small)),
-          ],
-        ),
+  Widget _working(BuildContext context) => const Padding(
+        key: ValueKey('agent-working'),
+        padding: EdgeInsets.symmetric(vertical: 4),
+        child: _TypingBubble(),
       );
 
   Widget _entry(BuildContext context, ChatEntry e) {
@@ -252,8 +257,12 @@ class _AgentPageState extends State<AgentPage> {
             constraints: BoxConstraints(maxWidth: width * .85),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(color: g.agent, borderRadius: BorderRadius.circular(GuideShape.inputRadius)),
-              child: Text(e.text, style: t.body.copyWith(color: g.onPrimary)),
+              decoration: BoxDecoration(
+                gradient: g.agentGradientWide,
+                borderRadius: const BorderRadius.only(topLeft: Radius.circular(18), topRight: Radius.circular(18), bottomLeft: Radius.circular(18), bottomRight: Radius.circular(5)),
+                boxShadow: [BoxShadow(color: g.agentBottom.withValues(alpha: g.isDark ? .30 : .26), blurRadius: 8, offset: const Offset(0, 3))],
+              ),
+              child: Text(e.text, style: t.body.copyWith(color: g.onAgent, fontWeight: FontWeight.w600)),
             ),
           ),
         );
@@ -266,8 +275,9 @@ class _AgentPageState extends State<AgentPage> {
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: g.surface,
-                borderRadius: BorderRadius.circular(GuideShape.inputRadius),
-                border: Border.all(color: g.border),
+                borderRadius: const BorderRadius.only(topLeft: Radius.circular(5), topRight: Radius.circular(18), bottomLeft: Radius.circular(18), bottomRight: Radius.circular(18)),
+                border: Border.all(color: g.agent.withValues(alpha: .28)),
+                boxShadow: g.cardShadow,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -315,6 +325,8 @@ class _AgentPageState extends State<AgentPage> {
         );
       case ProposalEntry():
         return _ProposalCard(entry: e, busy: _c.busy, onConfirm: () => _confirm(e), onCancel: () => _c.cancel(e));
+      case ProgressEntry():
+        return TaskProgressCard(key: ObjectKey(e), entry: e);
       case QuestionEntry():
         return _QuestionCard(key: ValueKey('agent-question-${identityHashCode(e)}'), entry: e, enabled: _c.canAsk, onChoose: (i) => _c.choose(e, i));
     }
@@ -375,9 +387,7 @@ class _AgentPageState extends State<AgentPage> {
               enabled: !_c.busy && closed == null,
               existingText: () => _input.text,
               onText: (spoken) {
-                _input.text = appendNote(_input.text, spoken);
-                _input.selection = TextSelection.collapsed(offset: _input.text.length);
-                _focus.requestFocus();
+                revealAppend(_input, spoken, animate: !(MediaQuery.maybeDisableAnimationsOf(context) ?? false), done: _focus.requestFocus);
               },
             ),
             Row(
@@ -397,11 +407,9 @@ class _AgentPageState extends State<AgentPage> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                IconButton(
-                  key: const ValueKey('agent-send'),
-                  tooltip: 'Send',
-                  onPressed: _c.canAsk ? _send : null,
-                  icon: Icon(Icons.send_rounded, color: _c.canAsk ? g.agent : g.mutedText),
+                Padding(
+                  padding: const EdgeInsets.only(left: 2, bottom: 2),
+                  child: _SendButton(key: const ValueKey('agent-send'), onPressed: _c.canAsk ? _send : null),
                 ),
               ],
             ),
@@ -445,7 +453,15 @@ class _ProposalCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(delete ? Icons.delete_outline : Icons.fact_check_outlined, color: accent, size: 20),
+              Icon(
+                switch (entry.state) {
+                  ProposalState.done => entry.results.values.every((r) => r.$1) ? Icons.check_circle : Icons.cancel,
+                  ProposalState.cancelled || ProposalState.expired => Icons.block,
+                  _ => delete ? Icons.delete_outline : Icons.fact_check_outlined,
+                },
+                color: entry.state == ProposalState.done ? (entry.results.values.every((r) => r.$1) ? g.success : g.danger) : accent,
+                size: 22,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -568,7 +584,7 @@ class _ProposalCard extends StatelessWidget {
               ElevatedButton(
                 key: const ValueKey('agent-confirm'),
                 onPressed: busy ? null : onConfirm,
-                style: ElevatedButton.styleFrom(backgroundColor: accent, foregroundColor: g.onPrimary),
+                style: ElevatedButton.styleFrom(backgroundColor: delete ? accent : g.agentMid, foregroundColor: delete ? g.onPrimary : g.onAgent, elevation: delete ? 1 : 3, shadowColor: g.agentBottom),
                 child: Text(delete ? 'Delete…' : 'Confirm'),
               ),
             ],
@@ -686,6 +702,99 @@ class _QuestionCard extends StatelessWidget {
       curve: GuideMotion.standard,
       builder: (context, v, child) => Opacity(opacity: v, child: Transform.translate(offset: Offset(0, (1 - v) * 10), child: child)),
       child: card,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Entrance, typing indicator, send button
+// ---------------------------------------------------------------------------
+/// A new line of the conversation eases in: it fades up from a little below (the guide's own from the right). Lines that were
+/// already there when the page opened, and any line with reduce-motion on, are simply drawn.
+class _EntryIn extends StatelessWidget {
+  const _EntryIn({super.key, required this.animate, required this.fromRight, required this.child});
+
+  final bool animate;
+  final bool fromRight;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!animate) return child;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: GuideMotion.of(context, const Duration(milliseconds: 320)),
+      curve: Curves.easeOutCubic,
+      builder: (context, v, child) => Opacity(
+        opacity: v,
+        child: Transform.translate(offset: Offset(fromRight ? (1 - v) * 18 : 0, (1 - v) * 14), child: child),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// "The assistant is thinking": three dots that rise and fall in turn (see [ThinkingDots]), in a bubble like the assistant's own.
+class _TypingBubble extends StatelessWidget {
+  const _TypingBubble();
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.g;
+    return Semantics(
+      label: 'The assistant is thinking',
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: g.surface,
+            borderRadius: const BorderRadius.only(topLeft: Radius.circular(5), topRight: Radius.circular(18), bottomLeft: Radius.circular(18), bottomRight: Radius.circular(18)),
+            border: Border.all(color: g.agent.withValues(alpha: .28)),
+          ),
+          child: ThinkingDots(key: const ValueKey('agent-thinking-dots'), colour: g.agent),
+        ),
+      ),
+    );
+  }
+}
+
+/// The send button: a saffron disc with the arrow on it (greyed when nothing can be sent).
+class _SendButton extends StatelessWidget {
+  const _SendButton({super.key, required this.onPressed});
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.g;
+    final on = onPressed != null;
+    return Semantics(
+      button: true,
+      enabled: on,
+      label: 'Send',
+      child: Tooltip(
+        message: 'Send',
+        child: Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onPressed,
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: on ? g.agentGradient : null,
+                color: on ? null : g.border,
+                boxShadow: on ? [BoxShadow(color: g.agentBottom.withValues(alpha: .35), blurRadius: 8, offset: const Offset(0, 3))] : null,
+              ),
+              child: Icon(Icons.send_rounded, size: 20, color: on ? g.onAgent : g.mutedText),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
