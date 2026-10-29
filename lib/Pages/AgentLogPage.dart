@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
+import '../widgets/AiCostPanel.dart';
 import '../widgets/AiText.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/GuideDb.dart';
@@ -41,6 +42,10 @@ class _AgentLogPageState extends State<AgentLogPage> {
       GuideDb.instance.collection('agentActions').orderBy('createdMs', descending: true).limit(widget.limit).snapshots();
 
   String get _me => AdminProfileProvider.current?.id ?? '';
+
+  /// The cost view's month (`yyyy-MM`) and the guide it is filtered to (null: everyone). The list below follows the same filter.
+  String _month = istMonth(DateTime.now());
+  String? _guide;
 
   /// When this HOD last opened the log, read BEFORE it is marked seen, so what was new until now can be shown as new.
   DateTime? _since;
@@ -107,18 +112,28 @@ class _AgentLogPageState extends State<AgentLogPage> {
             );
           }
           if (!snap.hasData) return const GuideWait();
-          final docs = snap.data!.docs;
-          if (docs.isEmpty) {
-            return Padding(
-              padding: const EdgeInsets.all(GuideSpace.pagePadding),
-              child: Text('Nothing yet. Every change the assistant proposes or makes will be listed here.', key: const ValueKey('agent-log-empty'), style: t.small),
-            );
-          }
-          return ListView.separated(
+          // the same month and guide as the cost view above
+          final docs = snap.data!.docs.where((d) {
+            final x = d.data();
+            if (_guide != null && x['adminId'] != _guide) return false;
+            final ms = x['createdMs'];
+            return ms is! num || istMonth(DateTime.fromMillisecondsSinceEpoch(ms.toInt())) == _month;
+          }).toList();
+          final panel = AiCostPanel(month: _month, guide: _guide, onMonth: (m) => setState(() => _month = m), onGuide: (g) => setState(() => _guide = g));
+          return ListView(
             padding: const EdgeInsets.all(GuideSpace.lg),
-            itemCount: docs.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (context, i) => _LogCard(docs[i].data(), isNew: _isNew(docs[i].data())),
+            children: [
+              panel,
+              if (docs.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: GuideSpace.pagePadding),
+                  child: Text('Nothing yet. Every change the assistant proposes or makes will be listed here.', key: const ValueKey('agent-log-empty'), style: t.small),
+                ),
+              for (var i = 0; i < docs.length; i++) ...[
+                if (i > 0) const SizedBox(height: 10),
+                _LogCard(docs[i].data(), isNew: _isNew(docs[i].data())),
+              ],
+            ],
           );
         },
       ),
@@ -200,6 +215,7 @@ class _LogCard extends StatelessWidget {
             ],
           ),
           if (when.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text(when, style: t.caption)),
+          if (d['costInr'] is num) Padding(padding: const EdgeInsets.only(top: 2), child: Text('AI cost ${inr(d['costInr'] as num)}', key: const ValueKey('agent-log-cost'), style: t.caption.copyWith(color: g.mutedText))),
           if ((d['request'] ?? '').toString().isNotEmpty) ...[
             const SizedBox(height: 8),
             Text('Asked: "${d['request']}"', style: t.small.copyWith(color: g.text, height: 1.4)),

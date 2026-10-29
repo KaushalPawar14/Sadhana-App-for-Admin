@@ -198,6 +198,12 @@ class HierarchyApi {
   /// The guide's number of students in a day's batch (1 to 12); the server works the plan out again at once.
   Future<void> savePlanSettings({required int dailyBatch}) => _call('savePlanSettings', {'dailyBatch': dailyBatch});
 
+  /// The monthly budget (₹) of the guides' AI (HOD only; the server checks).
+  Future<void> setAiBudget({required double monthlyInr}) => _call('setAiBudget', {'monthlyInr': monthlyInr});
+
+  /// Resumes the guides' AI for the rest of this month after the budget was used up (HOD only; the server checks).
+  Future<void> resumeAiForMonth() => _call('resumeAiForMonth');
+
   /// Is this mobile number already on any user document? (Replaces the app's
   /// own `users where mobileNumber ==` query, which strict rules forbid.)
   /// `name` is the existing student's name when taken.

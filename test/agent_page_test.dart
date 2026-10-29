@@ -391,7 +391,7 @@ void main() {
         'actions': [{'callId': 'c1', 'tool': 'flagged_delete', 'title': 'Delete flagged messages', 'lines': []}],
         'results': [{'callId': 'c1', 'ok': false, 'error': 'not permitted'}],
       });
-      await pumpScreen(tester, const AgentLogPage());
+      await pumpScreen(tester, const AgentLogPage(), size: const Size(360, 4000));
       await letDataArrive(tester);
       expect(find.text('Radha Devi (Female Enabler)'), findsOneWidget);
       expect(find.text('Refused: not allowed'), findsOneWidget);
@@ -417,7 +417,7 @@ void main() {
           'actions': [{'callId': 'c1', 'tool': 'x', 'title': 'Request a meeting with a student', 'lines': [{'label': 'Student', 'value': 'Arjun Kumar ' * 6}]}],
           'results': [{'callId': 'c1', 'ok': true}],
         });
-        await pumpScreen(tester, const AgentLogPage(), scale: scale, dark: scale == 1.3);
+        await pumpScreen(tester, const AgentLogPage(), scale: scale, dark: scale == 1.3, size: const Size(360, 4000));
         await letDataArrive(tester);
         expectNoOverflow(tester);
       });
@@ -425,7 +425,7 @@ void main() {
 
     testWidgets('an empty log says so', (tester) async {
       await prepareApp(tester);
-      await pumpScreen(tester, const AgentLogPage());
+      await pumpScreen(tester, const AgentLogPage(), size: const Size(360, 4000));
       await letDataArrive(tester);
       expect(find.byKey(const ValueKey('agent-log-empty')), findsOneWidget);
     });

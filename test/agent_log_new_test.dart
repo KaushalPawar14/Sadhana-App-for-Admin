@@ -103,7 +103,7 @@ void main() {
   group('the Assistant log page', () {
     Future<void> openLog(WidgetTester tester, {String me = 'H', double scale = 1.0, bool dark = false}) async {
       AdminProfileProvider.instance.debugSet(_hod(me));
-      await pumpScreen(tester, const AgentLogPage(), scale: scale, dark: dark);
+      await pumpScreen(tester, const AgentLogPage(), scale: scale, dark: dark, size: const Size(360, 4000));
       await letDataArrive(tester);
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
       await tester.pump();
@@ -160,7 +160,7 @@ void main() {
         await entry('e$i', who: 'G', role: 'GUIDE', minutes: i, request: 'request number $i');
       }
       AdminProfileProvider.instance.debugSet(_hod('H'));
-      await pumpScreen(tester, const AgentLogPage());
+      await pumpScreen(tester, const AgentLogPage(), size: const Size(360, 4000));
       tester.view.physicalSize = const Size(360, 60000);
       await letDataArrive(tester);
       await tester.pump(const Duration(milliseconds: 300));

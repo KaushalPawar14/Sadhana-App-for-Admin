@@ -239,7 +239,7 @@ void main() {
         'results': [{'callId': 'c1', 'tool': 'meeting_request', 'ok': false, 'error': 'Could **not** save'}],
         'note': 'Prepared with *care*',
       });
-      await pumpScreen(tester, const AgentLogPage());
+      await pumpScreen(tester, const AgentLogPage(), size: const Size(360, 4000));
       await letDataArrive(tester);
       expectNoMarks(tester, where: 'the log');
       expect(drawnBold(tester, 'Arjun Kumar'), isTrue);
