@@ -9,7 +9,7 @@ import '../utils/BookProgressData.dart';
 import '../utils/CalendarQueries.dart';
 import '../utils/GoalCompoundQueries.dart';
 import '../utils/MusicData.dart';
-import '../utils/PlanningQueries.dart' show associationOverdueSince;
+import '../utils/PlanningQueries.dart' show associationOverdueSince, currentWeekRange, fallsInRange;
 import '../utils/SadhanaReportSource.dart' show fetchDateReports;
 import '../utils/ServiceAssignments.dart';
 import '../utils/ServiceBankContent.dart';
@@ -17,6 +17,7 @@ import '../utils/StudentDoubts.dart';
 import 'AgentDuplicates.dart';
 import 'AgentEnv.dart';
 import 'AgentTypes.dart';
+import 'NameMatch.dart';
 
 /// The agent's look-ups — everything the model may be told about the guide's world.
 ///
@@ -93,6 +94,35 @@ Future<AgentResult> findStudents(Map<String, dynamic> a, AgentEnv env) async {
     if (filter == 'unassigned' && _s(e.value['guideId']).isNotEmpty) return false;
     return true;
   }).toList();
+
+  // No exact match for a typed name: look for CLOSE names (a slip, only the first name, digits, spelling) among the students this guide
+  // may see - never outside - and hand them back as suggestions only. They are deliberately NOT entities: the assistant must ask
+  // "Did you mean ...?", and only after a yes search again by the exact name, which then hands the student over.
+  if (query.isNotEmpty && rows.isEmpty) {
+    final pool = all.entries.where((e) {
+      if (residence.isNotEmpty && _s(e.value['role']) != residence) return false;
+      if (filter == 'unassigned' && _s(e.value['guideId']).isNotEmpty) return false;
+      return true;
+    });
+    final close = closeNames<MapEntry<String, Map<String, dynamic>>>(_s(a['query']), pool, (e) => _s(e.value['name']));
+    if (close.isNotEmpty) {
+      final clear = hasClearBest(close);
+      return AgentResult.ok({
+        'count': 0,
+        'students': <Object?>[],
+        'noExactMatch': true,
+        'didYouMean': [
+          for (final m in (clear ? close.take(1) : close))
+            {'name': _s(m.item.value['name']), 'residence': _s(m.item.value['role']), 'guide': _guideOf(m.item.value, env)},
+        ],
+        'note': clear
+            ? 'No student is named exactly that, but ONE name is close. Ask the guide once with ask_user: "Did you mean <name>?" with two choices, Yes and No. '
+                'Do not act yet. If they say yes, call find_students again with that exact name, then continue. If no, say you could not find that student.'
+            : 'No student is named exactly that, but several names are close. Call ask_user with one choice per name (and a "None of these" choice) so the guide picks. '
+                'Do not act yet. When they pick, call find_students again with that exact name, then continue.',
+      });
+    }
+  }
 
   final extra = <String, Map<String, Object?>>{};
 
@@ -177,14 +207,12 @@ Future<AgentResult> getStudent(Map<String, dynamic> a, AgentEnv env) async {
   final uid = _s(a['studentUid']);
   final s = await env.student(uid);
 
-  final results = await Future.wait([
-    env.scope.historyGet('booksRead', extraEquals: {'uid': uid}),
-    env.scope.historyGet('associations', extraEquals: {'studentUid': uid}),
-    env.scope.historyGet('interactionLogs', extraEquals: {'studentUid': uid}),
-  ]);
+  final booksSnap = await env.scope.historyGet('booksRead', extraEquals: {'uid': uid});
+  final assocDocs = await _recordsOf('associations', uid, _s(s['name']), env);
+  final logDocs = await _logsOf(uid, _s(s['name']), env);
 
   final books = [
-    for (final d in results[0].docs)
+    for (final d in booksSnap.docs)
       {
         'title': _s(d.data()['bookTitle']),
         'level': _s(d.data()['level']),
@@ -197,11 +225,11 @@ Future<AgentResult> getStudent(Map<String, dynamic> a, AgentEnv env) async {
       }
   ];
 
-  final meetings = results[1].docs.toList()
+  final meetings = assocDocs.toList()
     ..sort((x, y) => (_dt(y.data()['confirmedDate']) ?? _dt(y.data()['preferredDate']) ?? DateTime(2000))
         .compareTo(_dt(x.data()['confirmedDate']) ?? _dt(x.data()['preferredDate']) ?? DateTime(2000)));
 
-  final logs = results[2].docs.map((d) => _dt(d.data()['interactionDate'])).whereType<DateTime>().toList()..sort();
+  final logs = logDocs.map((d) => _dt(d.data()['interactionDate'])).whereType<DateTime>().toList()..sort();
 
   final p = await env.priority();
   final onList = p.students.where((x) => x.uid == uid).toList();
@@ -266,11 +294,11 @@ Future<AgentResult> listMeetings(Map<String, dynamic> a, AgentEnv env) async {
   Map<String, dynamic>? one;
   if (uid.isNotEmpty) one = await env.student(uid);
   final status = _s(a['status']);
-  final snap = await env.scope.historyGet('associations', extraEquals: uid.isEmpty ? const {} : {'studentUid': uid});
+  final snapDocs = uid.isEmpty ? (await env.scope.historyGet('associations')).docs : await _recordsOf('associations', uid, _s(one!['name']), env);
   final all = await env.students();
   final now = env.now;
 
-  final docs = snap.docs.where((d) {
+  final docs = snapDocs.where((d) {
     final m = d.data();
     final st = _s(m['status']);
     final when = _dt(m['confirmedDate']) ?? _dt(m['preferredDate']);
@@ -316,12 +344,96 @@ Future<AgentResult> listMeetings(Map<String, dynamic> a, AgentEnv env) async {
   );
 }
 
+/// One student's interaction logs, the way the screens find them. Normally by the student's id. A log written for a student who was
+/// added by hand (`manual_...`) and has since registered may still carry the old id (the merge now moves them; older ones are repaired by
+/// tools/rekeyManualRecords.js): when the id finds nothing, logs whose id belongs to NO student at all are matched by the name written
+/// in them - the way the screens show them - so the assistant never says "none" about what the guide can see.
+Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _recordsOf(String collection, String uid, String name, AgentEnv env) async {
+  final direct = (await env.scope.historyGet(collection, extraEquals: {'studentUid': uid})).docs.toList();
+  if (direct.isNotEmpty || name.trim().isEmpty) return direct;
+  final known = await env.students();
+  return (await env.scope.historyGet(collection)).docs.where((d) {
+    final u = _s(d.data()['studentUid']);
+    return u != uid && !known.containsKey(u) && nameScore(name, _s(d.data()['studentName'])) >= 0.85;
+  }).toList();
+}
+
+Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _logsOf(String uid, String name, AgentEnv env) => _recordsOf('interactionLogs', uid, name, env);
+
+/// Follow-ups: the dates the guide set on approved interactions ("follow up with ... on ..."), exactly what Home and Weekly Planning
+/// list (same scoped read, same `status == approved` and `approvedSummary.followUpDate` rules, same Monday-to-Sunday week).
+/// `when`: this_week (what the screens show; the default), overdue (before today), upcoming (today or later), all.
+Future<AgentResult> listFollowups(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _s(a['studentUid']);
+  final when = _s(a['when']).isEmpty ? 'this_week' : _s(a['when']);
+  final now = env.now;
+  final today = DateTime(now.year, now.month, now.day);
+  final week = currentWeekRange(now);
+
+  Map<String, dynamic>? one;
+  Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> logs;
+  if (uid.isNotEmpty) {
+    one = await env.student(uid);
+    logs = await _logsOf(uid, _s(one['name']), env);
+  } else {
+    logs = (await env.scope.historyGet('interactionLogs')).docs;
+  }
+
+  final rows = <({String id, String student, String uid, DateTime date, String action})>[];
+  for (final d in logs) {
+    final m = d.data();
+    if (m['status'] != 'approved') continue;
+    final sum = m['approvedSummary'];
+    if (sum is! Map) continue;
+    final raw = sum['followUpDate'];
+    if (raw is! Timestamp) continue;
+    final date = raw.toDate();
+    final keep = switch (when) {
+      'overdue' => date.isBefore(today),
+      'upcoming' => !date.isBefore(today),
+      'all' => true,
+      _ => fallsInRange(raw, week.start, week.end),
+    };
+    if (!keep) continue;
+    rows.add((id: d.id, student: (m['studentName'] ?? 'Unknown').toString(), uid: _s(m['studentUid']), date: date, action: _s(sum['recommendedNextAction'])));
+  }
+  rows.sort((x, y) => x.date.compareTo(y.date));
+  final shown = rows.take(_limit(a)).toList();
+  final all = await env.students();
+  return AgentResult.ok(
+    {
+      if (one != null) 'student': _s(one['name']),
+      'when': when,
+      if (when == 'this_week') 'week': '${agentDateOf(week.start)} to ${agentDateOf(week.end.subtract(const Duration(days: 1)))}',
+      'count': rows.length,
+      'followUps': [
+        for (final r in shown)
+          {
+            'id': r.id,
+            'student': r.student,
+            'date': agentDateOf(r.date),
+            if (r.action.isNotEmpty) 'action': r.action,
+            if (r.date.isBefore(today)) 'overdue': true,
+          },
+      ],
+      if (rows.length > shown.length) 'more': rows.length - shown.length,
+      if (rows.isEmpty) 'note': 'Nothing is scheduled for that time. Say that plainly; try "upcoming" or "overdue" if useful.',
+    },
+    entities: [
+      if (one != null) _student(uid, one),
+      for (final r in shown) AgentEntity('interaction', r.id, 'Interaction with ${r.student} on ${agentDateOf(r.date)}'),
+      for (final r in shown)
+        if (one == null && all[r.uid] != null) _student(r.uid, all[r.uid]!),
+    ],
+  );
+}
+
 Future<AgentResult> listInteractions(Map<String, dynamic> a, AgentEnv env) async {
   final uid = _s(a['studentUid']);
   final s = await env.student(uid);
-  final snap = await env.scope.historyGet('interactionLogs', extraEquals: {'studentUid': uid});
-  final docs = snap.docs.toList()
-    ..sort((x, y) => (_dt(y.data()['interactionDate']) ?? DateTime(2000)).compareTo(_dt(x.data()['interactionDate']) ?? DateTime(2000)));
+  final docs = await _logsOf(uid, _s(s['name']), env);
+  docs
+    .sort((x, y) => (_dt(y.data()['interactionDate']) ?? DateTime(2000)).compareTo(_dt(x.data()['interactionDate']) ?? DateTime(2000)));
   final shown = docs.take(a['limit'] is num ? (a['limit'] as num).toInt().clamp(1, 30) : 10).toList();
   return AgentResult.ok(
     {
@@ -796,8 +908,7 @@ Future<AgentResult> listComments(Map<String, dynamic> a, AgentEnv env) async {
 Future<AgentResult> listLit(Map<String, dynamic> a, AgentEnv env) async {
   final uid = _s(a['studentUid']);
   final s = await env.student(uid);
-  final snap = await env.scope.historyGet('litAssessments', extraEquals: {'studentUid': uid});
-  final docs = snap.docs.toList()
+  final docs = (await _recordsOf('litAssessments', uid, _s(s['name']), env)).toList()
     ..sort((x, y) => (_dt(y.data()['assessedAt']) ?? DateTime(2000)).compareTo(_dt(x.data()['assessedAt']) ?? DateTime(2000)));
   final shown = docs.take(a['limit'] is num ? (a['limit'] as num).toInt().clamp(1, 30) : 10).toList();
   return AgentResult.ok(
@@ -841,8 +952,8 @@ Future<AgentResult> findDuplicates(Map<String, dynamic> a, AgentEnv env) async {
   var minSimilarity = 0.5;
 
   if (kind == 'interaction' || kind == 'follow_up') {
-    final snap = await env.scope.historyGet('interactionLogs', extraEquals: {'studentUid': uid});
-    for (final d in snap.docs) {
+    final snap = await _logsOf(uid, _s((await env.student(uid))['name']), env);
+    for (final d in snap) {
       final m = d.data();
       final sum = m['approvedSummary'] is Map ? m['approvedSummary'] as Map : const {};
       final follow = _dt(sum['followUpDate']);
@@ -868,8 +979,8 @@ Future<AgentResult> findDuplicates(Map<String, dynamic> a, AgentEnv env) async {
     if (kind == 'follow_up') minSimilarity = 0.4;
   } else if (kind == 'meeting') {
     entityKind = 'association';
-    final snap = await env.scope.historyGet('associations', extraEquals: {'studentUid': uid});
-    for (final d in snap.docs) {
+    final snap = await _recordsOf('associations', uid, _s((await env.student(uid))['name']), env);
+    for (final d in snap) {
       final m = d.data();
       items.add(DupItem(
         id: d.id,
@@ -926,6 +1037,7 @@ final Map<String, AgentRun> kAgentReads = {
   'get_student_reports': getStudentReports,
   'list_meetings': listMeetings,
   'list_interactions': listInteractions,
+  'list_followups': listFollowups,
   'list_books': listBooks,
   'list_targets': listTargets,
   'list_competitions': listCompetitions,
