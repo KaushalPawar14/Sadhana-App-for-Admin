@@ -659,7 +659,7 @@ class _CalendarPageState extends State<CalendarPage> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     // a wide window keeps the calendar at a reading width (a phone: the whole width, exactly as before)
-    final daySize = (screenWidth > kContentMaxWidth ? kContentMaxWidth : screenWidth) * 0.11;
+    final daySize = (screenWidth > 640 && context.isWide ? 640 : screenWidth) * 0.11;
 
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {

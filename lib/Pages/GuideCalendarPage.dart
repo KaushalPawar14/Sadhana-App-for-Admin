@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../utils/Responsive.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 
@@ -362,7 +363,8 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
   Widget build(BuildContext context) {
     final t = context.gText;
     final g = context.g;
-    final width = MediaQuery.sizeOf(context).width;
+    // a wide window keeps the month at the content width (a phone: the whole width, as before)
+    final width = contentWidthOf(context);
     final scale = MediaQuery.textScalerOf(context).scale(12) / 12;
     // The true width of one day column: the page padding on both sides, then the
     // month card's own 10 dp each side (6 card + 4 row padding).

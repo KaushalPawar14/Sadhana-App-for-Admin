@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/Responsive.dart';
 
 import '../theme/GuideColors.dart';
 import '../theme/GuideTheme.dart';
@@ -655,13 +656,33 @@ class GuideSquarePair extends StatelessWidget {
   final Widget Function(double side) left;
   final Widget Function(double side) right;
 
-  /// The side of one square for the current screen.
-  static double sideOf(BuildContext context) =>
-      (MediaQuery.sizeOf(context).width - 2 * GuideSpace.pagePadding - GuideSpace.cardGap) / 2;
+  /// The side of one square for the current screen. On a wide window it is capped ([kTileMaxSide]): the tiles stay tile-sized instead of
+  /// filling the window.
+  static double sideOf(BuildContext context) {
+    final side = (MediaQuery.sizeOf(context).width - 2 * GuideSpace.pagePadding - GuideSpace.cardGap) / 2;
+    return context.isWide && side > kTileMaxSide ? kTileMaxSide : side;
+  }
 
   @override
   Widget build(BuildContext context) {
     final side = sideOf(context);
+    if (context.isWide) {
+      // a wide window: two tile-sized squares side by side (equal heights), left-aligned in the column
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: IntrinsicHeight(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(width: side, child: left(side)),
+              const SizedBox(width: GuideSpace.cardGap),
+              SizedBox(width: side, child: right(side)),
+            ],
+          ),
+        ),
+      );
+    }
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -671,6 +692,28 @@ class GuideSquarePair extends StatelessWidget {
           Expanded(child: right(side)),
         ],
       ),
+    );
+  }
+}
+
+/// Navigation cards (and a [GuideSquarePair]) on a WIDE window: they flow into a grid, about three cards per row, each a comfortable
+/// [kCardGridWidth] wide, instead of stretching across the window. [selfSized] are the indexes of children that size themselves (a
+/// [GuideSquarePair]). On a phone the page keeps its own single column; this is only built for a wide window.
+class GuideWideFlow extends StatelessWidget {
+  const GuideWideFlow({super.key, required this.children, this.selfSized = const {}});
+
+  final List<Widget> children;
+  final Set<int> selfSized;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: GuideSpace.cardGap,
+      runSpacing: GuideSpace.cardGap,
+      crossAxisAlignment: WrapCrossAlignment.start,
+      children: [
+        for (var i = 0; i < children.length; i++) selfSized.contains(i) ? children[i] : SizedBox(width: kCardGridWidth, child: children[i]),
+      ],
     );
   }
 }

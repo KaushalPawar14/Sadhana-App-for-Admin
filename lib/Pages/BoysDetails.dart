@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/Responsive.dart';
 import '../Services/UpdateFCM.dart';
 import '../theme/GuideColors.dart';
 import '../theme/GuideTheme.dart';
@@ -354,6 +355,58 @@ class _AdminControlPageState extends State<AdminControlPage> {
     }
   }
 
+  /// A wide window: the same cards and the same two tiles, flowing into a grid (tiles at their capped size, about three cards a row).
+  Widget _wideTasks(Widget Function(int, Widget) step) => GuideWideFlow(
+        selfSized: const {1},
+        children: [
+          step(
+            0,
+            GuideNavCard(pastel: GuidePastel.sage, icon: Icons.person_add_alt_outlined, title: "Add student", description: "Register a new student", onTap: _openAddStudentDialog),
+          ),
+          step(
+            1,
+            GuideSquarePair(
+              left: (side) => GuideGradientTile(
+                pastel: GuidePastel.sand,
+                icon: Icons.fact_check_outlined,
+                title: "Submissions",
+                subtitle: "Review submitted work",
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SubmissionStatusPage())),
+                minHeight: side,
+                large: true,
+                showChevron: false,
+              ),
+              right: (side) => GuideGradientTile(
+                pastel: GuidePastel.mauve,
+                icon: Icons.notifications_active_outlined,
+                title: "Notifications",
+                subtitle: "Choose what you hear about",
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationSettingsPage())),
+                minHeight: side,
+                large: true,
+                showChevron: false,
+              ),
+            ),
+          ),
+          step(
+            2,
+            GuideNavCard(pastel: GuidePastel.slate, icon: Icons.person_add_alt_1_outlined, title: "Add admin", description: "Invite another guide", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminManagerPage()))),
+          ),
+          if (MusicCurriculumPage.mayEdit(AdminProfileProvider.current))
+            step(
+              3,
+              GuideNavCard(
+                key: const ValueKey('music-curriculum-card'),
+                pastel: GuidePastel.clay,
+                icon: Icons.library_music_outlined,
+                title: "Music curriculum",
+                description: "Instruments, links and checkpoints",
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MusicCurriculumPage())),
+              ),
+            ),
+        ],
+      );
+
   /// The Tasks tab ("Other tasks"): a two-column grid of pastel tiles. The tiles
   /// reflow in a plain two-column grid (no `LayoutBuilder`: that caused real-device
   /// crashes in this app), each as tall as the taller of its row and growing with
@@ -392,7 +445,7 @@ class _AdminControlPageState extends State<AdminControlPage> {
         Padding(
           padding: const EdgeInsets.fromLTRB(
               GuideSpace.pagePadding, 22, GuideSpace.pagePadding, 0),
-          child: Column(
+          child: context.isWide ? _wideTasks(step) : Column(
             children: [
               // Top: a full-width card.
               step(

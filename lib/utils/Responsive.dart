@@ -15,6 +15,12 @@ const double kDesktopMin = 900;
 /// The widest a page of reading content grows (lines stay readable on a big monitor).
 const double kContentMaxWidth = 1080;
 
+/// A square tile (Home, Tasks ...) never grows past this on a wide window: it flows into a grid with several per row instead of stretching.
+const double kTileMaxSide = 220;
+
+/// A navigation card in a wide grid (Analysis, Tasks ...): about three per row of the content column.
+const double kCardGridWidth = 320;
+
 /// The widest a dialog or form grows.
 const double kDialogMaxWidth = 560;
 
@@ -40,19 +46,39 @@ extension ResponsiveContext on BuildContext {
   bool get isWide => _w >= kTabletMin;
 }
 
+/// The width of the content column on this window: the whole window on a phone, at most [kContentMaxWidth] on a wide one (minus the side
+/// navigation on a computer).
+double contentWidthOf(BuildContext context) {
+  final w = MediaQuery.sizeOf(context).width;
+  if (!context.isWide) return w;
+  final avail = context.isDesktop ? w - kSideNavWidth : w;
+  return avail > kContentMaxWidth ? kContentMaxWidth : avail;
+}
+
 /// Centres [child] with a maximum width on a wide window; on a phone it is [child] itself (the same widget, nothing added).
-class ContentWidth extends StatelessWidget {
+///
+/// The page keeps its state (its streams, scroll positions, text fields) when the window is resized across a width class: the child is
+/// held by a [GlobalKey], so Flutter moves it instead of building it again.
+class ContentWidth extends StatefulWidget {
   const ContentWidth({super.key, required this.child, this.maxWidth = kContentMaxWidth});
 
   final Widget child;
   final double maxWidth;
 
   @override
+  State<ContentWidth> createState() => _ContentWidthState();
+}
+
+class _ContentWidthState extends State<ContentWidth> {
+  final GlobalKey _childKey = GlobalKey();
+
+  @override
   Widget build(BuildContext context) {
+    final child = KeyedSubtree(key: _childKey, child: widget.child);
     if (!context.isWide) return child;
     return Align(
       alignment: Alignment.topCenter,
-      child: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: child),
+      child: ConstrainedBox(constraints: BoxConstraints(maxWidth: widget.maxWidth), child: child),
     );
   }
 }

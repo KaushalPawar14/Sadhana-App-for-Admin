@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../utils/Responsive.dart';
 import 'package:folk_guide_app/utils/Snackbar.dart';
 import 'package:provider/provider.dart';
 import '../utils/AdminProfile.dart';
@@ -111,7 +112,7 @@ class _AdminRegisterUserPageState extends State<AdminRegisterUserPage>
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
+    final width = contentWidthOf(context); // a wide window: the form's padding follows the content column, not the whole window
     final height = MediaQuery.of(context).size.height;
 
     return Consumer<ColorProvider>(builder: (context, colorProvider, child) {

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../utils/Responsive.dart';
 import 'package:intl/intl.dart';
 
 import '../Pages/GoalSetup.dart';
@@ -410,8 +411,11 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
         right: (side) => _tile(guide, board: false, side: side),
       );
 
+  /// A wide window keeps the Home content in a centred column (a phone: the whole width, as before).
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ContentWidth(child: _list(context));
+
+  Widget _list(BuildContext context) {
     final t = context.gText;
     final guide = _guide;
     final profile = AdminProfileProvider.current;

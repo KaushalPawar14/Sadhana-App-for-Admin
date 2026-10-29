@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/Responsive.dart';
 import 'package:folk_guide_app/Pages/AbcdeHub.dart';
 import 'package:folk_guide_app/Pages/Leaderboard.dart';
 import 'package:folk_guide_app/Pages/AgentLogPage.dart';
@@ -95,7 +96,7 @@ class _CompetitionPageState extends State<CompetitionPage> {
     return GuideEntry(
       index: index,
       child: Padding(
-        padding: EdgeInsets.only(top: index == 0 ? 0 : GuideSpace.cardGap),
+        padding: EdgeInsets.only(top: index == 0 || context.isWide ? 0 : GuideSpace.cardGap),
         child: unseen == null
             ? card
             : StreamBuilder<bool>(
@@ -109,6 +110,15 @@ class _CompetitionPageState extends State<CompetitionPage> {
               ),
       ),
     );
+  }
+
+  /// The cards in one column (a phone); on a wide window they flow into a grid, about three a row.
+  /// Each card is held by a GlobalKey so that resizing the window across a width class moves it (keeping its streams) instead of rebuilding it.
+  final List<GlobalKey> _flowKeys = List.generate(8, (_) => GlobalKey());
+
+  Widget _flow({required List<Widget> children}) {
+    final keyed = [for (var i = 0; i < children.length; i++) KeyedSubtree(key: _flowKeys[i], child: children[i])];
+    return context.isWide ? GuideWideFlow(children: keyed) : Column(children: keyed);
   }
 
   @override
@@ -135,7 +145,7 @@ class _CompetitionPageState extends State<CompetitionPage> {
         Padding(
           padding: const EdgeInsets.fromLTRB(
               GuideSpace.pagePadding, 22, GuideSpace.pagePadding, 0),
-          child: Column(
+          child: _flow(
             children: [
               _card(
                 index: 0,
