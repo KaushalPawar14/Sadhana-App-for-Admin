@@ -15,6 +15,7 @@ import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
 import '../utils/GuideDb.dart';
 import '../widgets/GuideAppBar.dart';
+import '../widgets/AiText.dart';
 import '../widgets/GuideWait.dart';
 import '../widgets/GuideMeta.dart';
 
@@ -433,7 +434,7 @@ class _FlaggedMessagesPageState extends State<FlaggedMessagesPage> {
                   color: context.g.chipBackground,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(
+                child: AiText(
                   pastoralReason,
                   style: TextStyle(
                     fontSize: 11,

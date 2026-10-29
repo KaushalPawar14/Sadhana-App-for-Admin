@@ -11,6 +11,7 @@ import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
 import '../widgets/GuideAppBar.dart';
+import '../widgets/AiText.dart';
 import '../widgets/GuideWait.dart';
 
 /// Priority students (Phase 6, half 1, item 4).
@@ -389,7 +390,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
+                    child: AiText(
                       flag.label,
                       style: const TextStyle(fontSize: 13, height: 1.3),
                     ),

@@ -12,6 +12,8 @@ import '../utils/VoiceNote.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideSurface.dart';
+import '../utils/AiMarkdown.dart';
+import '../widgets/AiText.dart';
 import '../widgets/GuideWait.dart';
 import '../widgets/VoiceNoteButton.dart';
 import 'AgentLogPage.dart';
@@ -96,7 +98,7 @@ class _AgentPageState extends State<AgentPage> {
               for (final a in p.actions)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
-                  child: Text('• ${a.title}${a.lines.isEmpty ? '' : ' — ${a.lines.map((l) => l.value).join(', ')}'}', style: context.gText.bodyStrong),
+                  child: Text(plainAiText('• ${a.title}${a.lines.isEmpty ? '' : ' — ${a.lines.map((l) => l.value).join(', ')}'}'), style: context.gText.bodyStrong),
                 ),
             ],
           ),
@@ -263,7 +265,7 @@ class _AgentPageState extends State<AgentPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (e.text.isNotEmpty) SelectableText(e.text, style: t.body.copyWith(height: 1.45)),
+                  if (e.text.isNotEmpty) AiText(e.text, selectable: true, style: t.body.copyWith(height: 1.45)),
                   if (e.links.isNotEmpty) ...[
                     if (e.text.isNotEmpty) const SizedBox(height: 10),
                     Wrap(
@@ -424,7 +426,7 @@ class _ProposalCard extends StatelessWidget {
                     Icon(p.tainted && line == entry.advice.first ? Icons.warning_amber_rounded : Icons.lightbulb_outline,
                         size: 16, color: p.tainted && line == entry.advice.first ? g.warning : g.agent),
                     const SizedBox(width: 8),
-                    Expanded(child: Text(line, style: t.small.copyWith(height: 1.4, color: g.text))),
+                    Expanded(child: AiText(line, style: t.small.copyWith(height: 1.4, color: g.text))),
                   ],
                 ),
               ),
@@ -450,7 +452,7 @@ class _ProposalCard extends StatelessWidget {
               Icon(result.$1 ? Icons.check_circle : Icons.cancel, size: 18, color: result.$1 ? g.success : g.danger),
               const SizedBox(width: 6),
             ],
-            Expanded(child: Text(a.title, style: t.cardTitleSmall)),
+            Expanded(child: AiText(a.title, style: t.cardTitleSmall)),
           ],
         ),
         const SizedBox(height: 6),
@@ -475,7 +477,7 @@ class _ProposalCard extends StatelessWidget {
                     ],
                   )
                 else
-                  Text(l.value, style: t.body),
+                  AiText(l.value, style: t.body),
               ],
             ),
           ),
@@ -494,7 +496,7 @@ class _ProposalCard extends StatelessWidget {
         if (result != null)
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Text(result.$2, key: ValueKey('agent-result-${a.callId}'), style: t.small.copyWith(color: result.$1 ? g.text : g.danger, height: 1.4)),
+            child: AiText(result.$2, key: ValueKey('agent-result-${a.callId}'), style: t.small.copyWith(color: result.$1 ? g.text : g.danger, height: 1.4)),
           ),
       ],
     );

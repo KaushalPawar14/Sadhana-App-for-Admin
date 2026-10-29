@@ -14,6 +14,8 @@ import '../utils/VoiceNote.dart';
 import '../widgets/VoiceNoteButton.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
+import '../utils/AiMarkdown.dart';
+import '../widgets/AiText.dart';
 import '../widgets/GuideSurface.dart';
 import '../utils/GuideDb.dart';
 import '../widgets/GuideAppBar.dart';
@@ -374,11 +376,11 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                     ),
                     if (action.isNotEmpty) ...[
                       const SizedBox(height: 5),
-                      Text(action, style: const TextStyle(fontSize: 13)),
+                      AiText(action, style: const TextStyle(fontSize: 13)),
                     ],
                     if (reasoning.isNotEmpty) ...[
                       const SizedBox(height: 6),
-                      Text(
+                      AiText(
                         reasoning,
                         style: TextStyle(
                           fontSize: 12,
@@ -771,7 +773,7 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
         final n = value is num ? value.toInt() : 0;
         _controllers[key]!.text = n == 0 ? '' : n.toString();
       } else {
-        _controllers[key]!.text = (value ?? '').toString();
+        _controllers[key]!.text = plainAiText((value ?? '').toString());
       }
     }
 

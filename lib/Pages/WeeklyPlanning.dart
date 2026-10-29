@@ -11,6 +11,7 @@ import '../utils/GoalCompoundQueries.dart';
 import '../utils/PlanningQueries.dart';
 import '../utils/WeekData.dart';
 import '../utils/WeekSummary.dart';
+import '../widgets/AiText.dart';
 import '../widgets/GuideButtons.dart';
 import '../widgets/GuideCalendar.dart';
 import '../widgets/GuideEntry.dart';
@@ -258,7 +259,7 @@ class _WeeklyPlanningPageState extends State<WeeklyPlanningPage> {
                                 Text(item.student, style: t.cardTitleSmall),
                                 if (item.action.isNotEmpty) ...[
                                   const SizedBox(height: 2),
-                                  Text(item.action, style: t.caption),
+                                  AiText(item.action, style: t.caption),
                                 ],
                               ],
                             ),

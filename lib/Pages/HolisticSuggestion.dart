@@ -14,6 +14,7 @@ import '../utils/Snackbar.dart';
 import '../utils/StudentSuggestions.dart';
 import '../theme/GuideTheme.dart';
 import '../utils/GuideDb.dart';
+import '../widgets/AiText.dart';
 import '../widgets/GuideWait.dart';
 
 /// Holistic "suggested next action" (Phase 5, item 1 — final piece).
@@ -285,7 +286,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              AiText(
                 s.action,
                 style: const TextStyle(
                   fontSize: 15,
@@ -295,7 +296,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
               ),
               if (s.why.isNotEmpty) ...[
                 const SizedBox(height: 4),
-                Text(
+                AiText(
                   s.why,
                   style: TextStyle(
                     fontSize: 13,
@@ -312,7 +313,7 @@ class _HolisticSuggestionSectionState extends State<HolisticSuggestionSection> {
                       size: 16, color: context.g.success),
                   const SizedBox(width: 4),
                   Expanded(
-                    child: Text(
+                    child: AiText(
                       s.next,
                       style: TextStyle(
                         fontSize: 13,

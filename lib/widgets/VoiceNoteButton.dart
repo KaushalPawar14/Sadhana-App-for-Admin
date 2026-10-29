@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../Services/HierarchyApi.dart';
 import '../Services/VoiceRecorder.dart';
 import '../theme/GuideTheme.dart';
+import '../utils/AiMarkdown.dart';
 import '../utils/VoiceNote.dart';
 import 'GuideWait.dart';
 
@@ -194,7 +195,8 @@ class _VoiceNoteButtonState extends State<VoiceNoteButton> {
     // Success: the audio is no longer needed anywhere.
     _clip = null;
     setState(() => _phase = _Phase.idle);
-    widget.onText(text);
+    // Clean plain text in the editable field: never Markdown symbols.
+    widget.onText(plainAiText(text));
   }
 
   Future<void> _retry() async {

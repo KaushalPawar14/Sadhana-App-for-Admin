@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
+import '../widgets/AiText.dart';
 import '../utils/GuideDb.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideSurface.dart';
@@ -134,20 +135,20 @@ class _LogCard extends StatelessWidget {
                   Icon(r['ok'] == true ? Icons.check_circle : Icons.cancel, size: 16, color: r['ok'] == true ? g.success : g.danger),
                   const SizedBox(width: 6),
                 ],
-                Expanded(child: Text((a['title'] ?? a['tool'] ?? '').toString(), style: t.bodyStrong)),
+                Expanded(child: AiText((a['title'] ?? a['tool'] ?? '').toString(), style: t.bodyStrong)),
               ],
             ),
             for (final l in (a['lines'] as List? ?? const []).whereType<Map>())
               Padding(
                 padding: const EdgeInsets.only(left: 2, top: 2),
-                child: Text('${l['label']}: ${l['value']}', style: t.small.copyWith(height: 1.35)),
+                child: AiText('${l['label']}: ${l['value']}', style: t.small.copyWith(height: 1.35)),
               ),
             if (results[(a['callId'] ?? '').toString()]?['error'] case final String err when err.isNotEmpty)
-              Padding(padding: const EdgeInsets.only(left: 2, top: 2), child: Text(err, style: t.small.copyWith(color: g.danger))),
+              Padding(padding: const EdgeInsets.only(left: 2, top: 2), child: AiText(err, style: t.small.copyWith(color: g.danger))),
           ],
           if ((d['note'] ?? '').toString().isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text((d['note']).toString(), style: t.caption),
+            AiText((d['note']).toString(), style: t.caption),
           ],
         ],
       ),

@@ -10,6 +10,7 @@ import '../utils/Snackbar.dart';
 import 'CompoundGoalRoadmapPage.dart';
 import 'CompoundTaskEditorPage.dart';
 import '../theme/GuideTheme.dart';
+import '../widgets/AiText.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideDialog.dart';
@@ -464,7 +465,7 @@ class _GoalWeeklyPhasePageState extends State<GoalWeeklyPhasePage> {
           ),
           if (pending.note.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(pending.note, style: TextStyle(fontSize: 12.5, color: context.g.brass)),
+            AiText(pending.note, style: TextStyle(fontSize: 12.5, color: context.g.brass)),
           ],
           const SizedBox(height: 8),
           Text(

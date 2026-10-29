@@ -20,6 +20,7 @@ import '../widgets/GuideSurface.dart';
 import '../utils/GuideDb.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideDialog.dart';
+import '../widgets/AiText.dart';
 import '../widgets/GuideWait.dart';
 import '../widgets/GuideSheet.dart';
 
@@ -1274,7 +1275,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
               Text(DateFormat('dd MMM yyyy').format(when),
                   style: context.gText.caption),
             if (body.isNotEmpty)
-              Text(body, maxLines: 2, overflow: TextOverflow.ellipsis),
+              AiText(body, maxLines: 2, overflow: TextOverflow.ellipsis),
           ],
         ),
         onTap: () => Navigator.push(
