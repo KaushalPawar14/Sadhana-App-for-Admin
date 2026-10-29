@@ -34,6 +34,7 @@ Future<bool> installedOutsidePlayStore({
   MethodChannel? channel,
   bool? releaseMode,
 }) async {
+  if (kIsWeb) return false; // a web page is not "installed from a store"
   if (!(releaseMode ?? kReleaseMode)) return false;
   final ch = channel ?? _channel;
   try {

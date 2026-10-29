@@ -7,6 +7,8 @@ import '../utils/ColorProvider.dart';
 import '../utils/GoalCompoundQueries.dart';
 import '../utils/GoalMetrics.dart';
 import '../utils/Snackbar.dart';
+import '../widgets/GuideDialog.dart';
+import 'GoalHomePage.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideAppBar.dart';
@@ -117,20 +119,56 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
       );
       Navigator.pop(context);
     } on CompoundTargetLimitException catch (e) {
-      // One active target per metric (A1). The guide is told exactly what to
-      // do about it, not that something went wrong.
+      // One active target per metric. The message NAMES the target in the way, and the guide can open it or delete it from here.
       if (!mounted) return;
-      showSnackbar(context, e.message, Colors.orange, Icons.info);
+      await _showLimit(e);
     } catch (e) {
       if (!mounted) return;
-      showSnackbar(
-        context,
-        "Could not generate a plan — please try again",
-        Colors.red,
-        Icons.error,
+      // The target is kept as a visible DRAFT ("waiting for the AI plan"); the server generates the plan by itself as soon as the AI is
+      // available again. The REAL reason is shown, never a generic line.
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => GuideDialog(
+          title: const Text('Saved as a draft'),
+          content: Text(
+            'Your target is saved, but its AI plan could not be generated yet:\n\n${planFailureReason(e)}\n\n'
+            'It stays on your Targets screen as "Draft — waiting for AI plan" and is generated automatically as soon as the AI is available again. '
+            'You can also retry or delete it there.',
+            key: const ValueKey('draft-reason'),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('OK'))],
+        ),
       );
+      if (mounted) Navigator.pop(context);
     } finally {
       if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  /// "You already have a chanting target (5 students at 16 rounds, ends 20 Dec 2026). Open it or delete it first." with the two buttons.
+  Future<void> _showLimit(CompoundTargetLimitException e) async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => GuideDialog(
+        title: const Text('You already have this target'),
+        content: Text(e.message, key: const ValueKey('limit-message')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
+          if (e.targetId.isNotEmpty) TextButton(key: const ValueKey('limit-open'), onPressed: () => Navigator.pop(dialogContext, 'open'), child: const Text('Open it')),
+          if (e.targetId.isNotEmpty) TextButton(key: const ValueKey('limit-delete'), onPressed: () => Navigator.pop(dialogContext, 'delete'), child: const Text('Delete it')),
+        ],
+      ),
+    );
+    if (!mounted || choice == null) return;
+    if (choice == 'open') {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => GoalHomePage(guideId: e.guideId)));
+    } else if (choice == 'delete') {
+      try {
+        await callDeleteCompoundTarget(guideId: e.guideId, targetId: e.targetId);
+        if (mounted) showSnackbar(context, 'Deleted. You can generate the new plan now.', Colors.green, Icons.check_circle);
+      } catch (err) {
+        if (mounted) showSnackbar(context, deleteFailureMessage(err), Colors.red, Icons.error);
+      }
     }
   }
 

@@ -50,6 +50,9 @@ void main() {
   });
   tearDown(() => GuideDb.useForTests(null));
 
+  /// The server wrote the plan: the draft becomes the active target.
+  Future<void> activate(String id) => db.collection('guideTargets').doc('G').collection('targets').doc(id).update({'status': 'active', 'totalPhases': 3, 'currentPhase': 1});
+
   // -------------------------------------------------------------------------
   // the message
   // -------------------------------------------------------------------------
@@ -99,13 +102,15 @@ void main() {
     expect(snap.docs.length, 1);
   });
 
-  test('a SECOND active target of the same metric is refused', () async {
-    await create('chanting');
+  test('a SECOND active target of the same metric is refused, naming the first and handing over its id', () async {
+    final first = await create('chanting');
+    await activate(first);
     await expectLater(
       create('chanting'),
-      throwsA(isA<CompoundTargetLimitException>().having(
-          (e) => e.message, 'message',
-          'Delete your current chanting target first')),
+      throwsA(isA<CompoundTargetLimitException>()
+          .having((e) => e.message, 'message', allOf(startsWith('You already have a chanting target ('), endsWith('Open it or delete it first.')))
+          .having((e) => e.guideId, 'guide', 'G')
+          .having((e) => e.targetId, 'target', first)),
     );
     // and nothing was written by the refused attempt
     final snap = await db
@@ -123,13 +128,23 @@ void main() {
   });
 
   test('both metrics are limited, each on its own', () async {
-    await create('books');
+    await activate(await create('books'));
     await expectLater(
       create('books'),
-      throwsA(isA<CompoundTargetLimitException>().having(
-          (e) => e.message, 'message',
-          'Delete your current book reading target first')),
+      throwsA(isA<CompoundTargetLimitException>().having((e) => e.message, 'message', startsWith('You already have a book reading target ('))),
     );
+  });
+
+  test('a DRAFT (waiting for the AI plan) does NOT count toward the limit, and a second try reuses it instead of piling up drafts', () async {
+    final d1 = await create('chanting');
+    expect((await db.collection('guideTargets').doc('G').collection('targets').doc(d1).get()).data()!['status'], 'draft');
+    expect(await activeTargetOfMetric('G', 'chanting'), isNull, reason: 'a draft is not active');
+    final d2 = await create('chanting');
+    expect(d2, d1, reason: 'the waiting draft is reused');
+    expect((await db.collection('guideTargets').doc('G').collection('targets').get()).docs.length, 1);
+    // its plan is written (the server): it becomes the one active target
+    await activate(d1);
+    expect((await activeTargetOfMetric('G', 'chanting'))!.targetId, d1);
   });
 
   test('after the old one is abandoned, a new one is allowed', () async {

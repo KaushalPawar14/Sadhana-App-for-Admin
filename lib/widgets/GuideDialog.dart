@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/Responsive.dart';
 
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
@@ -34,13 +35,15 @@ class GuideDialog extends StatelessWidget {
       title: title,
       content: content == null
           ? null
-          : DefaultTextStyle.merge(style: t.body.copyWith(height: 1.45), child: content!),
+          : DefaultTextStyle.merge(style: t.body.copyWith(height: 1.45), child: context.isWide ? SelectionArea(child: content!) : content!),
       contentPadding: contentPadding ?? const EdgeInsets.fromLTRB(24, 12, 24, 8),
       actions: actions,
       actionsPadding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
       actionsOverflowAlignment: OverflowBarAlignment.end,
       actionsOverflowDirection: VerticalDirection.down,
       insetPadding: insetPadding,
+      // On a computer a dialog keeps a sensible width and its text can be selected; on a phone it is exactly what it was.
+      constraints: context.isWide ? const BoxConstraints(minWidth: 380, maxWidth: kDialogMaxWidth) : null,
     );
   }
 }

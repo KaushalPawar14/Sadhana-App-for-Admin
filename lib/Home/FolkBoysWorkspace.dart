@@ -1298,6 +1298,7 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
             activeCustomBoard != null && isBoardOwner(board: activeCustomBoard, guide: guide);
 
         return GuideScaffold(
+          fullWidth: true, // the board uses the whole window: many columns at once, scrolled sideways
           body: Column(
             children: [
               GuideTopBar(

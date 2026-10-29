@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'Responsive.dart';
+import '../widgets/GuideSideNav.dart';
+import '../Pages/AgentPage.dart';
+import '../agent/AgentOverlay.dart';
 import 'package:flutter/services.dart';
 import 'package:folk_guide_app/Home/FolkBoysEntry.dart';
 import 'package:folk_guide_app/Pages/BoysDetails.dart';
@@ -53,7 +57,7 @@ class _CurvedNavBarState extends State<CurvedNavBar> {
   final Set<int> _built = {tabHome};
 
   /// One aggregate "is there anything unseen under this tab" stream per tab that
-  /// hosts content with unseen state (Tasks only for a HOD: the Assistant log). Built exactly once, in
+  /// hosts content with unseen state (Analysis also carries a HOD's Assistant log). Built exactly once, in
   /// `initState()`, never in `build()`; every per-feature stream is shared via
   /// `utils/UnseenAggregates.dart` — the SAME functions back the tile dots on the
   /// tab pages, so the nav bar and the tiles can never disagree.
@@ -85,29 +89,35 @@ class _CurvedNavBarState extends State<CurvedNavBar> {
     });
   }
 
+  static Stream<bool> _both(Stream<bool> s) => s.asBroadcastStream(onCancel: (_) {});
+
   void _buildUnseenStreams() {
     final guide = adminName;
     final isHod = AdminProfileProvider.viewerIsHod;
 
     // Was the "Folk analysis" tab's dot.
-    _analysisUnseen = UnseenAggregates.anyOf([
+    // The phone layout and the computer layout both show these dots; a window can be resized across the breakpoint, so each stream may be
+    // listened to again by the other layout (broadcast, and the source stays open).
+    _analysisUnseen = _both(UnseenAggregates.anyOf([
       UnseenAggregates.associationsUnseen(guide, isHod),
       UnseenAggregates.expeditionReflectionsUnseen(guide, isHod),
       UnseenAggregates.serviceAssignmentsUnseen(guide, isHod),
       UnseenAggregates.flaggedMessagesUnseen(guide, isHod),
       UnseenAggregates.studentDoubtsUnseen(guide, isHod),
       UnseenAggregates.goalProposalsUnseen(guide),
-    ]);
+      // The Assistant log (HOD only) lives in Analysis now: its new entries light the Analysis tab, the card and the entries.
+      if (isHod) UnseenAggregates.assistantLogUnseen(AdminProfileProvider.current?.id ?? ''),
+    ]));
 
-    // The Tasks tab: for a HOD, a Guide's or Enabler's new Assistant log entry (the log card and its entries carry the dot on).
-    _tasksUnseen = isHod ? UnseenAggregates.assistantLogUnseen(AdminProfileProvider.current?.id ?? '') : Stream.value(false);
+    // The Tasks tab no longer hosts anything with unseen state.
+    _tasksUnseen = _both(Stream.value(false));
 
     // Was the "FOLK Boys" tab's dot.
-    _homeUnseen = UnseenAggregates.anyOf([
+    _homeUnseen = _both(UnseenAggregates.anyOf([
       UnseenAggregates.calendarEventsUnseen(guide),
       UnseenAggregates.studentCommentsRosterUnseen(guide, isHod),
       UnseenAggregates.bookCommitmentsRosterUnseen(guide, isHod),
-    ]);
+    ]));
   }
 
   Widget _pageFor(int index) {
@@ -128,9 +138,65 @@ class _CurvedNavBarState extends State<CurvedNavBar> {
             (snap.data ?? false) ? const UnseenDot() : const SizedBox.shrink(),
       );
 
+  /// THE COMPUTER LAYOUT (a window at least 900 dp wide): the side navigation, the page, and — when asked for — the assistant as a panel on the
+  /// right. The tabs and what they hold are exactly the phone's; only the arrangement changes.
+  Widget _desktop(BuildContext context) {
+    final g = context.g;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: g.isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        backgroundColor: g.pageBackground,
+        body: GuidePageBackground(
+          child: ValueListenableBuilder<bool>(
+            valueListenable: AgentSession.panelOpen,
+            builder: (context, assistantOpen, _) => Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                GuideSideNav(
+                  index: currentIdx,
+                  onTap: (i) => setState(() {
+                    currentIdx = i;
+                    _built.add(i);
+                  }),
+                  items: [
+                    GuideNavItem(icon: Icons.home_outlined, label: 'Home', badge: _dot(_homeUnseen)),
+                    GuideNavItem(icon: Icons.grid_view_rounded, label: 'Analysis', badge: _dot(_analysisUnseen)),
+                    GuideNavItem(icon: Icons.check_box_outlined, label: 'Tasks', badge: _dot(_tasksUnseen)),
+                  ],
+                  assistant: const GuideNavItem(icon: Icons.auto_awesome_outlined, label: 'Assistant'),
+                  assistantOpen: assistantOpen,
+                  onAssistant: () => AgentSession.panelOpen.value = !assistantOpen,
+                ),
+                Expanded(
+                  child: IndexedStack(
+                    index: currentIdx,
+                    children: [
+                      for (var i = 0; i < 3; i++)
+                        _built.contains(i)
+                            ? TickerMode(enabled: i == currentIdx, child: i == tabHome ? _pageFor(i) : ContentWidth(child: _pageFor(i)))
+                            : const SizedBox.shrink(),
+                    ],
+                  ),
+                ),
+                if (assistantOpen)
+                  Container(
+                    key: const ValueKey('assistant-panel'),
+                    width: kAssistantPanelWidth,
+                    decoration: BoxDecoration(border: Border(left: BorderSide(color: g.mutedText.withValues(alpha: .18)))),
+                    child: AgentPage(onClose: () => AgentSession.panelOpen.value = false),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final g = context.g;
+    if (context.isDesktop) return _desktop(context);
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: g.isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
       child: Scaffold(

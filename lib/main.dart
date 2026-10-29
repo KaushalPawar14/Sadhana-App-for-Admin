@@ -1,8 +1,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'firebase_options.dart';
 import 'theme/GuideTheme.dart';
 import 'theme/GuideTokens.dart';
 import 'theme/ThemeModeController.dart';
@@ -52,8 +55,10 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Portrait only (the manifest locks it too, so there is no rotation flash
   // before Flutter starts).
-  await SystemChrome.setPreferredOrientations(
-      const [DeviceOrientation.portraitUp]);
+  if (!kIsWeb) {
+    await SystemChrome.setPreferredOrientations(
+        const [DeviceOrientation.portraitUp]);
+  }
   final prefs = await SharedPreferences.getInstance();
   String? savedGuide = prefs.getString('selected_guide');
   StartupTrace.mark('SharedPreferences read');
@@ -71,7 +76,8 @@ void main() async {
   // already awaits this before `runApp()`.
   // Firebase and the saved Light / Dark / Auto choice do not depend on each other: together.
   final initialised = await Future.wait<Object?>([
-    Firebase.initializeApp(),
+    // In a browser the app needs its web configuration; on a phone the native one is read as always.
+    kIsWeb ? Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform) : Firebase.initializeApp(),
     ThemeModeController.load(),
   ]);
   final themeController = initialised[1] as ThemeModeController;
@@ -103,6 +109,8 @@ void main() async {
   // (`FolkBoysEntryScreen`, after its first frame) and by `GuideSignInPage` — never from here.
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     StartupTrace.mark('first frame drawn');
+    // No push notifications, local notifications or permission dialog in a browser: skipped, nothing else changes.
+    if (kIsWeb) return;
     FirebaseMessaging.onBackgroundMessage(
       _firebaseMessagingBackgroundHandler,
     );
@@ -115,6 +123,13 @@ void main() async {
     listenForAdminFcmTokenRefresh();
     StartupTrace.mark('notification setup done (background)');
   });
+}
+
+/// Scrolling with every kind of pointer (touch, mouse, trackpad, stylus): on a phone nothing changes; in a browser the mouse can drag.
+class GuideScrollBehavior extends MaterialScrollBehavior {
+  const GuideScrollBehavior();
+  @override
+  Set<PointerDeviceKind> get dragDevices => {...super.dragDevices, PointerDeviceKind.mouse, PointerDeviceKind.trackpad, PointerDeviceKind.stylus};
 }
 
 class MyApp extends StatelessWidget {
@@ -134,6 +149,8 @@ class MyApp extends StatelessWidget {
           darkTheme: GuideTheme.dark,
           themeMode: context.watch<ThemeModeController>().themeMode,
           themeAnimationDuration: GuideMotion.of(context, GuideMotion.theme),
+          // A mouse or a trackpad can drag a scrolling area (the board's columns, lists) in a browser, as a finger does on a phone.
+          scrollBehavior: const GuideScrollBehavior(),
           // The AI assistant's floating button sits above EVERY screen of the signed-in app (it wraps the whole
           // Navigator, so it survives every push and pop) and steps aside on the assistant's own page.
           builder: (context, navChild) => AgentOverlay(child: navChild ?? const SizedBox.shrink()),

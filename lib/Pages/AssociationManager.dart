@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -13,6 +15,7 @@ import '../utils/Snackbar.dart';
 import '../utils/VoiceNote.dart';
 import '../widgets/VoiceNoteButton.dart';
 import '../utils/StudentScope.dart';
+import '../utils/GuideNotes.dart';
 import 'InteractionLogger.dart';
 import 'OverdueAssociations.dart';
 import '../theme/GuideTheme.dart';
@@ -61,9 +64,16 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
   bool _selectionMode = false;
   final Set<String> _selectedIds = {};
 
+  /// The guide's notes on meetings (`associationGuideNotes`: guide-only, never on the record the student reads), by association id.
+  Map<String, String> _guideNotes = const {};
+  StreamSubscription<Map<String, String>>? _notesSub;
+
   @override
   void initState() {
     super.initState();
+    _notesSub = guideNotesStream().listen((m) {
+      if (mounted) setState(() => _guideNotes = m);
+    }, onError: (_) {});
     _tabController = TabController(length: 2, vsync: this)
       ..addListener(() {
         if (mounted) setState(() {});
@@ -78,6 +88,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
 
   @override
   void dispose() {
+    _notesSub?.cancel();
     _tabController.dispose();
     super.dispose();
   }
@@ -255,7 +266,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
   }
 
   Future<void> _markComplete(String docId, Map<String, dynamic> data) async {
-    String notes = (data['guideNotes'] ?? '').toString();
+    String notes = _guideNotes[docId] ?? await guideNoteOf(docId);
 
     final saved = await showDialog<bool>(
       context: context,
@@ -945,7 +956,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
   Widget _historyCard(String docId, Map<String, dynamic> data) {
     final status = (data['status'] ?? '').toString();
     final isCompleted = status == 'completed';
-    final guideNotes = (data['guideNotes'] ?? '').toString();
+    final guideNotes = _guideNotes[docId] ?? '';
 
     return _shell(
       docId: docId,

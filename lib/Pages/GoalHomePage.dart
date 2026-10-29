@@ -89,7 +89,7 @@ class _GoalHomePageState extends State<GoalHomePage> {
               stream: GoalData.instance.targets(guideId),
               builder: (context, snap) {
                 final targets = (snap.data ?? const <CompoundTarget>[])
-                    .where((t) => t.isActive)
+                    .where((t) => t.isActive || t.isDraft)
                     .toList();
                 final state = snap.hasError
                     ? GuideLoad.error
@@ -191,14 +191,10 @@ class _CompoundTargetCardState extends State<_CompoundTargetCard> {
       );
       if (!mounted) return;
       showSnackbar(context, "Plan generated", Colors.green, Icons.check_circle);
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      showSnackbar(
-        context,
-        "Still could not generate a plan — please try again shortly",
-        Colors.red,
-        Icons.error,
-      );
+      // the REAL reason the server gives, never a generic line
+      showSnackbar(context, planFailureReason(e), Colors.red, Icons.error);
     } finally {
       if (mounted) setState(() => _retrying = false);
     }
@@ -383,12 +379,19 @@ class _CompoundTargetCardState extends State<_CompoundTargetCard> {
               ],
             ),
             const SizedBox(height: 14),
-            if (needsGeneration)
+            if (needsGeneration) ...[
               Text(
-                "No plan yet — generation didn't complete",
-                style: t.small.copyWith(color: g.danger),
-              )
-            else ...[
+                target.isDraft ? "Draft — waiting for AI plan" : "No plan yet — generation didn't complete",
+                key: const ValueKey('draft-title'),
+                style: t.bodyStrong.copyWith(color: g.danger),
+              ),
+              if (target.draftReason.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(target.draftReason, key: const ValueKey('draft-reason'), style: t.small.copyWith(height: 1.35)),
+              ],
+              const SizedBox(height: 4),
+              Text("It is generated automatically as soon as the AI is available again.", style: t.caption),
+            ] else ...[
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [

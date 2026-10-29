@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'HierarchyApi.dart';
 
@@ -13,6 +14,7 @@ import 'HierarchyApi.dart';
 // Registers this device's FCM token for the signed-in admin. The last device an
 // admin signs in or launches on holds the token and receives notifications.
 Future<void> updateAdminFcmToken(String adminId) async {
+  if (kIsWeb) return; // no push notifications in the browser
   try {
     if (FirebaseAuth.instance.currentUser == null) return;
     final String? fcmToken = await FirebaseMessaging.instance.getToken();
@@ -33,6 +35,7 @@ StreamSubscription<String>? _tokenRefreshSub;
 // signed-in admin's stored token current; does nothing while nobody is signed
 // in, since the next sign-in registers the token anyway. Safe to call repeatedly.
 void listenForAdminFcmTokenRefresh() {
+  if (kIsWeb) return;
   _tokenRefreshSub ??=
       FirebaseMessaging.instance.onTokenRefresh.listen((token) async {
     try {
@@ -48,6 +51,7 @@ void listenForAdminFcmTokenRefresh() {
 // device's token (the server compares), so signing out here never silences a
 // device the admin signed in on later. Never blocks or fails the sign-out.
 Future<void> clearAdminFcmTokenIfOurs() async {
+  if (kIsWeb) return;
   try {
     if (FirebaseAuth.instance.currentUser == null) return;
     final ownToken = await FirebaseMessaging.instance.getToken();

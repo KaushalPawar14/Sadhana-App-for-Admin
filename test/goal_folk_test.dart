@@ -59,22 +59,25 @@ void main() {
       GuideDb.useForTests(db);
     });
 
-    test('created with the number of boys as its goal, no per-student value (1), the end date, active, no phases yet', () async {
+    test('created with the number of boys as its goal, no per-student value (1), the end date, a DRAFT until its AI plan is written, no phases yet', () async {
       final id = await createCompoundTargetShell(guideId: 'G', metric: 'folk', studentCountGoal: 8, perStudentValueGoal: 1, endDate: DateTime(2026, 12, 20));
       final d = (await db.collection('guideTargets').doc('G').collection('targets').doc(id).get()).data()!;
       expect(d['metric'], 'folk');
       expect(d['studentCountGoal'], 8);
       expect(d['perStudentValueGoal'], 1);
-      expect(d['status'], 'active');
+      expect(d['status'], 'draft');
       expect(d['totalPhases'], 0);
       expect((d['endDate'] as Timestamp).toDate(), DateTime(2026, 12, 20));
     });
 
     test('one active target per type: a second FOLK-residents target is refused with its own words; the other types are unaffected', () async {
-      await createCompoundTargetShell(guideId: 'G', metric: 'folk', studentCountGoal: 8, perStudentValueGoal: 1, endDate: DateTime(2026, 12, 20));
+      final first = await createCompoundTargetShell(guideId: 'G', metric: 'folk', studentCountGoal: 8, perStudentValueGoal: 1, endDate: DateTime(2026, 12, 20));
+      await db.collection('guideTargets').doc('G').collection('targets').doc(first).update({'status': 'active'}); // its plan was written
       await expectLater(
         createCompoundTargetShell(guideId: 'G', metric: 'folk', studentCountGoal: 3, perStudentValueGoal: 1, endDate: DateTime(2027, 1, 20)),
-        throwsA(isA<CompoundTargetLimitException>().having((e) => e.message, 'message', 'Delete your current FOLK-residents target first')),
+        throwsA(isA<CompoundTargetLimitException>()
+            .having((e) => e.message, 'message', 'You already have a FOLK-residents target (8 boys living in FOLK, ends 20 Dec 2026). Open it or delete it first.')
+            .having((e) => e.targetId, 'the target in the way', first)),
       );
       expect(await createCompoundTargetShell(guideId: 'G', metric: 'chanting', studentCountGoal: 5, perStudentValueGoal: 16, endDate: DateTime(2026, 12, 20)), isNotEmpty);
       expect(await createCompoundTargetShell(guideId: 'G', metric: 'books', studentCountGoal: 5, perStudentValueGoal: 2, endDate: DateTime(2026, 12, 20)), isNotEmpty);

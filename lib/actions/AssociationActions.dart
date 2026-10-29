@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../Services/HierarchyApi.dart';
 import '../utils/GuideDb.dart';
+import '../utils/GuideNotes.dart';
 
 /// Meetings with students (Associations): the writes, with no screen in them.
 ///
@@ -59,7 +60,6 @@ Future<String> requestMeeting({
     'confirmedDate': null,
     'status': 'pending',
     'studentNotes': message.trim(),
-    'guideNotes': '',
     'createdAt': FieldValue.serverTimestamp(),
     'updatedAt': FieldValue.serverTimestamp(),
   });
@@ -115,11 +115,12 @@ Future<void> completeMeeting(
   String associationId, {
   required String notes,
 }) async {
+  // The guide's notes are GUIDE-ONLY: they go to `associationGuideNotes`, never onto the association the student reads.
   await GuideDb.instance.collection('associations').doc(associationId).update({
     'status': 'completed',
-    'guideNotes': notes.trim(),
     'updatedAt': FieldValue.serverTimestamp(),
   });
+  await saveGuideNote(associationId, notes);
 }
 
 /// Cancel a request or a meeting.
@@ -167,8 +168,6 @@ Future<void> editMeetingNotes(
   String associationId, {
   required String notes,
 }) async {
-  await GuideDb.instance.collection('associations').doc(associationId).update({
-    'guideNotes': notes.trim(),
-    'updatedAt': FieldValue.serverTimestamp(),
-  });
+  await saveGuideNote(associationId, notes);
+  await GuideDb.instance.collection('associations').doc(associationId).update({'updatedAt': FieldValue.serverTimestamp()});
 }

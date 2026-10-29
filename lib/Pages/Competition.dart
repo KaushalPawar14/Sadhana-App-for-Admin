@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:folk_guide_app/Pages/AbcdeHub.dart';
 import 'package:folk_guide_app/Pages/Leaderboard.dart';
+import 'package:folk_guide_app/Pages/AgentLogPage.dart';
 import 'package:folk_guide_app/Pages/PriorityHub.dart';
 import '../Services/UpdateFCM.dart';
 import '../theme/GuideColors.dart';
@@ -33,9 +34,15 @@ class _CompetitionPageState extends State<CompetitionPage> {
   Stream<bool>? _abcdeUnseen;
   Stream<bool>? _priorityStudentsUnseen;
 
+  /// A Guide's or Enabler's new Assistant log entry, for a HOD (the log lives here, in Analysis).
+  Stream<bool>? _logUnseen;
+
   @override
   void initState() {
     super.initState();
+    // Built once, here (a HOD only: the log is theirs to read).
+    final me = AdminProfileProvider.current;
+    if (AdminProfileProvider.viewerIsHod && me != null) _logUnseen = UnseenAggregates.assistantLogUnseen(me.id);
     UpdateTokenService().getSavedGuide().then((guide) {
       if (!mounted || guide == null || guide.isEmpty) return;
       final isHod = AdminProfileProvider.viewerIsHod;
@@ -74,8 +81,11 @@ class _CompetitionPageState extends State<CompetitionPage> {
     required String subtitle,
     required VoidCallback onTap,
     Stream<bool>? unseen,
+    Key? key,
+    Key? dotKey,
   }) {
     final card = GuideNavCard(
+      key: key,
       pastel: pastel,
       icon: icon,
       title: title,
@@ -91,6 +101,7 @@ class _CompetitionPageState extends State<CompetitionPage> {
             : StreamBuilder<bool>(
                 stream: unseen,
                 builder: (context, snap) => UnseenBadge(
+                  key: dotKey,
                   show: snap.data ?? false,
                   offset: const Offset(10, 10),
                   child: card,
@@ -156,6 +167,19 @@ class _CompetitionPageState extends State<CompetitionPage> {
                 // and (HOD only) Boys or Girls; always inside the admin's own scope.
                 onTap: () => _open(const LeaderboardPage()),
               ),
+              // What the AI assistant has done: HODs only (the server's log; the rules let only a HOD read it). It used to be in the Tasks tab.
+              if (AdminProfileProvider.viewerIsHod)
+                _card(
+                  index: 3,
+                  pastel: GuidePastel.mauve,
+                  icon: Icons.auto_awesome_outlined,
+                  title: 'Assistant log',
+                  subtitle: 'What the AI assistant did, and for whom',
+                  onTap: () => _open(const AgentLogPage()),
+                  unseen: _logUnseen,
+                  key: const ValueKey('agent-log-card'),
+                  dotKey: const ValueKey('agent-log-dot'),
+                ),
             ],
           ),
         ),

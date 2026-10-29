@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/GuideNotes.dart';
 
 import '../Services/HierarchyApi.dart';
 import '../actions/SubmissionActions.dart';
@@ -316,6 +317,8 @@ Future<AgentResult> listMeetings(Map<String, dynamic> a, AgentEnv env) async {
         .compareTo(_dt(x.data()['confirmedDate']) ?? _dt(x.data()['preferredDate']) ?? DateTime(2000)));
 
   final shown = docs.take(_limit(a)).toList();
+  // the guide's own notes on meetings live in the guide-only collection (never on the record the student reads)
+  final notes = await guideNotesOf(shown.map((d) => d.id));
   return AgentResult.ok(
     {
       'count': docs.length,
@@ -331,7 +334,7 @@ Future<AgentResult> listMeetings(Map<String, dynamic> a, AgentEnv env) async {
             if (d.data()['counterProposalDate'] != null) 'studentProposed': agentStamp(d.data()['counterProposalDate']),
             if (_s(d.data()['counterProposalNote']).isNotEmpty) 'studentProposalNote': _s(d.data()['counterProposalNote']),
             if (_s(d.data()['studentNotes']).isNotEmpty) 'studentMessage': _s(d.data()['studentNotes']),
-            if (_s(d.data()['guideNotes']).isNotEmpty) 'guideNotes': _s(d.data()['guideNotes']),
+            if ((notes[d.id] ?? '').isNotEmpty) 'guideNotes': notes[d.id]!,
           }
       ],
     },
@@ -1007,18 +1010,19 @@ Future<AgentResult> findDuplicates(Map<String, dynamic> a, AgentEnv env) async {
   } else if (kind == 'meeting') {
     entityKind = 'association';
     final snap = await _recordsOf('associations', uid, _s((await env.student(uid))['name']), env);
+    final notes = await guideNotesOf(snap.map((d) => d.id));
     for (final d in snap) {
       final m = d.data();
       items.add(DupItem(
         id: d.id,
         when: _dt(m['confirmedDate']) ?? _dt(m['preferredDate']),
         type: _s(m['status']),
-        text: '${_s(m['studentNotes'])} ${_s(m['guideNotes'])}',
+        text: '${_s(m['studentNotes'])} ${notes[d.id] ?? ''}',
         show: {
           'id': d.id,
           'status': _s(m['status']),
           'when': agentStamp(m['confirmedDate'] ?? m['preferredDate']),
-          if (_s(m['guideNotes']).isNotEmpty) 'notes': _short(_s(m['guideNotes'])),
+          if ((notes[d.id] ?? '').isNotEmpty) 'notes': _short(notes[d.id]!),
         },
       ));
     }

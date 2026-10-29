@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../utils/Responsive.dart';
 import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -9,7 +10,6 @@ import '../widgets/StudentBooksPanel.dart';
 import '../utils/CompetitionScore.dart';
 import '../utils/SadhanaReportSource.dart';
 import '../Pages/AllGraph.dart' show GraphicalAnalysisSection;
-import '../utils/Residence.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../utils/GuideDb.dart';
@@ -658,7 +658,8 @@ class _CalendarPageState extends State<CalendarPage> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final daySize = screenWidth * 0.11;
+    // a wide window keeps the calendar at a reading width (a phone: the whole width, exactly as before)
+    final daySize = (screenWidth > kContentMaxWidth ? kContentMaxWidth : screenWidth) * 0.11;
 
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {

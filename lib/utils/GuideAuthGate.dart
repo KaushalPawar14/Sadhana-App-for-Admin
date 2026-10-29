@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -66,7 +67,7 @@ class GuideAuthGate {
   static Future<void> signOut() async {
     // Before the session ends, so the signed-in guide can still be resolved.
     await clearAdminFcmTokenIfOurs();
-    await GoogleSignIn().signOut();
+    if (!kIsWeb) await GoogleSignIn().signOut(); // in a browser Firebase Auth's own sign-out is the whole of it
     await FirebaseAuth.instance.signOut();
     AdminProfileProvider.instance.clear();
     await AdminProfileProvider.instance.clearCache();

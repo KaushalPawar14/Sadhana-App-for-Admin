@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/Responsive.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/GuideColors.dart';
@@ -71,7 +72,12 @@ class GuideScaffold extends StatelessWidget {
     this.extendBody = false,
     this.drawer,
     this.endDrawer,
+    this.fullWidth = false,
   });
+
+  /// On a wide window the page's content is centred with a reading width (`utils/Responsive.dart`); a page that wants the whole window
+  /// (a board, a wide table) sets this. A phone is never affected.
+  final bool fullWidth;
 
   final Widget? body;
   final PreferredSizeWidget? appBar;
@@ -99,7 +105,7 @@ class GuideScaffold extends StatelessWidget {
           extendBody: extendBody,
           drawer: drawer,
           endDrawer: endDrawer,
-          body: body,
+          body: fullWidth || body == null ? body : ContentWidth(child: body!),
         ),
       ),
     );

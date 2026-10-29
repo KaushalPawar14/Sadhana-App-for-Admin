@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/Pages/AgentLogPage.dart';
 import 'package:folk_guide_app/Pages/BoysDetails.dart';
+import 'package:folk_guide_app/Pages/Competition.dart';
 import 'package:folk_guide_app/utils/AdminProfile.dart';
 import 'package:folk_guide_app/utils/BottomNavBar.dart';
 import 'package:folk_guide_app/utils/GuideDb.dart';
@@ -15,7 +18,7 @@ import 'support/app_harness.dart';
 import 'support/guide_test_support.dart';
 
 /// The Assistant log keeps the latest 50 (the server trims; see functions/test/agentLogTrim.test.js) and tells each HOD what is
-/// NEW: an entry a Guide or an Enabler made since that HOD last opened the log - never the HOD's own. An orange dot on the Tasks
+/// NEW: an entry a Guide or an Enabler made since that HOD last opened the log - never the HOD's own. An orange dot on the Analysis
 /// tab and on the "Assistant log" card, and "New" on each such entry; opening the log clears them, per HOD.
 
 AdminProfile _hod(String id) => AdminProfile.fromMap({
@@ -184,12 +187,12 @@ void main() {
     }
   });
 
-  group('the Tasks tab', () {
+  group('the Analysis tab (the Assistant log moved here from Tasks)', () {
     testWidgets('the Assistant log card carries an orange dot while there is something new, and it clears after the log is opened', (tester) async {
       db = await app(tester);
       AdminProfileProvider.instance.debugSet(_hod('H'));
       await entry('g1', who: 'G', role: 'GUIDE', minutes: 2);
-      await pumpScreen(tester, const Scaffold(body: AdminControlPage()));
+      await pumpScreen(tester, CompetitionPage());
       await letDataArrive(tester);
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
       await tester.pump();
@@ -206,7 +209,7 @@ void main() {
       db = await app(tester);
       AdminProfileProvider.instance.debugSet(_hod('H'));
       await entry('mine', who: 'H', role: 'HOD', minutes: 2);
-      await pumpScreen(tester, const Scaffold(body: AdminControlPage()));
+      await pumpScreen(tester, CompetitionPage());
       await letDataArrive(tester);
       await tester.pump(const Duration(milliseconds: 200));
       await tester.scrollUntilVisible(find.byKey(const ValueKey('agent-log-card')), 200, scrollable: find.byType(Scrollable).first);
@@ -216,32 +219,38 @@ void main() {
     testWidgets('a Guide has no Assistant log card and no dot, and nothing is read for them', (tester) async {
       db = await app(tester, who: Who.guide);
       await entry('g1', who: 'G', role: 'GUIDE', minutes: 2);
-      await pumpScreen(tester, const Scaffold(body: AdminControlPage()));
+      await pumpScreen(tester, CompetitionPage());
       await letDataArrive(tester);
       expect(find.byKey(const ValueKey('agent-log-card')), findsNothing);
       expect(find.byKey(const ValueKey('agent-log-dot')), findsNothing);
     });
   });
 
-  testWidgets('the Tasks tab itself carries the dot for a HOD (and not for a Guide)', (tester) async {
+  testWidgets('the Analysis tab carries the dot for a HOD (it lights from the log\x27s new entries); the Tasks tab carries nothing', (tester) async {
     UnseenAggregates.debugDisable = false;
     db = await app(tester);
     AdminProfileProvider.instance.debugSet(_hod('H'));
-    await entry('g1', who: 'G', role: 'GUIDE', minutes: 2);
-    await db.collection('agentActions').doc('g1').delete();
-    await pumpScreen(tester, const CurvedNavBar('H'));
-    await letDataArrive(tester);
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
-    await tester.pump();
-    await letDataArrive(tester);
-    final before = find.byType(UnseenDot).evaluate().length;
     await entry('g2', who: 'G', role: 'GUIDE', minutes: 3);
-    await letDataArrive(tester);
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
-    await tester.pump();
-    await letDataArrive(tester);
-    expect(find.byType(UnseenDot).evaluate().length, before + 1, reason: 'one more dot: at the Tasks item');
+    await expectLater(UnseenAggregates.assistantLogUnseen('H').timeout(const Duration(seconds: 3)), emits(true));
+    final nav = File('lib/utils/BottomNavBar.dart').readAsStringSync();
+    expect(nav.contains('_tasksUnseen = _both(Stream.value(false))'), isTrue, reason: 'Tasks hosts nothing with unseen state any more');
+    expect(nav.contains('if (isHod) UnseenAggregates.assistantLogUnseen'), isTrue, reason: "the Analysis tab carries the log's dot");
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
   });
+
+  testWidgets('the Tasks tab no longer has the Assistant log (for a HOD too): it is in Analysis', (tester) async {
+    db = await app(tester);
+    AdminProfileProvider.instance.debugSet(_hod('H'));
+    await pumpScreen(tester, const Scaffold(body: AdminControlPage()));
+    await letDataArrive(tester);
+    expect(find.byKey(const ValueKey('agent-log-card')), findsNothing);
+    expect(find.text('Assistant log'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    await pumpScreen(tester, CompetitionPage());
+    await letDataArrive(tester);
+    expect(find.byKey(const ValueKey('agent-log-card')), findsOneWidget);
+    expect(find.text('Assistant log'), findsOneWidget);
+  });
 }
+

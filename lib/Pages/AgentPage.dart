@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../utils/Responsive.dart';
 
 import '../agent/AgentController.dart';
 import '../agent/AgentOverlay.dart';
@@ -30,7 +32,10 @@ import 'PlanPage.dart';
 /// exactly what it will do and being told to. A deletion asks twice. What it can do is exactly what the
 /// signed-in guide can do by hand, nothing more (see `lib/agent/`).
 class AgentPage extends StatefulWidget {
-  const AgentPage({super.key, this.controller});
+  const AgentPage({super.key, this.controller, this.onClose});
+
+  /// Set when the page is the side panel of a computer: shows a close button (there is no "back" in a panel).
+  final VoidCallback? onClose;
 
   /// Tests hand in their own controller; the app uses the one conversation of the session.
   final AgentController? controller;
@@ -145,6 +150,8 @@ class _AgentPageState extends State<AgentPage> {
         title: const Text('Assistant'),
         // three buttons: Chat history, New chat, Plan (the Assistant log lives in the Tasks tab)
         actions: [
+          if (widget.onClose != null)
+            IconButton(key: const ValueKey('agent-close'), tooltip: 'Close the assistant', icon: Icon(Icons.close, color: g.text), onPressed: widget.onClose),
           IconButton(
             key: const ValueKey('agent-chats'),
             tooltip: 'Chat history',
@@ -406,7 +413,16 @@ class _AgentPageState extends State<AgentPage> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Expanded(
-                  child: TextField(
+                  child: CallbackShortcuts(
+                    // A keyboard: Enter sends, Shift+Enter is a new line (only where there is a keyboard-sized window; a phone's Enter stays a new line).
+                    bindings: context.isWide
+                        ? {
+                            const SingleActivator(LogicalKeyboardKey.enter): () {
+                              if (_c.canAsk && _input.text.trim().isNotEmpty) _send();
+                            },
+                          }
+                        : const {},
+                    child: TextField(
                     key: const ValueKey('agent-input'),
                     controller: _input,
                     focusNode: _focus,
@@ -416,6 +432,7 @@ class _AgentPageState extends State<AgentPage> {
                     textInputAction: TextInputAction.newline,
                     enabled: closed == null,
                     decoration: InputDecoration(hintText: closed ?? 'Ask me, or tell me what to do', counterText: ''),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 6),

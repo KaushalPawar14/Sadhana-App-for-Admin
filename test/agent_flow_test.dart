@@ -517,7 +517,8 @@ void main() {
       await kAgentWritesA['meeting_complete']!({'associationId': 'a_u_arjun', 'notes': 'Good talk'}, env);
       d = (await db.collection('associations').doc('a_u_arjun').get()).data()!;
       expect(d['status'], 'completed');
-      expect(d['guideNotes'], 'Good talk');
+      expect(d.containsKey('guideNotes'), isFalse);
+      expect((await db.collection('associationGuideNotes').doc('a_u_arjun').get()).data()!['notes'], 'Good talk');
       await kAgentWritesA['meeting_cancel']!({'associationId': 'a_u_bhima'}, env);
       expect((await db.collection('associations').doc('a_u_bhima').get()).data()!['status'], 'cancelled');
       expect(server.pushes.map((p) => p['title']), ['Meeting Confirmed', 'Meeting Rescheduled', 'Meeting Cancelled']);

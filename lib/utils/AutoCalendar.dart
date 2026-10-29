@@ -162,7 +162,7 @@ List<CalendarEvent> meetingEvents(Iterable<QueryDocumentSnapshot<Map<String, dyn
       source: kSourceMeeting,
       start: when,
       title: 'Meeting: $who',
-      note: _s(m['guideNotes']),
+      note: '',
       refId: d.id,
       studentUid: _s(m['studentUid']),
       studentName: _s(m['studentName']),

@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:http/http.dart' as http;
 import 'package:record/record.dart';
 
 /// One finished recording, in memory only.
@@ -89,6 +91,14 @@ class RecordPackageRecorder implements VoiceRecorder, VoiceLevels {
 
   @override
   Future<void> start() async {
+    if (kIsWeb) {
+      // In a browser there are no files: the page records with MediaRecorder (webm / opus, which the server accepts) and hands back a blob URL.
+      await _rec.start(const RecordConfig(encoder: AudioEncoder.opus, numChannels: 1), path: '');
+      _path = 'web';
+      _recorded = Duration.zero;
+      _segmentStart = DateTime.now();
+      return;
+    }
     final path =
         '${Directory.systemTemp.path}${Platform.pathSeparator}voice_note_${DateTime.now().microsecondsSinceEpoch}.m4a';
     await _rec.start(
@@ -136,6 +146,17 @@ class RecordPackageRecorder implements VoiceRecorder, VoiceLevels {
     _recorded = Duration.zero;
     if (path == null) return null;
 
+    if (kIsWeb) {
+      // `path` is the blob URL of the recording: read it once, and it is gone with the page.
+      try {
+        final bytes = await http.readBytes(Uri.parse(path));
+        if (bytes.isEmpty) return null;
+        return VoiceClip(bytes: bytes, mimeType: 'audio/webm', seconds: seconds);
+      } catch (_) {
+        return null;
+      }
+    }
+
     final file = File(path);
     try {
       if (!await file.exists()) return null;
@@ -163,7 +184,7 @@ class RecordPackageRecorder implements VoiceRecorder, VoiceLevels {
     } catch (_) {
       // Already stopped.
     }
-    if (path != null) {
+    if (path != null && !kIsWeb) {
       try {
         final f = File(path);
         if (await f.exists()) await f.delete();

@@ -43,6 +43,7 @@ class ForceUpdateCheck {
   static const Duration timeout = Duration(milliseconds: 1500);
 
   static Future<bool> isUpdateRequired() async {
+    if (kIsWeb) return false; // the web app is always the latest: there is no build number to force
     try {
       final snap = await GuideDb.instance
           .collection('appConfig')

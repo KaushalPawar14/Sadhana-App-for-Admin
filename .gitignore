@@ -54,3 +54,4 @@ credentials/gemini-key.json
 /credentials/
 *.keystore
 *.jks
+.firebase/

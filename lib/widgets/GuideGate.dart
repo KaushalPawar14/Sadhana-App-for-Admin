@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/Responsive.dart';
 
 import '../theme/GuideColors.dart';
 import '../theme/GuideTheme.dart';
@@ -34,7 +35,10 @@ class GuideGate extends StatelessWidget {
     return GuideScaffold(
       body: SafeArea(
         child: Center(
-          child: SingleChildScrollView(
+          // on a computer the sign-in / gate card keeps a card-like width instead of stretching across the window
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: context.isWide ? 480 : double.infinity),
+            child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -63,6 +67,7 @@ class GuideGate extends StatelessWidget {
                 if (footer != null) ...[const SizedBox(height: 16), footer!],
               ],
             ),
+          ),
           ),
         ),
       ),

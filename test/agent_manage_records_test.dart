@@ -215,11 +215,13 @@ void main() {
     });
 
     test('the notes on a completed meeting can be changed; a meeting not completed has none to change', () async {
-      await db.collection('associations').doc('a1').set({'studentUid': 'u1', 'studentName': 'Bhima Sen', 'status': 'completed', 'guideNotes': 'Old notes', ...stamp});
+      await db.collection('associations').doc('a1').set({'studentUid': 'u1', 'studentName': 'Bhima Sen', 'status': 'completed', ...stamp});
+      await db.collection('associationGuideNotes').doc('a1').set({'associationId': 'a1', 'studentUid': 'u1', 'notes': 'Old notes', ...stamp});
       await db.collection('associations').doc('a2').set({'studentUid': 'u1', 'studentName': 'Bhima Sen', 'status': 'confirmed', ...stamp});
       final r = await kAgentWritesA['meeting_notes_edit']!({'associationId': 'a1', 'notes': 'Better notes'}, env());
       expect(r.ok, isTrue);
-      expect((await doc('associations/a1'))!['guideNotes'], 'Better notes');
+      expect((await doc('associationGuideNotes/a1'))!['notes'], 'Better notes');
+      expect((await doc('associations/a1'))!.containsKey('guideNotes'), isFalse, reason: 'never back on the record the student reads');
       await expectLater(kAgentWritesA['meeting_notes_edit']!({'associationId': 'a2', 'notes': 'x'}, env()), throwsA(isA<AgentFailure>()));
     });
   });

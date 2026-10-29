@@ -99,6 +99,7 @@
 library;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import 'GoalMetrics.dart';
@@ -118,6 +119,10 @@ const String kCompoundTargetsSubcollection = 'targets';
 const String kCompoundPhasesSubcollection = 'phases';
 
 const String kCompoundStatusActive = 'active';
+
+/// A target whose AI plan could not be generated: kept visible as "Draft — waiting for the AI plan" with the REAL reason. A draft does NOT
+/// count toward the one-per-type limit; the server generates its plan automatically as soon as the AI is available again.
+const String kCompoundStatusDraft = 'draft';
 const String kCompoundStatusCompleted = 'completed';
 const String kCompoundStatusAbandoned = 'abandoned';
 
@@ -480,7 +485,11 @@ class CompoundTarget {
     required this.totalPhases,
     required this.createdAt,
     required this.pendingProposal,
+    this.draftReason = '',
   });
+
+  /// Why the plan could not be generated (a draft only): the server's real reason, in words.
+  final String draftReason;
 
   static CompoundTarget from(
       String guideId, String targetId, Map<String, dynamic>? data) {
@@ -499,10 +508,12 @@ class CompoundTarget {
       totalPhases: (d['totalPhases'] as num?)?.toInt() ?? 0,
       createdAt: created is Timestamp ? created.toDate() : null,
       pendingProposal: CompoundProposal.from(d['pendingProposal']),
+      draftReason: (d['draftReason'] ?? '').toString(),
     );
   }
 
   bool get isActive => status == kCompoundStatusActive;
+  bool get isDraft => status == kCompoundStatusDraft;
   GoalMetric? get metricInfo => goalMetricById(metric);
 }
 
@@ -679,9 +690,13 @@ int compoundWeeksRemaining(DateTime endDate, {DateTime? from}) {
 /// Thrown rather than returned so no caller can create a second one by
 /// ignoring a boolean. [message] is written for the guide and shown as it is.
 class CompoundTargetLimitException implements Exception {
-  const CompoundTargetLimitException(this.metric, this.message);
+  const CompoundTargetLimitException(this.metric, this.message, {this.guideId = '', this.targetId = ''});
   final String metric;
   final String message;
+
+  /// The target that is in the way, so the screen can offer to open it or delete it.
+  final String guideId;
+  final String targetId;
   @override
   String toString() => message;
 }
@@ -702,7 +717,20 @@ Future<CompoundTarget?> activeTargetOfMetric(
   return CompoundTarget.from(guideId, doc.id, doc.data());
 }
 
-/// The sentence a guide sees when they already have one.
+/// The sentence a guide sees when they already have one: it NAMES the target (what it is, until when), then says what to do.
+String limitMessageFor(CompoundTarget t) {
+  final label = switch (t.metric) {
+    'books' => 'book reading',
+    'folk' => 'FOLK-residents',
+    _ => 'chanting',
+  };
+  final unit = goalMetricById(t.metric)?.unit ?? '';
+  final goal = t.metric == 'folk' ? '${t.studentCountGoal} boys living in FOLK' : '${t.studentCountGoal} students at ${t.perStudentValueGoal} $unit'.trim();
+  final end = t.endDate == null ? '' : ', ends ${DateFormat('d MMM yyyy').format(t.endDate!)}';
+  return 'You already have a $label target ($goal$end). Open it or delete it first.';
+}
+
+/// The short wording (kept for callers that only know the metric).
 String targetLimitMessage(String metric) => switch (metric) {
       'books' => 'Delete your current book reading target first',
       'folk' => 'Delete your current FOLK-residents target first',
@@ -725,16 +753,20 @@ Future<String> createCompoundTargetShell({
   // setup page, a retry after a failed plan, or anything added later.
   final existing = await activeTargetOfMetric(guideId, metric);
   if (existing != null) {
-    throw CompoundTargetLimitException(metric, targetLimitMessage(metric));
+    throw CompoundTargetLimitException(metric, limitMessageFor(existing), guideId: guideId, targetId: existing.targetId);
   }
 
-  final targetDoc = compoundTargetsRef(guideId).doc();
+  // A new target starts as a DRAFT: it only becomes active (and counts toward the limit) when its AI plan is written. If the AI fails it
+  // stays a visible draft with the real reason, and the server retries in the background. A draft of this type that is already waiting is
+  // reused (updated), never duplicated.
+  final waiting = await compoundTargetsRef(guideId).where('metric', isEqualTo: metric).where('status', isEqualTo: kCompoundStatusDraft).limit(1).get();
+  final targetDoc = waiting.docs.isNotEmpty ? waiting.docs.first.reference : compoundTargetsRef(guideId).doc();
   await targetDoc.set({
     'metric': metric,
     'studentCountGoal': studentCountGoal,
     'perStudentValueGoal': perStudentValueGoal,
     'endDate': Timestamp.fromDate(endDate),
-    'status': kCompoundStatusActive,
+    'status': kCompoundStatusDraft,
     'currentPhase': 0,
     'totalPhases': 0,
     'createdAt': FieldValue.serverTimestamp(),
@@ -815,6 +847,18 @@ Future<int> callDeleteCompoundTarget({
 /// Throws `FirebaseFunctionsException` on failure (bad OpenAI response after
 /// retries, missing target, etc.) — the caller shows this verbatim, matching
 /// how `RduaFriendsScreen.dart` already surfaces callable errors.
+/// The REAL reason a plan could not be generated, from the server's own sentence ("The AI service has no credit left ...") — never a generic
+/// line. Anything that is not a server sentence is shown as it is.
+String planFailureReason(Object error) {
+  if (error is FirebaseFunctionsException) {
+    final m = (error.message ?? '').trim();
+    if (m.isNotEmpty && m != 'internal' && m.toUpperCase() != 'INTERNAL') return m;
+    return 'The server could not be reached (${error.code}). Try again in a moment.';
+  }
+  final t = error.toString().replaceFirst(RegExp(r'^Exception: '), '').trim();
+  return t.isEmpty ? 'Unknown error.' : t;
+}
+
 Future<int> callGenerateCompoundPlan({
   required String guideId,
   required String targetId,

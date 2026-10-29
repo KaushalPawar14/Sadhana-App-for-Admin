@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../Services/HierarchyApi.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -51,24 +52,41 @@ class _GuideSignInPageState extends State<GuideSignInPage> {
     setState(() => _isLoading = true);
 
     try {
-      final GoogleSignIn googleSignIn = GoogleSignIn();
-      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+      final UserCredential userCredential;
+      if (kIsWeb) {
+        // In a browser: Google's own pop-up through Firebase Auth (the page's address must be an authorised domain). The SAME rule follows:
+        // only an email registered as an admin gets in (below).
+        final provider = GoogleAuthProvider()..setCustomParameters({'prompt': 'select_account'});
+        try {
+          userCredential = await FirebaseAuth.instance.signInWithPopup(provider);
+        } on FirebaseAuthException catch (e) {
+          if (e.code == 'popup-closed-by-user' || e.code == 'cancelled-popup-request') {
+            // Closed the Google window.
+            if (!mounted) return;
+            setState(() => _isLoading = false);
+            return;
+          }
+          rethrow;
+        }
+      } else {
+        final GoogleSignIn googleSignIn = GoogleSignIn();
+        final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
 
-      if (googleUser == null) {
-        // Cancelled the account picker.
-        if (!mounted) return;
-        setState(() => _isLoading = false);
-        return;
+        if (googleUser == null) {
+          // Cancelled the account picker.
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+          return;
+        }
+
+        final googleAuth = await googleUser.authentication;
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+
+        userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
       }
-
-      final googleAuth = await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      final userCredential =
-          await FirebaseAuth.instance.signInWithCredential(credential);
       final email = userCredential.user?.email;
 
       // Identity resolution + locking (Part 2.2/2.4) — the ONE place a

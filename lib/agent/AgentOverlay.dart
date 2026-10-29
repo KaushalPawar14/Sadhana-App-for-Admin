@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../Pages/AgentPage.dart';
+import '../utils/Responsive.dart';
 import '../main.dart' show guideNavigatorKey;
 import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
@@ -61,6 +62,9 @@ class AgentSession {
   AgentSession._();
   static AgentController controller = AgentController();
 
+  /// On a computer the assistant opens as a panel beside the page (the shell listens); on a phone it is the full page the button opens.
+  static final ValueNotifier<bool> panelOpen = ValueNotifier<bool>(false);
+
   /// Tests start from a clean conversation.
   static void useForTests(AgentController? c) => controller = c ?? AgentController();
 }
@@ -97,6 +101,8 @@ class AgentOverlay extends StatelessWidget {
           listenable: signedIn ?? AdminProfileProvider.instance,
           builder: (context, _) {
             if (AdminProfileProvider.current == null) return const SizedBox.shrink();
+            // On a computer the assistant lives in the side navigation (a panel); the floating button is for phones and tablets.
+            if (context.isDesktop) return const SizedBox.shrink();
             return ValueListenableBuilder<bool>(
               valueListenable: AgentRouteVisibility.instance.onAgent,
               builder: (context, onAgent, _) => _DraggableAgentButton(hidden: onAgent, onOpen: onOpen),

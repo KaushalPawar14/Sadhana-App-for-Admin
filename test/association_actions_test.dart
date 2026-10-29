@@ -50,7 +50,6 @@ void main() {
       'preferredDate': Timestamp.fromDate(DateTime(2026, 11, 1, 10)),
       'confirmedDate': status == 'confirmed' ? Timestamp.fromDate(DateTime(2026, 11, 2, 9)) : null,
       'studentNotes': '',
-      'guideNotes': '',
       ...?extra,
     });
     return ref.id;
@@ -78,7 +77,7 @@ void main() {
       expect(d['confirmedDate'], isNull);
       expect((d['preferredDate'] as Timestamp).toDate(), when);
       expect(d['studentNotes'], 'Let us talk about exams', reason: 'trimmed');
-      expect(d['guideNotes'], '');
+      expect(d.containsKey('guideNotes'), isFalse, reason: 'no guide note on the record the student reads');
       expect(d['createdAt'], isNotNull);
       expect(d['updatedAt'], isNotNull);
     });
@@ -140,7 +139,10 @@ void main() {
       await completeMeeting(id, notes: '  We agreed a smaller target.  ');
       final d = await read(id);
       expect(d['status'], 'completed');
-      expect(d['guideNotes'], 'We agreed a smaller target.');
+      expect(d.containsKey('guideNotes'), isFalse, reason: 'the student reads this record: no guide note on it');
+      final note = (await db.collection('associationGuideNotes').doc(id).get()).data()!;
+      expect(note['notes'], 'We agreed a smaller target.', reason: 'the guide-only place, trimmed');
+      expect([note['studentUid'], note['studentName']], ['s1', 'Arjun Kumar']);
       expect(pushes, isEmpty, reason: 'completing was never announced to the student');
     });
   });
@@ -162,7 +164,7 @@ void main() {
       final before = await read(id);
       await rescheduleMeeting(id, studentUid: 's1', when: when);
       final after = await read(id);
-      for (final k in ['studentUid', 'studentName', 'guideId', 'studentNotes', 'guideNotes', 'preferredDate']) {
+      for (final k in ['studentUid', 'studentName', 'guideId', 'studentNotes', 'preferredDate']) {
         expect(after[k], before[k], reason: k);
       }
     });
@@ -246,7 +248,9 @@ void main() {
     await tester.pump(const Duration(seconds: 4));
 
     final done = await seeded.collection('associations').where('status', isEqualTo: 'completed').get();
-    expect(done.docs.any((d) => d.data()['guideNotes'] == 'Agreed on 8 rounds.'), isTrue);
+    expect(done.docs.any((d) => d.data().containsKey('guideNotes')), isFalse);
+    final notes = await seeded.collection('associationGuideNotes').get();
+    expect(notes.docs.any((d) => d.data()['notes'] == 'Agreed on 8 rounds.'), isTrue);
   });
 
   for (final scale in kScales) {

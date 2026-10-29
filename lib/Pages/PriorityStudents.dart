@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../utils/Responsive.dart';
 
 import '../actions/PriorityActions.dart';
 import '../widgets/GuideDialog.dart';
@@ -48,6 +49,9 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
   /// This admin's "removed from my priority list" records: student uid -> the concern kinds they had then.
   Map<String, Set<String>> _dismissed = {};
   int _hiddenCount = 0;
+
+  /// On a computer: the student whose profile is open beside the list (list | details).
+  String? _detailUid;
 
   /// Multi-select: long-press a student to start, tap others to add.
   final Set<String> _selected = {};
@@ -188,6 +192,8 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
     return Consumer<ColorProvider>(
       builder: (context, colorProvider, child) {
         return GuideScaffold(
+          // a computer shows the list beside the student's profile, so it uses the whole window
+          fullWidth: context.isDesktop,
           appBar: GuideAppBar(
             leading: _selecting
                 ? IconButton(
@@ -208,7 +214,8 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
             ]),
           body: _loading
               ? const GuideWait()
-              : Column(
+              : _masterDetail(
+                  Column(
                   children: [
                     Expanded(
                       child: RefreshIndicator(
@@ -244,8 +251,29 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
                     if (_selecting) _selectionBar(),
                   ],
                 ),
+                ),
         );
       },
+    );
+  }
+
+  /// A phone / tablet: the list alone (a tap on "Open profile" goes to the profile). A computer: the list on the left, the chosen student's
+  /// profile on the right, so nothing is lost by opening someone.
+  Widget _masterDetail(Widget list) {
+    if (!context.isDesktop) return list;
+    final g = context.g;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(key: const ValueKey('priority-list-pane'), width: 460, child: list),
+        VerticalDivider(width: 1, color: g.mutedText.withValues(alpha: .2)),
+        Expanded(
+          key: const ValueKey('priority-detail-pane'),
+          child: _detailUid == null
+              ? Center(child: Text('Choose a student to see his profile here.', style: context.gText.small))
+              : ClipRect(child: StudentProfilePage(key: ValueKey('detail-$_detailUid'), studentUid: _detailUid!)),
+        ),
+      ],
     );
   }
 
@@ -327,12 +355,14 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
       key: ValueKey('priority-${item.uid}'),
       behavior: HitTestBehavior.opaque,
       onLongPress: _selecting ? null : () => _toggle(item.uid),
-      onTap: _selecting ? () => _toggle(item.uid) : null,
-      child: Container(
+      onTap: _selecting ? () => _toggle(item.uid) : (context.isDesktop ? () => setState(() => _detailUid = item.uid) : null),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: picked ? context.g.brass.withValues(alpha: .10) : context.g.surface,
+        color: picked || _detailUid == item.uid ? context.g.brass.withValues(alpha: .10) : context.g.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: picked ? context.g.brass : Colors.transparent, width: 1.5),
       ),
@@ -417,6 +447,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
             ),
           ],
         ],
+      ),
       ),
       ),
     );

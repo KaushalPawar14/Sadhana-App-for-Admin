@@ -75,6 +75,23 @@ void main() {
     expect(find.textContaining('Tell the assistant about your next conversation'), findsOneWidget);
   });
 
+  testWidgets('the guide\'s note on a completed meeting shows in the History from the GUIDE-ONLY place (the association itself carries none)', (tester) async {
+    final db = await prepareApp(tester);
+    await db.collection('associations').add({
+      'studentUid': 's1', 'studentName': 'Arjun Kumar', 'guideId': 'G', 'status': 'completed', 'studentNotes': 'I wanted to ask about japa',
+      'confirmedDate': Timestamp.fromDate(DateTime(2026, 10, 20, 18)), 'scopeGuide': 'G', 'scopeTeam': 'G', 'scopeGender': 'male',
+    });
+    final id = (await db.collection('associations').where('status', isEqualTo: 'completed').get()).docs.first.id;
+    await db.collection('associationGuideNotes').doc(id).set({
+      'associationId': id, 'studentUid': 's1', 'notes': 'He is distracted; his father is ill.', 'scopeGuide': 'G', 'scopeTeam': 'G', 'scopeGender': 'male',
+    });
+    await openAssociations(tester);
+    await openHistoryTab(tester);
+    await tester.pumpAndSettle();
+    expect(find.text('He is distracted; his father is ill.'), findsOneWidget);
+    expect((await db.collection('associations').doc(id).get()).data()!.containsKey('guideNotes'), isFalse);
+  });
+
   // -------------------------------------------------------------------------
   // they show in the association history, and are counted
   // -------------------------------------------------------------------------

@@ -649,10 +649,10 @@ void main() {
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     await tester.pump(const Duration(seconds: 4));
-    final meetings = await db.collection('associations').get();
+    final meetings = await db.collection('associationGuideNotes').get();
     expect(
         meetings.docs.any((d) =>
-            (d.data()['guideNotes'] ?? '') ==
+            (d.data()['notes'] ?? '') ==
             'We discussed his exam week and agreed a smaller target.'),
         isTrue);
   });
