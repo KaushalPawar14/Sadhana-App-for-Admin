@@ -1,4 +1,5 @@
 import '../Services/GuideAi.dart';
+import '../utils/GuideDb.dart';
 
 /// AI suggestions for a student, as shared logic with no screen in it: the profile
 /// page's "Generate suggestions" button and the AI agent both go through
@@ -22,3 +23,8 @@ Future<int> generateStudentSuggestions({
   GuideAi? ai,
 }) =>
     (ai ?? GuideAi()).generateSuggestions(studentUid);
+
+/// Deletes the AI suggestions made for a student (the document is keyed by the student). New ones can be generated again.
+Future<void> deleteStudentSuggestions(String studentUid) async {
+  await GuideDb.instance.collection('holisticSuggestions').doc(studentUid).delete();
+}

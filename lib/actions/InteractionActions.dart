@@ -175,3 +175,13 @@ Future<Map<String, dynamic>> editInteractionFields(
 /// record to see the result.
 Future<void> reExtractInteraction(String docId, {GuideAi? ai}) =>
     (ai ?? GuideAi()).reanalyse(docId);
+
+/// Removes the FOLLOW-UP from an interaction: its follow-up date, so it leaves the "Follow-ups" lists and the dots. The
+/// interaction itself, its notes and its suggested next action stay. The one write the "Remove follow-up" button and the
+/// AI assistant share; the rules allow it for an interaction of a student in the admin's scope.
+Future<void> removeInteractionFollowUp(String docId) async {
+  await GuideDb.instance
+      .collection('interactionLogs')
+      .doc(docId)
+      .update({'approvedSummary.followUpDate': FieldValue.delete()});
+}

@@ -68,6 +68,18 @@ class ErrorEntry extends ChatEntry {
 /// [expired]: shown in an old chat and not answered in time (or the guide moved on): nothing was changed, and it can no longer be confirmed.
 enum ProposalState { waiting, running, done, cancelled, expired }
 
+/// A question the assistant asks with choices to tap ("which of these two?"). Tapping one sends its words as the guide's
+/// next message; [chosen] is the one tapped. In a saved chat that was answered it is shown read-only.
+class QuestionEntry extends ChatEntry {
+  QuestionEntry(this.question, this.choices, {this.chosen});
+
+  final String question;
+  final List<AgentChoice> choices;
+  int? chosen;
+
+  bool get answered => chosen != null;
+}
+
 /// A change proposed and waiting for the guide, then what came of it.
 class ProposalEntry extends ChatEntry {
   ProposalEntry(this.proposal, this.advice, {this.atMs});
@@ -176,6 +188,11 @@ class AgentController extends ChangeNotifier {
       final e = _entryFrom(d.data());
       if (e != null) rebuilt.add(e);
     }
+    // a question is still open only if nothing came after it
+    for (var i = 0; i < rebuilt.length - 1; i++) {
+      final e = rebuilt[i];
+      if (e is QuestionEntry) e.chosen = -1;
+    }
     entries
       ..clear()
       ..addAll(rebuilt);
@@ -195,6 +212,11 @@ class AgentController extends ChangeNotifier {
         return AssistantEntry(
           (m['text'] ?? '').toString(),
           [for (final l in (m['links'] as List? ?? const []).whereType<Map>()) AgentLink.fromMap(l)],
+        );
+      case 'question':
+        return QuestionEntry(
+          (m['question'] ?? '').toString(),
+          [for (final c in (m['choices'] as List? ?? const []).whereType<Map>()) AgentChoice.fromMap(c)],
         );
       case 'proposal':
         final raw = m['proposal'];
@@ -266,6 +288,11 @@ class AgentController extends ChangeNotifier {
           if (reply.text != null || reply.links.isNotEmpty) _add(AssistantEntry(reply.text ?? '', reply.links));
           return;
 
+        case AgentStatus.question:
+          if (reply.text != null) _add(AssistantEntry(reply.text!, const []));
+          _add(QuestionEntry(reply.question ?? '', reply.choices));
+          return;
+
         case AgentStatus.confirm:
           if (reply.text != null) _add(AssistantEntry(reply.text!, const []));
           final p = reply.proposal!;
@@ -291,6 +318,14 @@ class AgentController extends ChangeNotifier {
     } catch (e) {
       return AgentResult.failed(agentFailureMessage(e));
     }
+  }
+
+  /// The guide tapped a choice of a question: its words go as their next message.
+  Future<void> choose(QuestionEntry entry, int index) async {
+    if (entry.answered || !canAsk || index < 0 || index >= entry.choices.length) return;
+    entry.chosen = index;
+    notifyListeners();
+    await send(entry.choices[index].reply);
   }
 
   /// The guide pressed Confirm. [confirmations] is how many times they confirmed (1, or 2 for a

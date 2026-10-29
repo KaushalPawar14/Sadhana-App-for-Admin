@@ -14,6 +14,7 @@ import '../utils/SadhanaReportSource.dart' show fetchDateReports;
 import '../utils/ServiceAssignments.dart';
 import '../utils/ServiceBankContent.dart';
 import '../utils/StudentDoubts.dart';
+import 'AgentDuplicates.dart';
 import 'AgentEnv.dart';
 import 'AgentTypes.dart';
 
@@ -760,6 +761,165 @@ Future<AgentResult> listBoards(Map<String, dynamic> a, AgentEnv env) async {
 }
 
 /// Every read, by the tool id the server knows it as.
+// ---------------------------------------------------------------------------
+// Comments, LIT assessments and near-duplicate records
+// ---------------------------------------------------------------------------
+Future<AgentResult> listComments(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _s(a['studentUid']);
+  final s = await env.student(uid);
+  final snap = await env.db.collection('studentComments').doc(uid).collection('messages').get();
+  final docs = snap.docs.toList()
+    ..sort((x, y) => (_dt(y.data()['createdAt']) ?? DateTime(2000)).compareTo(_dt(x.data()['createdAt']) ?? DateTime(2000)));
+  final shown = docs.take(a['limit'] is num ? (a['limit'] as num).toInt().clamp(1, 50) : 20).toList();
+  return AgentResult.ok(
+    {
+      'student': _s(s['name']),
+      'count': docs.length,
+      'comments': [
+        for (final d in shown)
+          {
+            'id': '$uid/${d.id}',
+            'when': agentStamp(d.data()['createdAt']),
+            'by': _s(d.data()['authorName']),
+            'yours': _s(d.data()['authorId']) == env.me.id,
+            'text': _s(d.data()['text']),
+          }
+      ],
+    },
+    entities: [
+      _student(uid, s),
+      for (final d in shown) AgentEntity('comment', '$uid/${d.id}', 'Comment by ${_s(d.data()['authorName'])} on ${agentStamp(d.data()['createdAt']) ?? '?'}'),
+    ],
+  );
+}
+
+Future<AgentResult> listLit(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _s(a['studentUid']);
+  final s = await env.student(uid);
+  final snap = await env.scope.historyGet('litAssessments', extraEquals: {'studentUid': uid});
+  final docs = snap.docs.toList()
+    ..sort((x, y) => (_dt(y.data()['assessedAt']) ?? DateTime(2000)).compareTo(_dt(x.data()['assessedAt']) ?? DateTime(2000)));
+  final shown = docs.take(a['limit'] is num ? (a['limit'] as num).toInt().clamp(1, 30) : 10).toList();
+  return AgentResult.ok(
+    {
+      'student': _s(s['name']),
+      'count': docs.length,
+      'assessments': [
+        for (final d in shown)
+          {
+            'id': d.id,
+            'when': agentStamp(d.data()['assessedAt']),
+            'receptivity': d.data()['L'],
+            'interest': d.data()['I'],
+            'availableTime': d.data()['T'],
+            'confidence': _s(d.data()['confidence']),
+            'evidence': _s(d.data()['evidence']),
+          }
+      ],
+    },
+    entities: [
+      _student(uid, s),
+      for (final d in shown) AgentEntity('lit', d.id, 'LIT assessment of ${_s(s['name'])} on ${agentStamp(d.data()['assessedAt']) ?? '?'}'),
+    ],
+  );
+}
+
+String _short(String s, [int n = 160]) {
+  final t = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+  return t.length <= n ? t : '${t.substring(0, n - 1)}…';
+}
+
+/// Near-identical records of ONE student, for "delete the duplicate": groups of two or more, each record with what the
+/// guide needs to compare them, and the ids to act on. Nothing is decided here.
+Future<AgentResult> findDuplicates(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _s(a['studentUid']);
+  final s = await env.student(uid);
+  final kind = _s(a['kind']);
+  final items = <DupItem>[];
+  var entityKind = 'interaction';
+  var days = 0;
+  var minSimilarity = 0.5;
+
+  if (kind == 'interaction' || kind == 'follow_up') {
+    final snap = await env.scope.historyGet('interactionLogs', extraEquals: {'studentUid': uid});
+    for (final d in snap.docs) {
+      final m = d.data();
+      final sum = m['approvedSummary'] is Map ? m['approvedSummary'] as Map : const {};
+      final follow = _dt(sum['followUpDate']);
+      if (kind == 'follow_up' && follow == null) continue;
+      final nextAction = _s(sum['recommendedNextAction']);
+      items.add(DupItem(
+        id: d.id,
+        // an interaction is "the same" on the same day; a follow-up on the same follow-up day
+        when: kind == 'follow_up' ? follow : _dt(m['interactionDate']),
+        type: kind == 'follow_up' ? 'follow_up' : _s(m['interactionType']),
+        text: kind == 'follow_up' ? nextAction : '${_s(m['rawDictation'])} ${_s(sum['studentConcerns'])} $nextAction ${(sum['themes'] is List ? (sum['themes'] as List).join(' ') : '')}',
+        show: {
+          'id': d.id,
+          'date': agentStamp(m['interactionDate']),
+          'type': _s(m['interactionType']),
+          if (follow != null) 'followUp': agentStamp(sum['followUpDate']),
+          if (nextAction.isNotEmpty) 'nextAction': _short(nextAction),
+          if (_s(m['rawDictation']).isNotEmpty) 'notes': _short(_s(m['rawDictation'])),
+          if (_s(sum['studentConcerns']).isNotEmpty) 'concerns': _short(_s(sum['studentConcerns'])),
+        },
+      ));
+    }
+    if (kind == 'follow_up') minSimilarity = 0.4;
+  } else if (kind == 'meeting') {
+    entityKind = 'association';
+    final snap = await env.scope.historyGet('associations', extraEquals: {'studentUid': uid});
+    for (final d in snap.docs) {
+      final m = d.data();
+      items.add(DupItem(
+        id: d.id,
+        when: _dt(m['confirmedDate']) ?? _dt(m['preferredDate']),
+        type: _s(m['status']),
+        text: '${_s(m['studentNotes'])} ${_s(m['guideNotes'])}',
+        show: {
+          'id': d.id,
+          'status': _s(m['status']),
+          'when': agentStamp(m['confirmedDate'] ?? m['preferredDate']),
+          if (_s(m['guideNotes']).isNotEmpty) 'notes': _short(_s(m['guideNotes'])),
+        },
+      ));
+    }
+    minSimilarity = 0;
+  } else {
+    entityKind = 'comment';
+    final snap = await env.db.collection('studentComments').doc(uid).collection('messages').get();
+    days = 2;
+    minSimilarity = 0.7;
+    for (final d in snap.docs) {
+      final m = d.data();
+      items.add(DupItem(
+        id: '$uid/${d.id}',
+        when: _dt(m['createdAt']),
+        type: _s(m['authorId']),
+        text: _s(m['text']),
+        show: {'id': '$uid/${d.id}', 'when': agentStamp(m['createdAt']), 'by': _s(m['authorName']), 'text': _short(_s(m['text']))},
+      ));
+    }
+  }
+
+  final groups = findDuplicateGroups(items, days: days, minSimilarity: minSimilarity);
+  return AgentResult.ok(
+    {
+      'student': _s(s['name']),
+      'kind': kind,
+      'groupsFound': groups.length,
+      'groups': [
+        for (final g in groups) [for (final i in g) i.show]
+      ],
+      if (groups.isEmpty) 'note': 'No near-identical ${kind.replaceAll('_', ' ')}s were found for this student.',
+    },
+    entities: [
+      _student(uid, s),
+      for (final g in groups) for (final i in g) AgentEntity(entityKind, i.id, '${kind.replaceAll('_', '-')} of ${_s(s['name'])} on ${agentStamp(i.when) ?? '?'}'),
+    ],
+  );
+}
+
 final Map<String, AgentRun> kAgentReads = {
   'find_students': findStudents,
   'get_student': getStudent,
@@ -779,4 +939,7 @@ final Map<String, AgentRun> kAgentReads = {
   'list_music': listMusic,
   'list_admins': listAdmins,
   'list_boards': listBoards,
+  'list_comments': listComments,
+  'list_lit': listLit,
+  'find_duplicates': findDuplicates,
 };

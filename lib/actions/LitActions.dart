@@ -68,3 +68,39 @@ Future<String> saveLitAssessment({
   });
   return ref.id;
 }
+
+/// Corrects a saved LIT assessment: any of the three readings, the evidence or the confidence. The readings stay three
+/// separate numbers; the whole result is checked again exactly as a new reading is.
+Future<void> editLitAssessment(
+  String id, {
+  Map<String, int?> scores = const {},
+  String? evidence,
+  String? confidence,
+}) async {
+  final ref = GuideDb.instance.collection('litAssessments').doc(id);
+  final snap = await ref.get();
+  final data = snap.data();
+  if (data == null) throw StateError('That assessment no longer exists.');
+  final merged = <String, int?>{
+    'L': scores['L'] ?? (data['L'] as num?)?.toInt(),
+    'I': scores['I'] ?? (data['I'] as num?)?.toInt(),
+    'T': scores['T'] ?? (data['T'] as num?)?.toInt(),
+  };
+  final newEvidence = (evidence ?? (data['evidence'] ?? '').toString()).trim();
+  final newConfidence = confidence ?? (data['confidence'] ?? '').toString();
+  final problem = litProblem(scores: merged, evidence: newEvidence, confidence: newConfidence);
+  if (problem != null) throw ArgumentError(problem);
+  await ref.update({
+    'L': merged['L'],
+    'I': merged['I'],
+    'T': merged['T'],
+    'evidence': newEvidence,
+    'confidence': newConfidence,
+    'editedAt': FieldValue.serverTimestamp(),
+  });
+}
+
+/// Deletes a saved LIT assessment (double-confirmed in the assistant).
+Future<void> deleteLitAssessment(String id) async {
+  await GuideDb.instance.collection('litAssessments').doc(id).delete();
+}

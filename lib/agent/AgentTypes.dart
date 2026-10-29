@@ -147,6 +147,23 @@ class AgentProposal {
       );
 }
 
+/// One choice of a question the assistant asks: what it is called, what to compare it by, and what tapping it says.
+class AgentChoice {
+  const AgentChoice({required this.label, this.detail = '', required this.reply});
+
+  final String label;
+  final String detail;
+
+  /// Sent as the guide's next message when they tap it.
+  final String reply;
+
+  factory AgentChoice.fromMap(Map m) => AgentChoice(
+        label: (m['label'] ?? '').toString(),
+        detail: (m['detail'] ?? '').toString(),
+        reply: (m['reply'] ?? m['label'] ?? '').toString(),
+      );
+}
+
 /// A look-up the agent asked the phone to make.
 class AgentRead {
   const AgentRead(this.callId, this.tool, this.args);
@@ -162,7 +179,7 @@ class AgentRead {
       );
 }
 
-enum AgentStatus { message, needReads, confirm, limit, full }
+enum AgentStatus { message, needReads, confirm, limit, full, question }
 
 /// The server's answer to one step.
 class AgentReply {
@@ -177,6 +194,8 @@ class AgentReply {
     this.why,
     this.questionsLeft,
     this.questionLimit,
+    this.question,
+    this.choices = const [],
   });
 
   final String? sessionId;
@@ -196,12 +215,17 @@ class AgentReply {
   final int? questionsLeft;
   final int? questionLimit;
 
+  /// With [AgentStatus.question]: what the assistant asks, and the choices to tap.
+  final String? question;
+  final List<AgentChoice> choices;
+
   factory AgentReply.fromMap(Map<String, dynamic> m) {
     final status = switch (m['status']) {
       'need_reads' => AgentStatus.needReads,
       'confirm' => AgentStatus.confirm,
       'limit' => AgentStatus.limit,
       'full' => AgentStatus.full,
+      'question' => AgentStatus.question,
       _ => AgentStatus.message,
     };
     return AgentReply(
@@ -215,6 +239,8 @@ class AgentReply {
       why: m['why']?.toString(),
       questionsLeft: (m['questionsLeft'] as num?)?.toInt(),
       questionLimit: (m['questionLimit'] as num?)?.toInt(),
+      question: m['question']?.toString(),
+      choices: [for (final c in (m['choices'] as List? ?? const []).whereType<Map>()) AgentChoice.fromMap(c)],
     );
   }
 }

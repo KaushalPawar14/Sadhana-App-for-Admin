@@ -473,6 +473,129 @@ Future<AgentResult> tripDelete(Map<String, dynamic> a, AgentEnv env) async {
   return _done('Trip deleted, with ${r.registrationsDeleted} registration${r.registrationsDeleted == 1 ? '' : 's'}.');
 }
 
+// ---------------------------------------------------------------------------
+// Correcting and removing what a guide manages (the same writes the screens make, or - where the app has no button - the
+// same rules-checked write, always on a record of a student in THIS guide's scope)
+// ---------------------------------------------------------------------------
+Future<AgentResult> interactionFollowupRemove(Map<String, dynamic> a, AgentEnv env) async {
+  final ids = [for (final x in (a['interactionIds'] as List)) _s(x)];
+  var removed = 0;
+  var without = 0;
+  for (final id in ids) {
+    final m = await _aboutStudent(env, 'interactionLogs', id, what: 'interaction');
+    final summary = m.data['approvedSummary'];
+    if (summary is! Map || summary['followUpDate'] == null) {
+      without++;
+      continue;
+    }
+    await removeInteractionFollowUp(id);
+    removed++;
+  }
+  if (removed == 0) throw AgentFailure('None of those interactions has a follow-up to remove.');
+  return _done('Follow-up removed from $removed interaction${removed == 1 ? '' : 's'}; the interaction${removed == 1 ? '' : 's'} stay.${without > 0 ? ' ($without had no follow-up.)' : ''}');
+}
+
+/// A comment id is `studentUid/messageId`, as the comment list hands it over.
+Future<({String studentUid, String messageId, Map<String, dynamic> data, Map<String, dynamic> student})> _comment(AgentEnv env, Object? id) async {
+  final parts = _s(id).split('/');
+  if (parts.length != 2 || parts.any((p) => p.isEmpty)) throw AgentFailure("That isn't a comment I looked up.");
+  final student = await env.student(parts[0]);
+  final snap = await env.db.collection('studentComments').doc(parts[0]).collection('messages').doc(parts[1]).get();
+  final data = snap.data();
+  if (!snap.exists || data == null) throw AgentFailure('That comment no longer exists.');
+  // a guide changes their own comments; a HOD any comment on a student they see
+  if (!env.me.isHod && _s(data['authorId']) != env.me.id) throw AgentFailure('You can only change comments you wrote yourself.');
+  return (studentUid: parts[0], messageId: parts[1], data: data, student: student);
+}
+
+Future<AgentResult> studentCommentEdit(Map<String, dynamic> a, AgentEnv env) async {
+  final c = await _comment(env, a['commentId']);
+  await editStudentComment(studentUid: c.studentUid, messageId: c.messageId, text: _s(a['text']));
+  return _done('Your comment on ${_s(c.student['name'])} was changed.');
+}
+
+Future<AgentResult> studentCommentDelete(Map<String, dynamic> a, AgentEnv env) async {
+  final ids = [for (final x in (a['commentIds'] as List)) _s(x)];
+  final found = [for (final id in ids) await _comment(env, id)];
+  for (final c in found) {
+    await deleteStudentComment(studentUid: c.studentUid, messageId: c.messageId);
+  }
+  return _done('${found.length} comment${found.length == 1 ? '' : 's'} deleted.');
+}
+
+Future<AgentResult> litEdit(Map<String, dynamic> a, AgentEnv env) async {
+  final m = await _aboutStudent(env, 'litAssessments', _s(a['assessmentId']), what: 'LIT assessment');
+  await editLitAssessment(
+    m.snap.id,
+    scores: {
+      if (a['L'] != null) 'L': a['L'] as int,
+      if (a['I'] != null) 'I': a['I'] as int,
+      if (a['T'] != null) 'T': a['T'] as int,
+    },
+    evidence: a['evidence'] == null ? null : _s(a['evidence']),
+    confidence: a['confidence'] == null ? null : _s(a['confidence']),
+  );
+  return _done('The LIT assessment for ${_s(m.student['name'])} was corrected.');
+}
+
+Future<AgentResult> litDelete(Map<String, dynamic> a, AgentEnv env) async {
+  final ids = [for (final x in (a['assessmentIds'] as List)) _s(x)];
+  for (final id in ids) {
+    await _aboutStudent(env, 'litAssessments', id, what: 'LIT assessment');
+  }
+  for (final id in ids) {
+    await deleteLitAssessment(id);
+  }
+  return _done('${ids.length} LIT assessment${ids.length == 1 ? '' : 's'} deleted.');
+}
+
+Future<AgentResult> bookUnassignTool(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _s(a['studentUid']);
+  final s = await env.student(uid);
+  final b = await _book(a['bookId']);
+  final ok = await unassignBook(studentUid: uid, level: b.level, bookKey: b.key);
+  if (!ok) throw AgentFailure('"${b.title}" was not assigned to ${_s(s['name'])} by a guide, or is already finished, so there is nothing to take back.');
+  return _done('"${b.title}" is no longer assigned to ${_s(s['name'])}.');
+}
+
+Future<AgentResult> suggestionsDelete(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _s(a['studentUid']);
+  final s = await env.student(uid);
+  await deleteStudentSuggestions(uid);
+  return _done('The AI suggestions for ${_s(s['name'])} were deleted.');
+}
+
+Future<AgentResult> competitionEdit(Map<String, dynamic> a, AgentEnv env) async {
+  await editChantingChallenge(
+    _s(a['challengeId']),
+    name: a['name'] == null ? null : _s(a['name']),
+    targetRounds: a['targetRounds'] as int?,
+    end: a['endDate'] == null ? null : agentDay(a['endDate']),
+  );
+  return _done('Competition changed.');
+}
+
+Future<AgentResult> tripEdit(Map<String, dynamic> a, AgentEnv env) async {
+  await editTrip(
+    _s(a['tripId']),
+    title: a['title'] == null ? null : _s(a['title']),
+    description: a['description'] == null ? null : _s(a['description']),
+    location: a['location'] == null ? null : _s(a['location']),
+    start: a['startDate'] == null ? null : agentDay(a['startDate']),
+    end: a['endDate'] == null ? null : agentDay(a['endDate']),
+    registrationDeadline: a['registrationDeadline'] == null ? null : agentDay(a['registrationDeadline']),
+    maxParticipants: a['maxParticipants'] as int?,
+  );
+  return _done('Trip changed.');
+}
+
+Future<AgentResult> meetingNotesEdit(Map<String, dynamic> a, AgentEnv env) async {
+  final m = await _aboutStudent(env, 'associations', _s(a['associationId']), what: 'meeting');
+  if (_s(m.data['status']) != 'completed') throw AgentFailure('Only a completed meeting has notes to change.');
+  await editMeetingNotes(m.snap.id, notes: _s(a['notes']));
+  return _done('Your notes on the meeting with ${_s(m.student['name'])} were changed.');
+}
+
 /// The first half of the changes; targets, calendar, services, music, boards, admins and settings
 /// are in AgentWrites2.dart.
 final Map<String, AgentRun> kAgentWritesA = {
@@ -514,4 +637,14 @@ final Map<String, AgentRun> kAgentWritesA = {
   'trip_set_status': tripSetStatus,
   'trip_attendance_set': tripAttendanceSet,
   'trip_delete': tripDelete,
+  'interaction_followup_remove': interactionFollowupRemove,
+  'student_comment_edit': studentCommentEdit,
+  'student_comment_delete': studentCommentDelete,
+  'lit_edit': litEdit,
+  'lit_delete': litDelete,
+  'book_unassign': bookUnassignTool,
+  'suggestions_delete': suggestionsDelete,
+  'competition_edit': competitionEdit,
+  'trip_edit': tripEdit,
+  'meeting_notes_edit': meetingNotesEdit,
 };

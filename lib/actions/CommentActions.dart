@@ -46,3 +46,39 @@ Future<String> postStudentComment({
   });
   return ref.id;
 }
+
+void _checkCommentText(String text) {
+  if (text.isEmpty) throw ArgumentError('A comment cannot be empty.');
+  if (text.length > kMaxCommentChars) {
+    throw ArgumentError('A comment can be at most $kMaxCommentChars characters.');
+  }
+}
+
+/// Changes the words of a comment (the assistant's edit). `editedAt` records that it was changed.
+Future<void> editStudentComment({
+  required String studentUid,
+  required String messageId,
+  required String text,
+}) async {
+  final clean = text.trim();
+  _checkCommentText(clean);
+  await GuideDb.instance
+      .collection(kStudentCommentsCollection)
+      .doc(studentUid)
+      .collection('messages')
+      .doc(messageId)
+      .update({'text': clean, 'editedAt': FieldValue.serverTimestamp()});
+}
+
+/// Deletes one comment from a student's thread (the assistant's delete; double-confirmed there).
+Future<void> deleteStudentComment({
+  required String studentUid,
+  required String messageId,
+}) async {
+  await GuideDb.instance
+      .collection(kStudentCommentsCollection)
+      .doc(studentUid)
+      .collection('messages')
+      .doc(messageId)
+      .delete();
+}

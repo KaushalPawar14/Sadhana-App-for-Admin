@@ -92,3 +92,50 @@ Future<void> setTripAttendance(String registrationId, String attendance) async {
       .doc(registrationId)
       .update({'attendance': attendance});
 }
+
+/// Changes a trip's details. Only what is given changes; the dates are checked together with the ones already saved. The
+/// rules refuse a trip that has moved to History.
+Future<void> editTrip(
+  String tripId, {
+  String? title,
+  String? description,
+  String? location,
+  DateTime? start,
+  DateTime? end,
+  DateTime? registrationDeadline,
+  int? maxParticipants,
+}) async {
+  final ref = GuideDb.instance.collection('expeditions').doc(tripId);
+  final data = (await ref.get()).data();
+  if (data == null) throw StateError('That trip no longer exists.');
+  final update = <String, dynamic>{};
+  if (title != null) {
+    if (title.trim().isEmpty) throw ArgumentError('A trip needs a title');
+    update['title'] = title.trim();
+  }
+  if (description != null) update['description'] = description.trim();
+  if (location != null) update['location'] = location.trim();
+  final oldStart = data['tripDate'];
+  final oldEnd = data['endDate'];
+  final newStart = start ?? (oldStart is Timestamp ? oldStart.toDate() : null);
+  final newEnd = end ?? (oldEnd is Timestamp ? oldEnd.toDate() : newStart);
+  if (start != null || end != null) {
+    if (newStart == null || newEnd == null) throw ArgumentError('A trip needs a start and an end date');
+    final problem = tripDatesProblem(newStart, newEnd);
+    if (problem != null) throw ArgumentError(problem);
+    if (start != null) update['tripDate'] = Timestamp.fromDate(start);
+    if (end != null) update['endDate'] = Timestamp.fromDate(end);
+  }
+  if (registrationDeadline != null) {
+    if (newStart != null && registrationDeadline.isAfter(newStart)) {
+      throw ArgumentError('The registration deadline cannot be after the trip starts');
+    }
+    update['registrationDeadline'] = Timestamp.fromDate(registrationDeadline);
+  }
+  if (maxParticipants != null) {
+    if (maxParticipants <= 0) throw ArgumentError('The most students must be at least 1');
+    update['maxParticipants'] = maxParticipants;
+  }
+  if (update.isEmpty) throw ArgumentError('Nothing to change.');
+  await ref.update(update);
+}

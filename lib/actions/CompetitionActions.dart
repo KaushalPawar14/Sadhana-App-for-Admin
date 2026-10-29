@@ -135,3 +135,39 @@ Future<void> deleteChantingChallenge(String challengeId) async {
   batch.delete(GuideDb.instance.collection('chantingChallenges').doc(challengeId));
   await batch.commit();
 }
+
+/// Changes a competition's name, target rounds or last day. The last day is kept in the same four fields the creation
+/// writes, so every older reader keeps working; the span is checked as at creation (at most 31 days, not before the start).
+Future<void> editChantingChallenge(
+  String challengeId, {
+  String? name,
+  int? targetRounds,
+  DateTime? end,
+}) async {
+  final ref = GuideDb.instance.collection('chantingChallenges').doc(challengeId);
+  final data = (await ref.get()).data();
+  if (data == null) throw StateError('That competition no longer exists.');
+  final update = <String, dynamic>{};
+  if (name != null) {
+    if (name.trim().isEmpty) throw ArgumentError('Give the challenge a name');
+    update['name'] = name.trim();
+  }
+  if (targetRounds != null) {
+    if (targetRounds <= 0) throw ArgumentError('Target rounds must be a whole number');
+    update['targetRounds'] = targetRounds;
+  }
+  if (end != null) {
+    final startStamp = data['startDate'];
+    if (startStamp is! Timestamp) throw StateError('That competition has no start date.');
+    final start = startStamp.toDate();
+    final last = DateTime(end.year, end.month, end.day);
+    final problem = challengeSpanProblem(DateTime(start.year, start.month, start.day), last);
+    if (problem != null) throw ArgumentError(problem);
+    update['endDateKey'] = challengeDayKey(last);
+    update['endDate'] = Timestamp.fromDate(last);
+    update['targetDateKey'] = challengeDayKey(last);
+    update['targetDate'] = Timestamp.fromDate(last);
+  }
+  if (update.isEmpty) throw ArgumentError('Nothing to change.');
+  await ref.update(update);
+}

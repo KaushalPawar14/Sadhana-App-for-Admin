@@ -169,3 +169,33 @@ Future<void> markBookNotFinished({
     'isCurrentBook': false,
   }, SetOptions(merge: true));
 }
+
+/// Takes back a book the GUIDE assigned: removes the commitment date and the "current book" mark. A finished book, and a
+/// book the student chose themselves (no guide commitment), are never touched. Done in a transaction so it is judged on the
+/// document as it is at the moment of writing.
+///
+/// @return true if the assignment was removed, false if there was nothing of the guide's to take back
+Future<bool> unassignBook({
+  required String studentUid,
+  required String level,
+  required String bookKey,
+}) async {
+  final bookRef = GuideDb.instance.collection('booksRead').doc(bookDocId(studentUid, level, bookKey));
+  return GuideDb.instance.runTransaction<bool>((tx) async {
+    final data = (await tx.get(bookRef)).data();
+    if (data == null) return false;
+    final endDate = data['endDate'];
+    final finished = (endDate != null && endDate.toString().trim().isNotEmpty) ||
+        data['finishedViaButton'] == true ||
+        (data['endedBy'] != null && data['endedBy'].toString().trim().isNotEmpty);
+    if (finished) return false;
+    if (data['commitmentSetBy'] != 'guide') return false;
+    tx.update(bookRef, {
+      'commitmentDate': FieldValue.delete(),
+      'commitmentSetAt': FieldValue.delete(),
+      'commitmentSetBy': FieldValue.delete(),
+      'isCurrentBook': false,
+    });
+    return true;
+  });
+}

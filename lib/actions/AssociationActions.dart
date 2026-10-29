@@ -161,3 +161,14 @@ Future<void> rescheduleMeeting(
     'Your meeting has been moved to ${_when.format(when)}',
   );
 }
+
+/// Changes the guide's notes on a COMPLETED meeting (the assistant's edit of what "Mark Complete" saved).
+Future<void> editMeetingNotes(
+  String associationId, {
+  required String notes,
+}) async {
+  await GuideDb.instance.collection('associations').doc(associationId).update({
+    'guideNotes': notes.trim(),
+    'updatedAt': FieldValue.serverTimestamp(),
+  });
+}

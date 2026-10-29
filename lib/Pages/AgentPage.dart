@@ -315,6 +315,8 @@ class _AgentPageState extends State<AgentPage> {
         );
       case ProposalEntry():
         return _ProposalCard(entry: e, busy: _c.busy, onConfirm: () => _confirm(e), onCancel: () => _c.cancel(e));
+      case QuestionEntry():
+        return _QuestionCard(key: ValueKey('agent-question-${identityHashCode(e)}'), entry: e, enabled: _c.canAsk, onChoose: (i) => _c.choose(e, i));
     }
   }
 
@@ -583,5 +585,107 @@ class _ProposalCard extends StatelessWidget {
       case ProposalState.expired:
         return const SizedBox.shrink();
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// A question with choices to tap
+// ---------------------------------------------------------------------------
+/// The assistant asks WHICH one ("which of these two follow-ups?"): each choice is a tile with its details, side by side
+/// when there are two and the screen allows, so the guide compares them and taps. The tap is sent as their next message. The
+/// card eases in; with reduce-motion it simply appears.
+class _QuestionCard extends StatelessWidget {
+  const _QuestionCard({super.key, required this.entry, required this.enabled, required this.onChoose});
+
+  final QuestionEntry entry;
+  final bool enabled;
+  final void Function(int index) onChoose;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.g;
+    final t = context.gText;
+    final media = MediaQuery.of(context);
+    final sideBySide = entry.choices.length == 2 && media.size.width >= 340 && media.textScaler.scale(14) <= 14 * 1.3;
+    final open = enabled && !entry.answered;
+
+    Widget tile(int i) {
+      final c = entry.choices[i];
+      final picked = entry.chosen == i;
+      return Material(
+        color: picked ? g.agent.withValues(alpha: .14) : g.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(GuideShape.inputRadius),
+          side: BorderSide(color: picked ? g.agent : g.border, width: picked ? 1.6 : 1),
+        ),
+        child: InkWell(
+          key: ValueKey('agent-choice-$i'),
+          customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(GuideShape.inputRadius)),
+          onTap: open ? () => onChoose(i) : null,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: AiText(c.label, style: t.small.copyWith(fontWeight: FontWeight.w700, height: 1.3, color: g.text))),
+                    if (picked) Icon(Icons.check_circle, size: 18, color: g.agent),
+                  ],
+                ),
+                if (c.detail.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  AiText(c.detail, style: t.caption.copyWith(height: 1.35)),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final tiles = sideBySide
+        ? IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [Expanded(child: tile(0)), const SizedBox(width: 8), Expanded(child: tile(1))],
+            ),
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [for (var i = 0; i < entry.choices.length; i++) Padding(padding: EdgeInsets.only(top: i == 0 ? 0 : 8), child: tile(i))],
+          );
+
+    final card = Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: g.surface,
+        borderRadius: BorderRadius.circular(GuideShape.cardRadius),
+        border: Border.all(color: g.agent.withValues(alpha: .6), width: 1.4),
+        boxShadow: g.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.help_outline_rounded, size: 20, color: g.agent),
+              const SizedBox(width: 8),
+              Expanded(child: AiText(entry.question, style: t.cardTitleSmall)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          tiles,
+        ],
+      ),
+    );
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: GuideMotion.of(context, GuideMotion.expand),
+      curve: GuideMotion.standard,
+      builder: (context, v, child) => Opacity(opacity: v, child: Transform.translate(offset: Offset(0, (1 - v) * 10), child: child)),
+      child: card,
+    );
   }
 }

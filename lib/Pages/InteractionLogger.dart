@@ -150,6 +150,44 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
     });
   }
 
+  /// The "Delete interaction" button on a card: the same confirmed, permission-checked delete as long-press select, for one.
+  Future<void> _deleteOne(String docId) async {
+    await confirmAndDeleteSelected(
+      context: context,
+      collectionName: 'interactionLogs',
+      selectedIds: {docId},
+      canDelete: _canDeleteInteraction,
+      itemNounSingular: 'interaction log',
+      itemNounPlural: 'interaction logs',
+    );
+  }
+
+  /// The "Remove follow-up" button: clears only the follow-up date (the interaction and its notes stay), after asking.
+  Future<void> _removeFollowUp(String docId, DateTime when) async {
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => GuideDialog(
+        title: const Text('Remove this follow-up?'),
+        content: Text('The follow-up on ${DateFormat('dd MMM yyyy').format(when)} will be removed from your lists. The interaction itself and its notes stay.'),
+        actions: [
+          TextButton(key: const ValueKey('follow-up-keep'), onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Keep it')),
+          TextButton(
+            key: const ValueKey('follow-up-remove-yes'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text('Remove', style: TextStyle(color: dialogContext.g.danger, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+    try {
+      await removeInteractionFollowUp(docId);
+      if (mounted) showSnackbar(context, 'Follow-up removed', context.g.success, Icons.check_circle);
+    } catch (_) {
+      if (mounted) showSnackbar(context, "Couldn't remove the follow-up. Check your connection and try again.", context.g.warning, Icons.info);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // New interaction — single step
   // ---------------------------------------------------------------------------
@@ -292,6 +330,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
     final reasoning = (source?['recommendedReasoning'] ?? '').toString();
     final incomplete = source == null;
     final selected = _selectedIds.contains(docId);
+    final followUp = _dateFrom(source?['followUpDate']);
 
     return selectableCard(
       context: context,
@@ -393,13 +432,41 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                 ),
               ),
             ],
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () => _openDetail(docId),
-                child: const Text("View / edit"),
+            if (followUp != null) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(Icons.event_repeat, size: 15, color: context.g.brass),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Follow-up ${DateFormat('dd MMM yyyy').format(followUp)}',
+                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: context.g.text),
+                    ),
+                  ),
+                  TextButton(
+                    key: ValueKey('follow-up-remove-$docId'),
+                    onPressed: _selectionMode ? null : () => _removeFollowUp(docId, followUp),
+                    child: const Text('Remove follow-up'),
+                  ),
+                ],
               ),
+            ],
+            const SizedBox(height: 8),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 4,
+              children: [
+                TextButton(
+                  key: ValueKey('interaction-delete-$docId'),
+                  onPressed: _selectionMode ? null : () => _deleteOne(docId),
+                  child: Text('Delete interaction', style: TextStyle(color: _selectionMode ? null : context.g.danger)),
+                ),
+                TextButton(
+                  onPressed: () => _openDetail(docId),
+                  child: const Text("View / edit"),
+                ),
+              ],
             ),
           ],
         ),
@@ -1061,6 +1128,24 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
     if (picked != null) onPicked(picked);
   }
 
+  /// Deletes this interaction, after asking, if the guide may manage this student (the same check as the list).
+  Future<void> _deleteThis() async {
+    final snap = await _firestore.collection('interactionLogs').doc(widget.docId).get();
+    final uid = (snap.data()?['studentUid'] ?? '').toString();
+    final userDoc = uid.isEmpty ? null : await _firestore.collection('users').doc(uid).get();
+    final ref = userDoc == null ? null : StudentRef.fromDoc(userDoc);
+    if (!mounted) return;
+    final deleted = await confirmAndDeleteSelected(
+      context: context,
+      collectionName: 'interactionLogs',
+      selectedIds: {widget.docId},
+      canDelete: (_) async => canDeleteForStudent(ref, AdminProfileProvider.require()),
+      itemNounSingular: 'interaction log',
+      itemNounPlural: 'interaction logs',
+    );
+    if (mounted && deleted.contains(widget.docId)) Navigator.pop(context);
+  }
+
   Widget _actions() {
     if (_saving || _extracting) {
       return const Center(
@@ -1073,6 +1158,16 @@ class _InteractionDetailPageState extends State<InteractionDetailPage> {
 
     return Column(
       children: [
+        SizedBox(
+          width: double.infinity,
+          child: TextButton.icon(
+            key: const ValueKey('interaction-detail-delete'),
+            onPressed: _deleteThis,
+            icon: Icon(Icons.delete_outline, size: 18, color: context.g.danger),
+            label: Text('Delete interaction', style: TextStyle(color: context.g.danger)),
+          ),
+        ),
+        const SizedBox(height: 4),
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(

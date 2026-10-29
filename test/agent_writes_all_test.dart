@@ -104,7 +104,7 @@ void main() {
 
   test('the table covers every executor (nothing is left untested by omission)', () {
     // the names exercised below, plus the ones whose callables the test phone cannot reach
-    expect(all.length, 81 + 0, reason: 'a change was added or removed: update this file');
+    expect(all.length, 91 + 0, reason: 'a change was added or removed: update this file');
   });
 
   group('students', () {
