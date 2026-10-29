@@ -15,6 +15,7 @@ import '../Pages/Leaderboard.dart';
 import '../Pages/MusicCurriculumPage.dart';
 import '../Pages/NotificationSettings.dart';
 import '../Pages/OverdueAssociations.dart';
+import '../Pages/PlanPage.dart';
 import '../Pages/PriorityStudents.dart';
 import '../Pages/ServiceBank.dart';
 import '../Pages/StudentDoubtsPage.dart';
@@ -86,6 +87,7 @@ final Map<String, AgentRoute> kAgentRoutes = {
   'targets': AgentRoute(page: (c) => GoalHomePage(guideId: c.me.id)),
   'leaderboard': AgentRoute(page: (c) => const LeaderboardPage()),
   'guide_calendar': AgentRoute(page: (c) => GuideCalendarPage(selectedGuide: c.me.id)),
+  'plan': AgentRoute(page: (c) => const PlanPage()),
   'submissions': AgentRoute(page: (c) => const SubmissionStatusPage()),
   'notifications': AgentRoute(page: (c) => const NotificationSettingsPage()),
   'admins': AgentRoute(page: (c) => const AdminManagerPage()),
@@ -99,7 +101,7 @@ String agentLinkLabel(AgentLink link) {
     'student_music': 'music progress', 'associations': 'Meetings', 'interactions': 'interactions', 'overdue_associations': 'Overdue meetings',
     'abcde': 'ABCDE', 'book_links': 'Book links', 'competitions': 'Chanting competitions', 'service_bank': 'Devotional service',
     'trips': 'Expeditions', 'priority': 'Priority students', 'doubts': "Students' doubts", 'flagged': 'Flagged messages',
-    'week_planning': 'Week planning', 'targets': 'Targets', 'leaderboard': 'Leaderboard', 'guide_calendar': 'Your calendar',
+    'week_planning': 'Week planning', 'targets': 'Targets', 'leaderboard': 'Leaderboard', 'guide_calendar': 'Your calendar', 'plan': 'Your plan',
     'submissions': 'Submissions', 'notifications': 'Notifications', 'admins': 'Admins', 'music': 'Music curriculum',
   };
   final base = names[link.route] ?? link.route;

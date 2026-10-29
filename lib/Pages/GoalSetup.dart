@@ -34,14 +34,17 @@ import '../widgets/GuideWait.dart';
 class CompoundGoalSetupPage extends StatefulWidget {
   final String guideId;
 
-  const CompoundGoalSetupPage({super.key, required this.guideId});
+  /// The metric to start on (the one the guide has not set yet); chanting when null.
+  final String? initialMetric;
+
+  const CompoundGoalSetupPage({super.key, required this.guideId, this.initialMetric});
 
   @override
   State<CompoundGoalSetupPage> createState() => _CompoundGoalSetupPageState();
 }
 
 class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
-  String _metric = kMetricChanting;
+  late String _metric = widget.initialMetric ?? kMetricChanting;
   final _studentCountController = TextEditingController();
   final _perStudentValueController = TextEditingController();
   DateTime? _endDate;

@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../Pages/GoalHomePage.dart';
+import '../Pages/GoalSetup.dart';
+import '../widgets/GuideButtons.dart';
 import '../Pages/GuideCalendarPage.dart';
 import '../Pages/GuideSignIn.dart';
 import '../Pages/WeeklyPlanning.dart';
@@ -209,24 +210,37 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
           if (t.isActive && t.totalPhases > 0) t,
       ];
 
-  GuidePastel _pastelFor(CompoundTarget t) => switch (t.metric) {
-        kMetricChanting => GuidePastel.sage,
-        kMetricBooks => GuidePastel.sand,
-        _ => GuidePastel.mauve,
-      };
+  /// Which of the two targets (chanting rounds, book reading) the guide has already set (an active one).
+  ({bool chanting, bool books}) get _targetsSet => (
+        chanting: (_targets ?? const <CompoundTarget>[]).any((t) => t.isActive && t.metric == kMetricChanting),
+        books: (_targets ?? const <CompoundTarget>[]).any((t) => t.isActive && t.metric == kMetricBooks),
+      );
 
-  /// A target card: two single-line rows (name + phase, then the goal) and the
-  /// progress bar, so its height is the same for every target (and for its ghost).
-  Widget _targetBox({
-    required GuidePastel pastel,
-    required String title,
-    required String goal,
-    required String phase,
-    required double fraction,
-  }) {
-    final text = context.gText;
-    return GuidePastelBox(
-      pastel: pastel,
+  /// The ONE compact targets card. Targets themselves (status, phases, progress) are viewed in the AI assistant.
+  ///   none set  -> "You haven't set your chanting and book-reading targets" + Set a target
+  ///   one set   -> "You haven't set your book-reading target" (or chanting) + Set a target
+  ///   both set  -> "Both your targets are set", no button
+  Widget _targetsCard({bool placeholder = false}) {
+    final t = context.gText;
+    final g = context.g;
+    final set = placeholder ? (chanting: false, books: false) : _targetsSet;
+    final both = set.chanting && set.books;
+    final String message;
+    String? missing;
+    if (both) {
+      message = 'Both your targets are set';
+    } else if (set.chanting) {
+      message = "You haven't set your book-reading target";
+      missing = kMetricBooks;
+    } else if (set.books) {
+      message = "You haven't set your chanting target";
+      missing = kMetricChanting;
+    } else {
+      message = "You haven't set your chanting and book-reading targets";
+    }
+    final guide = _guide;
+    return GuideCard(
+      key: const ValueKey('home-targets-card'),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -234,67 +248,35 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Icon(both ? Icons.check_circle_outline_rounded : Icons.track_changes_outlined, size: 22, color: both ? g.success : g.mutedText),
+              const SizedBox(width: 12),
               Expanded(
-                child: Text(title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: text.onPastelBody.copyWith(fontSize: 14)),
+                // two lines tall in every state (the longest message takes two), so the card is the same size as its ghost
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: 2 * MediaQuery.textScalerOf(context).scale((t.bodyStrong.fontSize ?? 15) * 1.3)),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(message, key: const ValueKey('home-targets-text'), style: t.bodyStrong.copyWith(height: 1.3)),
+                  ),
+                ),
               ),
-              const SizedBox(width: 10),
-              Text(phase, style: text.onPastelSmall),
             ],
           ),
-          const SizedBox(height: 3),
-          Text(goal, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.onPastelSmall),
-          const SizedBox(height: 10),
-          GuideProgressBar(value: fraction, onPastel: true),
+          if (!both && !placeholder && guide != null) ...[
+            const SizedBox(height: 10),
+            GuideSecondaryButton(
+              key: const ValueKey('home-set-target'),
+              label: 'Set a target',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => CompoundGoalSetupPage(guideId: guide, initialMetric: missing)),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
-
-  Widget _targetCard(CompoundTarget t, int index) {
-    final metric = t.metricInfo;
-    final fraction = t.totalPhases == 0 ? 0.0 : t.currentPhase / t.totalPhases;
-    final guide = _guide ?? '';
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: GuideEntry(
-        index: 3 + index,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => GoalHomePage(guideId: guide)),
-          ),
-          child: _targetBox(
-            pastel: _pastelFor(t),
-            title: metric?.label ?? t.metric,
-            goal: "${t.studentCountGoal} students at ${t.perStudentValueGoal} "
-                    "${metric?.unit ?? ''}"
-                .trim(),
-            phase: "Phase ${t.currentPhase} of ${t.totalPhases}",
-            fraction: fraction,
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// The ghost of one target card: the real card laid out invisibly, then a soft fill.
-  Widget _targetGhost() => Padding(
-        padding: const EdgeInsets.only(top: 10),
-        child: GuideGhostOf(
-          radius: GuideShape.tileRadius,
-          placeholder: _targetBox(
-            pastel: GuidePastel.sand,
-            title: 'Chanting rounds',
-            goal: '20 students at 16 rounds',
-            phase: 'Phase 1 of 4',
-            fraction: 0,
-          ),
-        ),
-      );
 
   String _boardSubtitle() {
     final n = _studentCount;
@@ -484,36 +466,17 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
             ),
           ),
         ),
-        const GuideEntry(
-          index: 2,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(GuideSpace.pagePadding, 22, GuideSpace.pagePadding, 0),
-            child: GuideSectionTitle('Targets'),
-          ),
-        ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: GuideSpace.pagePadding),
-          child: GuideStateView(
-            state: _targetsState,
-            ghost: Column(children: [_targetGhost(), _targetGhost()]),
-            content: Column(
-              children: [
-                for (var i = 0; i < active.length; i++) _targetCard(active[i], i),
-              ],
+          padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 16, GuideSpace.pagePadding, 0),
+          child: GuideEntry(
+            index: 2,
+            child: GuideStateView(
+              state: _targetsState == GuideLoad.empty ? GuideLoad.content : _targetsState,
+              ghost: GuideGhostOf(radius: GuideShape.tileRadius, placeholder: _targetsCard(placeholder: true)),
+              content: _targetsCard(),
+              errorMessage: 'Could not load your targets. Check your connection and try again.',
+              onRetry: _retry,
             ),
-            emptyMessage: 'No active targets yet. Create your first target to see it here.',
-            emptyAction: guide == null
-                ? null
-                : GuideEmptyAction(
-                    'Open targets',
-                    () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => GoalHomePage(guideId: guide)),
-                    ),
-                    icon: Icons.track_changes_outlined,
-                  ),
-            errorMessage: 'Could not load your targets. Check your connection and try again.',
-            onRetry: _retry,
           ),
         ),
         Padding(

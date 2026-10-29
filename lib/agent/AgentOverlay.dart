@@ -7,6 +7,8 @@ import '../Pages/AgentPage.dart';
 import '../main.dart' show guideNavigatorKey;
 import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
+import '../utils/UnseenAggregates.dart';
+import '../utils/UnseenDot.dart';
 import '../widgets/AgentFab.dart';
 import 'AgentController.dart';
 
@@ -172,6 +174,10 @@ class _DraggableAgentButtonState extends State<_DraggableAgentButton> {
     return Offset(_clamp(raw.dx, _kSideInset, maxX), _clamp(raw.dy, minY, maxY));
   }
 
+  /// Orange dot while the plan has changed since the guide last opened it. Built once (a live listener), when the profile is known.
+  Stream<bool>? _planUnseenStream;
+  Stream<bool> get _planUnseen => _planUnseenStream ??= UnseenAggregates.planUnseen(AdminProfileProvider.current?.id ?? '');
+
   void _open() {
     final custom = widget.onOpen;
     if (custom != null) return custom();
@@ -221,7 +227,16 @@ class _DraggableAgentButtonState extends State<_DraggableAgentButton> {
               child: AnimatedScale(
                 scale: _dragging ? 1.08 : 1.0,
                 duration: const Duration(milliseconds: 120),
-                child: AgentFab(key: const ValueKey('agent-fab'), size: kAgentButtonSize, pressed: _pressed && !_dragging),
+                child: StreamBuilder<bool>(
+                  stream: _planUnseen,
+                  builder: (context, snap) => UnseenBadge(
+                    key: const ValueKey('agent-fab-dot'),
+                    show: snap.data ?? false,
+                    offset: const Offset(2, 2),
+                    dotSize: 12,
+                    child: AgentFab(key: const ValueKey('agent-fab'), size: kAgentButtonSize, pressed: _pressed && !_dragging),
+                  ),
+                ),
               ),
             ),
           ),

@@ -7,6 +7,8 @@ import '../agent/AgentTypes.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
+import '../utils/UnseenAggregates.dart';
+import '../utils/UnseenDot.dart';
 import '../utils/Snackbar.dart';
 import '../utils/VoiceNote.dart';
 import '../widgets/GuideAppBar.dart';
@@ -20,7 +22,7 @@ import '../widgets/ThinkingDots.dart';
 import '../widgets/GuideWait.dart';
 import '../widgets/VoiceNoteButton.dart';
 import 'AgentChatsPage.dart';
-import 'AgentLogPage.dart';
+import 'PlanPage.dart';
 
 /// The assistant: one chat page, reached from the floating button on any screen.
 ///
@@ -43,6 +45,9 @@ class _AgentPageState extends State<AgentPage> {
   final ScrollController _scroll = ScrollController();
   final FocusNode _focus = FocusNode();
   int _seen = 0;
+
+  /// Orange dot on "Plan" while the plan changed since it was last opened. Built once (a live listener).
+  late final Stream<bool> _planUnseen = UnseenAggregates.planUnseen(AdminProfileProvider.current?.id ?? '');
 
   /// How many entries were already there when the page opened: those are drawn without an entrance, new ones ease in.
   int _opened = 0;
@@ -135,18 +140,11 @@ class _AgentPageState extends State<AgentPage> {
   @override
   Widget build(BuildContext context) {
     final g = context.g;
-    final isHod = AdminProfileProvider.viewerIsHod;
     return GuideScaffold(
       appBar: GuideAppBar(
         title: const Text('Assistant'),
+        // three buttons: Chat history, New chat, Plan (the Assistant log lives in the Tasks tab)
         actions: [
-          if (isHod)
-            IconButton(
-              key: const ValueKey('agent-log'),
-              tooltip: 'What the assistant did',
-              icon: Icon(Icons.history, color: g.text),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentLogPage())),
-            ),
           IconButton(
             key: const ValueKey('agent-chats'),
             tooltip: 'Chat history',
@@ -163,6 +161,20 @@ class _AgentPageState extends State<AgentPage> {
                     _c.reset();
                     _input.clear();
                   },
+          ),
+          StreamBuilder<bool>(
+            stream: _planUnseen,
+            builder: (context, snap) => UnseenBadge(
+              key: const ValueKey('agent-plan-dot'),
+              show: snap.data ?? false,
+              offset: const Offset(6, 6),
+              child: IconButton(
+                key: const ValueKey('agent-plan'),
+                tooltip: 'Plan',
+                icon: Icon(Icons.event_available_outlined, color: g.text),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlanPage())),
+              ),
+            ),
           ),
         ],
       ),
@@ -467,8 +479,8 @@ class _ProposalCard extends StatelessWidget {
                 child: Text(
                   switch (entry.state) {
                     ProposalState.waiting => delete ? 'This will delete — please check' : "Here's what I'll do — please check",
-                    ProposalState.running => 'Doing it…',
-                    ProposalState.done => 'Done',
+                    ProposalState.running => p.actions.length > 1 ? 'Doing it… ${entry.results.length} of ${p.actions.length} done' : 'Doing it…',
+                    ProposalState.done => _doneTitle(),
                     ProposalState.cancelled => 'Cancelled — nothing was changed',
                     ProposalState.expired => 'Not confirmed — nothing was changed',
                   },
@@ -478,6 +490,24 @@ class _ProposalCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
+          if (entry.state == ProposalState.done && p.actions.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                key: const ValueKey('agent-batch-summary'),
+                children: [
+                  Icon(Icons.check_circle, size: 16, color: g.success),
+                  const SizedBox(width: 4),
+                  Text('${entry.results.values.where((r) => r.$1).length} done', style: t.bodyStrong),
+                  if (entry.results.values.any((r) => !r.$1)) ...[
+                    const SizedBox(width: 14),
+                    Icon(Icons.cancel, size: 16, color: g.danger),
+                    const SizedBox(width: 4),
+                    Text('${entry.results.values.where((r) => !r.$1).length} failed', style: t.bodyStrong.copyWith(color: g.danger)),
+                  ],
+                ],
+              ),
+            ),
           for (var i = 0; i < p.actions.length; i++) ...[
             if (i > 0) Divider(color: g.border, height: 20),
             _action(context, p.actions[i]),
@@ -505,16 +535,38 @@ class _ProposalCard extends StatelessWidget {
     );
   }
 
+  /// "Done", or how many of a batch went through (some may fail while the rest are done).
+  String _doneTitle() {
+    final total = entry.proposal.actions.length;
+    final ok = entry.results.values.where((r) => r.$1).length;
+    if (total <= 1 || ok == total) return 'Done';
+    return ok == 0 ? 'None of these went through' : '$ok of $total done';
+  }
+
   Widget _action(BuildContext context, AgentAction a) {
     final g = context.g;
     final t = context.gText;
     final result = entry.results[a.callId];
+    // while a batch runs, the item being done now spins and the ones still to come wait
+    final running = entry.state == ProposalState.running && entry.proposal.actions.length > 1;
+    final current = running && result == null && entry.proposal.actions.firstWhere((x) => entry.results[x.callId] == null).callId == a.callId;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (running && result == null) ...[
+              SizedBox(
+                key: ValueKey(current ? 'agent-item-running-${a.callId}' : 'agent-item-waiting-${a.callId}'),
+                width: 18,
+                height: 18,
+                child: current
+                    ? CircularProgressIndicator(strokeWidth: 2.2, color: g.agent)
+                    : Icon(Icons.circle_outlined, size: 18, color: g.mutedText),
+              ),
+              const SizedBox(width: 6),
+            ],
             if (result != null) ...[
               Icon(result.$1 ? Icons.check_circle : Icons.cancel, size: 18, color: result.$1 ? g.success : g.danger),
               const SizedBox(width: 6),

@@ -167,7 +167,7 @@ void main() {
   });
 
   // ------------------------------------------------------------- Analysis tab
-  group('Analysis: five full-width rectangular cards', () {
+  group('Analysis: three full-width rectangular cards (Week planning and Guide targets moved to the assistant)', () {
     for (final dark in [false, true]) {
       for (final scale in kScales) {
         testWidgets('${dark ? 'dark' : 'light'}, text scale $scale on 360 dp', (tester) async {
@@ -176,10 +176,12 @@ void main() {
           await settle(tester);
           expect(tester.takeException(), isNull);
           final cards = find.byType(GuideNavCard);
-          expect(cards, findsNWidgets(5));
+          expect(cards, findsNWidgets(3));
+          expect(find.text('Week planning'), findsNothing);
+          expect(find.text('Guide targets'), findsNothing);
           expect(find.byType(GuideGradientTile), findsNothing, reason: 'no square grid any more');
           Rect r(int i) => tester.getRect(cards.at(i));
-          for (var i = 0; i < 5; i++) {
+          for (var i = 0; i < 3; i++) {
             expect(r(i).width, 360 - 40, reason: 'full width inside the page padding');
             expect(r(i).height, greaterThanOrEqualTo(92), reason: 'comfortable height');
             expect(r(i).height, lessThan(r(i).width), reason: 'rectangular');
@@ -194,27 +196,16 @@ void main() {
       await tester.pumpWidget(guideHost(Scaffold(body: CompetitionPage())));
       await settle(tester);
       final titles = tester.widgetList<GuideNavCard>(find.byType(GuideNavCard)).map((c) => c.title).toList();
-      expect(titles, ['ABCDE', 'Week planning', 'Priority students', 'Guide targets', 'Leaderboard']);
+      expect(titles, ['ABCDE', 'Priority students', 'Leaderboard']);
       expect(find.text('FOLK and Hostel & Localite rankings'), findsOneWidget);
       expect(find.text('Five limbs of practice'), findsOneWidget);
-      expect(find.text('Plan the week ahead'), findsOneWidget);
+      expect(find.text('Plan the week ahead'), findsNothing);
       expect(find.text('Who needs attention'), findsOneWidget);
-      expect(find.text('Group targets and phases'), findsOneWidget);
-      final style = tester.widget<Text>(find.text('Guide targets')).style!;
+      expect(find.text('Group targets and phases'), findsNothing);
+      final style = tester.widget<Text>(find.text('Priority students')).style!;
       expect(style.fontFamily, 'Fraunces');
-      expect(find.byIcon(Icons.chevron_right_rounded), findsNWidgets(5));
+      expect(find.byIcon(Icons.chevron_right_rounded), findsNWidgets(3));
       expect(find.text('INSIGHTS'), findsOneWidget);
-    });
-
-    testWidgets('a card opens its page (Week planning)', (tester) async {
-      phone(tester, 1.0);
-      AdminProfileProvider.instance.debugSet(profile('GUIDE'));
-      WeekData.instance = FakeWeekData();
-      await tester.pumpWidget(guideHost(Scaffold(body: CompetitionPage())));
-      await settle(tester);
-      await tester.tap(find.text('Week planning'));
-      await tester.pumpAndSettle();
-      expect(find.byType(WeeklyPlanningPage), findsOneWidget);
     });
 
     testWidgets('the cards rise in one after another, then rest', (tester) async {
@@ -222,10 +213,12 @@ void main() {
       await tester.pumpWidget(guideHost(Scaffold(body: CompetitionPage()), reduce: false));
       await tester.pump(const Duration(milliseconds: 30));
       final first = tester.getTopLeft(find.byType(GuideNavCard).at(0)).dy;
-      final last = tester.getTopLeft(find.byType(GuideNavCard).at(3)).dy;
+      final last = tester.getTopLeft(find.byType(GuideNavCard).at(2)).dy;
       await tester.pump(const Duration(milliseconds: 100));
-      expect(tester.getTopLeft(find.byType(GuideNavCard).at(0)).dy, lessThan(first));
-      expect(tester.getTopLeft(find.byType(GuideNavCard).at(3)).dy, closeTo(last, 0.5), reason: 'the last waits');
+      final firstMoved = first - tester.getTopLeft(find.byType(GuideNavCard).at(0)).dy;
+      final lastMoved = last - tester.getTopLeft(find.byType(GuideNavCard).at(2)).dy;
+      expect(firstMoved, greaterThan(0));
+      expect(lastMoved, lessThan(firstMoved), reason: 'the last rises after the first');
       await tester.pumpAndSettle();
       expect(tester.binding.transientCallbackCount, 0);
     });

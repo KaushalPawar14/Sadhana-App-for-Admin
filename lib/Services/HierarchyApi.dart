@@ -139,6 +139,28 @@ class HierarchyApi {
     );
   }
 
+  /// The guide corrected an item of their Today / This week plan in chat: [mode] `remove`, `call` (a call instead) or `other_day`
+  /// (with [newDate], `yyyy-MM-dd`). The server stores it, remembers [constraint] / [noteText] about the student, and regenerates the
+  /// plan at once. Returns the sentence to show.
+  Future<String> planCorrection({
+    required String itemId,
+    required String mode,
+    String? newDate,
+    String reason = '',
+    String? constraint,
+    String? noteText,
+  }) async {
+    final r = await _call('planCorrection', {
+      'itemId': itemId,
+      'mode': mode,
+      if (newDate != null) 'newDate': newDate,
+      'reason': reason,
+      if (constraint != null) 'constraint': constraint,
+      if (noteText != null) 'noteText': noteText,
+    });
+    return (r['message'] ?? 'Done.').toString();
+  }
+
   Future<void> setTeamGuide(String id, String teamGuide) =>
       _call('setTeamGuide', {'id': id, 'teamGuide': teamGuide});
 

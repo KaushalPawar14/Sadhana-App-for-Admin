@@ -80,6 +80,8 @@ void main() {
           return {'studentCount': 3, 'teamlessEnablers': <String>[], 'removed': true, 'boardColumn': 'removed', 'cardsMoved': 3};
         case 'deleteExpedition':
           return {'deleted': true, 'registrationsDeleted': 1};
+        case 'planCorrection':
+          return {'ok': true, 'message': args['mode'] == 'remove' ? 'Removed from your plan.' : args['mode'] == 'call' ? 'Changed to a call.' : 'Moved to Thu 5 Nov.'};
         case 'checkMobileTaken':
           return {'taken': false};
         case 'generateStudentSuggestions':
@@ -104,7 +106,7 @@ void main() {
 
   test('the table covers every executor (nothing is left untested by omission)', () {
     // the names exercised below, plus the ones whose callables the test phone cannot reach
-    expect(all.length, 91 + 0, reason: 'a change was added or removed: update this file');
+    expect(all.length, 93 + 0, reason: 'a change was added or removed: update this file');
   });
 
   group('students', () {
@@ -217,6 +219,47 @@ void main() {
         all['target_edit_phase_tasks']!({'targetId': 'G/t1', 'phaseNumber': 1, 'tasks': [{'type': 'value', 'studentUids': ['u_outside']}]}, guide),
         throwsA(isA<AgentFailure>().having((f) => f.message, 'message', contains("can't find that student"))),
       );
+    });
+  });
+
+  group('plan (corrected in chat only: the plan pages are read-only)', () {
+    test('plan_item_skip: goes through the server, remembers why on the student, and says so', () async {
+      final r = await all['plan_item_skip']!(
+          {'itemId': 'invite:u1:2026-10-19', 'reason': 'He is a localite', 'constraint': 'no_invites', 'note': 'Cannot come to programs'}, env());
+      expect(r.ok, isTrue);
+      final call = calls.singleWhere((c) => c['_call'] == 'planCorrection');
+      expect(call['itemId'], 'invite:u1:2026-10-19');
+      expect(call['mode'], 'remove');
+      expect(call['constraint'], 'no_invites');
+      expect(call['noteText'], 'Cannot come to programs');
+      expect(r.data.toString(), contains('Removed from your plan'));
+      // the reason is also a visible note on the student's thread
+      final notes = (await db.collection('studentComments').doc('u1').collection('messages').get()).docs;
+      expect(notes.single.data()['text'], 'Plan note: Cannot come to programs');
+      expect(notes.single.data()['authorId'], 'H');
+    });
+    test('plan_item_change: to a call, or to another day (which needs a day)', () async {
+      final e = env();
+      final call = await all['plan_item_change']!({'itemId': 'invite:u1:2026-10-19', 'mode': 'call', 'reason': 'busy'}, e);
+      expect(call.ok, isTrue);
+      expect(calls.last['mode'], 'call');
+      expect((await db.collection('studentComments').doc('u1').collection('messages').get()).docs, isEmpty, reason: 'no note given, none written');
+      await expectLater(all['plan_item_change']!({'itemId': 'invite:u1:2026-10-19', 'mode': 'other_day', 'reason': 'away'}, e), throwsA(anything));
+      final moved = await all['plan_item_change']!({'itemId': 'invite:u1:2026-10-19', 'mode': 'other_day', 'newDate': '2026-11-05', 'reason': 'away'}, e);
+      expect(moved.ok, isTrue);
+      expect(calls.last['newDate'], '2026-11-05');
+    });
+    test('a student outside the guide\'s scope is not found: nothing is sent to the server', () async {
+      await db.collection('users').doc('u_far').set({'name': 'Far', 'gender': 'female', 'guideId': 'F9', 'teamGuide': '', 'role': 'Stay at Hostel'});
+      AdminProfileProvider.instance.debugSet(AdminProfile.fromMap({
+        'id': 'M1', 'displayName': 'Madhava', 'role': 'MALE_ENABLER', 'teamGuide': 'G', 'email': 'm@x.org', 'notificationPrefs': {}, 'notificationTypes': [],
+        'admins': [{'id': 'M1', 'displayName': 'Madhava', 'role': 'MALE_ENABLER', 'teamGuide': 'G'}],
+      }));
+      final before = calls.length;
+      await expectLater(
+          all['plan_item_skip']!({'itemId': 'invite:u_far:2026-10-19', 'reason': 'x'}, AgentEnv(profile: AdminProfileProvider.current!, db: db, clock: () => DateTime(2026, 10, 23, 12))),
+          throwsA(anything));
+      expect(calls.length, before);
     });
   });
 

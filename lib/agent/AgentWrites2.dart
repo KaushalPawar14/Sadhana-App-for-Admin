@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../Pages/NotificationSettings.dart' show groupSwitchesFor;
 import '../Services/HierarchyApi.dart';
 import '../theme/ThemeModeController.dart';
+import '../actions/CommentActions.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/BoardQueries.dart';
 import '../utils/CalendarQueries.dart';
@@ -149,6 +150,58 @@ List<ParsedCalendarEvent> _events(Object? raw) => [
           notifyOffsets: e['notifyOffsets'] == null ? null : [for (final o in (e['notifyOffsets'] as List)) _s(o)],
         ),
     ];
+
+// ---------------------------------------------------------------------------
+// Plan (corrected in chat only: the plan pages are read-only)
+// ---------------------------------------------------------------------------
+/// The student a plan item belongs to: ids are `kind:studentUid:slot`.
+String _planItemStudent(Object? itemId) {
+  final parts = _s(itemId).split(':');
+  return parts.length >= 2 && parts[1] != '-' ? parts[1] : '';
+}
+
+/// What the guide said, remembered as a visible note on the student's thread (the constraint itself is stored by the server).
+Future<void> _planNote(AgentEnv env, String uid, String text) async {
+  if (uid.isEmpty || text.trim().isEmpty) return;
+  await postStudentComment(
+    studentUid: uid,
+    text: 'Plan note: ${text.trim()}',
+    authorId: env.me.id,
+    authorName: env.me.displayName,
+    authorIsHod: env.me.isHod,
+  );
+}
+
+Future<AgentResult> planItemSkip(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _planItemStudent(a['itemId']);
+  if (uid.isNotEmpty) await env.student(uid); // in the guide's scope, or "I can't find that student"
+  final message = await HierarchyApi.instance.planCorrection(
+    itemId: _s(a['itemId']),
+    mode: 'remove',
+    reason: _s(a['reason']),
+    constraint: a['constraint'] == null ? null : _s(a['constraint']),
+    noteText: a['note'] == null ? null : _s(a['note']),
+  );
+  await _planNote(env, uid, _s(a['note']));
+  return _done('$message It will not come back, and I will remember why.');
+}
+
+Future<AgentResult> planItemChange(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _planItemStudent(a['itemId']);
+  if (uid.isNotEmpty) await env.student(uid);
+  final mode = _s(a['mode']);
+  if (mode == 'other_day' && a['newDate'] == null) throw AgentFailure('Which day should it move to?');
+  final message = await HierarchyApi.instance.planCorrection(
+    itemId: _s(a['itemId']),
+    mode: mode,
+    newDate: a['newDate'] == null ? null : _s(a['newDate']),
+    reason: _s(a['reason']),
+    constraint: a['constraint'] == null ? null : _s(a['constraint']),
+    noteText: a['note'] == null ? null : _s(a['note']),
+  );
+  await _planNote(env, uid, _s(a['note']));
+  return _done('$message Your plan is updated.');
+}
 
 Future<AgentResult> calendarAddNotes(Map<String, dynamic> a, AgentEnv env) async {
   final mandatory = a['mandatory'] == true;
@@ -500,6 +553,8 @@ final Map<String, AgentRun> kAgentWritesB = {
   'target_proposal_reject': targetProposalReject,
   'target_suggest_plan': targetSuggestPlan,
   'target_check_advance': targetCheckAdvance,
+  'plan_item_skip': planItemSkip,
+  'plan_item_change': planItemChange,
   'calendar_add_notes': calendarAddNotes,
   'calendar_update_block': calendarUpdateBlock,
   'calendar_delete_block': calendarDeleteBlock,

@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:folk_guide_app/Pages/AbcdeHub.dart';
-import 'package:folk_guide_app/Pages/GoalHomePage.dart';
 import 'package:folk_guide_app/Pages/Leaderboard.dart';
 import 'package:folk_guide_app/Pages/PriorityHub.dart';
-import 'package:folk_guide_app/Pages/WeeklyPlanning.dart';
 import '../Services/UpdateFCM.dart';
 import '../theme/GuideColors.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
-import '../utils/Snackbar.dart';
 import '../utils/UnseenAggregates.dart';
 import '../utils/UnseenDot.dart';
 import '../widgets/GuideSurface.dart';
@@ -29,18 +26,12 @@ class CompetitionPage extends StatefulWidget {
 }
 
 class _CompetitionPageState extends State<CompetitionPage> {
-  /// Resolved once on load, the same `SharedPreferences['selected_guide']` every
-  /// other guide-scoped screen in this app uses; the "Guide targets" tile needs it.
-  String? _guide;
-
   /// One aggregate stream per tile that leads somewhere with unseen content, built
   /// from the SAME shared `UnseenAggregates` functions the nav bar uses, so a dot
   /// here can never appear or disappear out of step with the nav bar's own dot.
-  /// Built once, in the same callback `_guide` is set from — never in `build()`.
-  /// "Week planning" has no stream of its own: nothing exclusively lives there.
+  /// Built once, once the guide is known — never in `build()`.
   Stream<bool>? _abcdeUnseen;
   Stream<bool>? _priorityStudentsUnseen;
-  Stream<bool>? _guideTargetsUnseen;
 
   @override
   void initState() {
@@ -49,7 +40,6 @@ class _CompetitionPageState extends State<CompetitionPage> {
       if (!mounted || guide == null || guide.isEmpty) return;
       final isHod = AdminProfileProvider.viewerIsHod;
       setState(() {
-        _guide = guide;
         _abcdeUnseen = UnseenAggregates.anyOf([
           UnseenAggregates.associationsUnseen(guide, isHod),
           UnseenAggregates.serviceAssignmentsUnseen(guide, isHod),
@@ -60,7 +50,6 @@ class _CompetitionPageState extends State<CompetitionPage> {
           UnseenAggregates.studentDoubtsUnseen(guide, isHod),
           UnseenAggregates.priorityReasonsUnseen(guide, isHod),
         ]);
-        _guideTargetsUnseen = UnseenAggregates.goalProposalsUnseen(guide);
       });
     });
   }
@@ -74,23 +63,6 @@ class _CompetitionPageState extends State<CompetitionPage> {
             FadeTransition(opacity: animation, child: child),
       ),
     );
-  }
-
-  void _openTargets() {
-    final guide = _guide;
-    if (guide == null || guide.isEmpty) {
-      // Guide identity hasn't resolved yet (or none is set on this device) —
-      // fails closed with a message rather than pushing `GoalHomePage` with an
-      // empty guideId.
-      showSnackbar(
-        context,
-        'Still loading your guide profile — try again in a moment',
-        Colors.yellow,
-        Icons.watch_later_outlined,
-      );
-      return;
-    }
-    _open(GoalHomePage(guideId: guide));
   }
 
   /// A full-width card, with an unseen dot when [unseen] says so.
@@ -166,14 +138,6 @@ class _CompetitionPageState extends State<CompetitionPage> {
               ),
               _card(
                 index: 1,
-                pastel: GuidePastel.slate,
-                icon: Icons.event_note_outlined,
-                title: 'Week planning',
-                subtitle: 'Plan the week ahead',
-                onTap: () => _open(const WeeklyPlanningPage()),
-              ),
-              _card(
-                index: 2,
                 pastel: GuidePastel.clay,
                 icon: Icons.flag_outlined,
                 title: 'Priority students',
@@ -183,16 +147,7 @@ class _CompetitionPageState extends State<CompetitionPage> {
                 unseen: _priorityStudentsUnseen,
               ),
               _card(
-                index: 3,
-                pastel: GuidePastel.mauve,
-                icon: Icons.track_changes_outlined,
-                title: 'Guide targets',
-                subtitle: 'Group targets and phases',
-                onTap: _openTargets,
-                unseen: _guideTargetsUnseen,
-              ),
-              _card(
-                index: 4,
+                index: 2,
                 pastel: GuidePastel.sage,
                 icon: Icons.emoji_events_outlined,
                 title: 'Leaderboard',

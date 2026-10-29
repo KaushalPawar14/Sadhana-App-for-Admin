@@ -93,13 +93,13 @@ void main() {
     return data;
   }
 
-  testWidgets('loading: ghost hero, two target blocks and two tiles, no spinner, one shared clock', (tester) async {
+  testWidgets('loading: ghost hero, one targets card and two tiles, no spinner, one shared clock', (tester) async {
     await pumpHome(tester);
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.byKey(const ValueKey('content')), findsNothing);
-    // hero + 2 target blocks + 2 tiles
-    expect(find.byType(GuideGhostOf), findsNWidgets(5));
+    // hero + the targets card + 2 tiles
+    expect(find.byType(GuideGhostOf), findsNWidgets(4));
     expect(GhostClock.instance.running, isTrue);
     // The real top bar and greeting stay real.
     expect(find.text('G Prabhu'), findsOneWidget);
@@ -112,7 +112,7 @@ void main() {
       final data = await pumpHome(tester, scale: scale);
       await tester.pump(const Duration(milliseconds: 900)); // entry settled
       final heroGhost = tester.getRect(find.byType(GuideGhostOf).first);
-      final tilesGhost = tester.getRect(find.byType(GuideGhostOf).at(3));
+      final tilesGhost = tester.getRect(find.byType(GuideGhostOf).at(2));
       final listHeight = tester.getSize(find.byType(ListView)).height;
       final scrollExtent = tester.state<ScrollableState>(find.byType(Scrollable)).position.maxScrollExtent;
 
@@ -130,12 +130,14 @@ void main() {
       }
       await tester.pumpAndSettle();
       expect(tester.getRect(loaded(GuideHeroCard)), heroGhost);
+      // the tiles keep their size; they sit under the targets card, whose height depends on the message it shows (one line when both
+      // targets are set, two when one is missing), so their top may differ from the ghost's by that difference only
       final tiles = tester.getRect(find.descendant(of: find.byKey(const ValueKey('tiles')), matching: find.byType(GuideGradientTile)).first);
-      expect(tiles.top, tilesGhost.top);
-      expect(tiles.height, tilesGhost.height);
+      expect(tiles.height, closeTo(tilesGhost.height, .01));
+      expect((tiles.top - tilesGhost.top).abs(), lessThan(60));
       expect(tester.getSize(find.byType(ListView)).height, listHeight);
-      // Both target cards have the ghost's size (74-ish: same layout, invisible).
-      expect(loaded(GuidePastelBox), findsNWidgets(2));
+      // the one targets card has the ghost's size (same layout, invisible)
+      expect(find.byKey(const ValueKey('home-targets-card')), findsOneWidget);
       expect(tester.binding.transientCallbackCount, 0, reason: 'no ticker once the ghosts are gone');
       expect(GhostClock.instance.running, isFalse);
       expect(scrollExtent, greaterThanOrEqualTo(0));
@@ -169,8 +171,8 @@ void main() {
     data.countC.add(0);
     data.eventsC.complete(<CalendarEvent>[]);
     await tester.pumpAndSettle();
-    expect(find.textContaining('No active targets yet'), findsOneWidget);
-    expect(find.text('Open targets'), findsOneWidget);
+    expect(find.text("You haven't set your chanting and book-reading targets"), findsOneWidget);
+    expect(find.text('Set a target'), findsOneWidget);
     expect(tester.binding.transientCallbackCount, 0, reason: 'a still ghost holds no ticker');
   });
 

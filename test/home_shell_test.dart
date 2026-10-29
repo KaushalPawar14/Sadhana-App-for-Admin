@@ -3,11 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/Home/FolkBoysEntry.dart';
+import 'package:folk_guide_app/Pages/GoalSetup.dart';
 import 'package:folk_guide_app/theme/GuideTheme.dart';
 import 'package:folk_guide_app/theme/ThemeModeController.dart';
 import 'package:folk_guide_app/utils/AdminProfile.dart';
 import 'package:folk_guide_app/utils/BottomNavBar.dart';
 import 'package:folk_guide_app/utils/CalendarQueries.dart';
+import 'package:folk_guide_app/utils/ColorProvider.dart';
 import 'package:folk_guide_app/utils/GoalCompoundQueries.dart';
 import 'package:folk_guide_app/utils/HomeData.dart';
 import 'package:folk_guide_app/utils/UnseenAggregates.dart';
@@ -103,8 +105,11 @@ Future<ThemeModeController> pumpShell(WidgetTester tester, {HomeData? data, Admi
         overdueList: [(student: 'B', days: 3), (student: 'C', days: 1)],
       );
   await tester.pumpWidget(
-    ChangeNotifierProvider<ThemeModeController>.value(
-      value: controller,
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeModeController>.value(value: controller),
+        ChangeNotifierProvider<ColorProvider>(create: (_) => ColorProvider()),
+      ],
       child: const _App(home: CurvedNavBar('G')),
     ),
   );
@@ -135,12 +140,13 @@ void main() {
     final hero = find.byType(GuideHeroCard);
     expect(find.descendant(of: hero, matching: find.text('2')), findsNWidgets(2), reason: 'targets and overdue');
     expect(find.descendant(of: hero, matching: find.text('1')), findsOneWidget);
-    expect(find.text('Targets'), findsNWidgets(2), reason: 'hero stat + section title');
+    expect(find.text('Targets'), findsOneWidget, reason: 'the hero stat; the target cards are gone');
     expect(find.text('Follow-ups'), findsOneWidget);
     expect(find.text('Overdue'), findsOneWidget);
-    expect(find.textContaining('Phase 1 of 8'), findsOneWidget);
-    expect(find.textContaining('Phase 2 of 8'), findsOneWidget);
-    expect(find.textContaining('10 students at 16'), findsOneWidget);
+    expect(find.textContaining('Phase 1 of 8'), findsNothing, reason: 'no per-target cards: status and progress are viewed in the assistant');
+    expect(find.textContaining('10 students at 16'), findsNothing);
+    expect(find.text('Both your targets are set'), findsOneWidget);
+    expect(find.text('Set a target'), findsNothing);
     expect(find.text('FOLK Boys Board'), findsOneWidget);
     expect(find.text('20 boys'), findsOneWidget);
     expect(find.text('Calendar'), findsOneWidget);
@@ -166,10 +172,77 @@ void main() {
     expect(find.text('Midterm'), findsOneWidget);
   });
 
-  testWidgets('no targets: a friendly line instead of cards', (tester) async {
-    phone(tester, 1.0);
-    await pumpShell(tester, data: FakeHomeData());
-    expect(find.textContaining('No active targets yet'), findsOneWidget);
+  group('the ONE compact targets card', () {
+    Future<void> shell(WidgetTester tester, List<CompoundTarget> targets, {double scale = 1.0, bool dark = false}) async {
+      phone(tester, scale);
+      await pumpShell(tester, data: FakeHomeData(targetList: targets));
+      if (dark) {
+        tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+        addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+        await tester.pump();
+      }
+    }
+
+    testWidgets('none set: "You haven\'t set your chanting and book-reading targets" and a Set a target button', (tester) async {
+      await shell(tester, const []);
+      expect(find.byKey(const ValueKey('home-targets-card')), findsOneWidget);
+      expect(find.text("You haven't set your chanting and book-reading targets"), findsOneWidget);
+      expect(find.byKey(const ValueKey('home-set-target')), findsOneWidget);
+      expect(find.text('Set a target'), findsOneWidget);
+    });
+
+    testWidgets('only chanting set: the book-reading target is missing', (tester) async {
+      await shell(tester, [target('chanting', 10, 16, 1, 8)]);
+      expect(find.text("You haven't set your book-reading target"), findsOneWidget);
+      expect(find.text('Set a target'), findsOneWidget);
+    });
+
+    testWidgets('only books set: the chanting target is missing', (tester) async {
+      await shell(tester, [target('books', 10, 5, 2, 8)]);
+      expect(find.text("You haven't set your chanting target"), findsOneWidget);
+      expect(find.text('Set a target'), findsOneWidget);
+    });
+
+    testWidgets('both set: "Both your targets are set" and no button', (tester) async {
+      await shell(tester, [target('chanting', 10, 16, 1, 8), target('books', 10, 5, 2, 8)]);
+      expect(find.text('Both your targets are set'), findsOneWidget);
+      expect(find.byKey(const ValueKey('home-set-target')), findsNothing);
+      expect(find.byIcon(Icons.check_circle_outline_rounded), findsWidgets);
+    });
+
+    testWidgets('a finished or abandoned target does not count as set', (tester) async {
+      final done = CompoundTarget.from('G', 'old', {'metric': 'chanting', 'status': 'completed', 'currentPhase': 1, 'totalPhases': 1});
+      await shell(tester, [done]);
+      expect(find.text("You haven't set your chanting and book-reading targets"), findsOneWidget);
+    });
+
+    testWidgets('Set a target opens the create flow, on the missing metric', (tester) async {
+      await shell(tester, [target('chanting', 10, 16, 1, 8)]);
+      await tester.tap(find.byKey(const ValueKey('home-set-target')));
+      await tester.pumpAndSettle();
+      expect(find.byType(CompoundGoalSetupPage), findsOneWidget);
+      expect(tester.widget<CompoundGoalSetupPage>(find.byType(CompoundGoalSetupPage)).initialMetric, 'books');
+    });
+
+    testWidgets('no per-target cards, no Targets section any more', (tester) async {
+      await shell(tester, [target('chanting', 10, 16, 1, 8), target('books', 10, 5, 2, 8)]);
+      expect(find.textContaining('Phase '), findsNothing);
+      expect(find.textContaining('students at'), findsNothing);
+    });
+
+    for (final dark in [false, true]) {
+      for (final scale in kScales) {
+        testWidgets('${dark ? 'dark' : 'light'}, text scale $scale on 360 dp: the card fits, the button stays a target', (tester) async {
+          await shell(tester, const [], scale: scale, dark: dark);
+          expect(tester.takeException(), isNull);
+          final card = tester.getRect(find.byKey(const ValueKey('home-targets-card')));
+          expect(card.width, lessThanOrEqualTo(360));
+          final button = tester.getRect(find.byKey(const ValueKey('home-set-target')));
+          expect(button.height, greaterThanOrEqualTo(42));
+          expect(button.right, lessThanOrEqualTo(card.right));
+        });
+      }
+    }
   });
 
   testWidgets('a Female Enabler sees girls, the HOD sees students', (tester) async {
@@ -189,9 +262,11 @@ void main() {
     await tester.pump();
     expect(find.text('Analysis'), findsOneWidget);
     expect(find.text('Folk analysis'), findsOneWidget);
-    for (final label in ['ABCDE', 'Week planning', 'Priority students', 'Guide targets']) {
+    for (final label in ['ABCDE', 'Priority students', 'Leaderboard']) {
       expect(find.text(label), findsOneWidget, reason: label);
     }
+    expect(find.text('Week planning'), findsNothing);
+    expect(find.text('Guide targets'), findsNothing);
     await tester.tap(find.byIcon(Icons.check_box_outlined));
     await tester.pump();
     await tester.pump();

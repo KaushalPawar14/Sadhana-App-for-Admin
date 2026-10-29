@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -10,6 +11,7 @@ import 'package:folk_guide_app/Pages/PriorityStudents.dart';
 import 'package:folk_guide_app/Services/HierarchyApi.dart';
 import 'package:folk_guide_app/Services/VoiceRecorder.dart';
 import 'package:folk_guide_app/agent/AgentController.dart';
+import 'package:folk_guide_app/widgets/GuideAppBar.dart';
 import 'package:folk_guide_app/agent/AgentEnv.dart';
 import 'package:folk_guide_app/agent/AgentOverlay.dart';
 import 'package:folk_guide_app/agent/AgentRoutes.dart';
@@ -331,13 +333,25 @@ void main() {
       expect(find.byKey(const ValueKey('agent-welcome')), findsOneWidget);
     });
 
-    testWidgets('only a HOD gets the log button', (tester) async {
-      var c = await wire(tester, who: Who.hod);
+    testWidgets('the app bar has three buttons - Chat history, New chat, Plan - and nobody gets the log button here (it lives in Tasks)', (tester) async {
+      for (final who in [Who.hod, Who.guide]) {
+        final c = await wire(tester, who: who);
+        await open(tester, c);
+        expect(find.byKey(const ValueKey('agent-log')), findsNothing, reason: '$who');
+        expect(find.byTooltip('What the assistant did'), findsNothing);
+        expect(find.byKey(const ValueKey('agent-chats')), findsOneWidget);
+        expect(find.byKey(const ValueKey('agent-new-chat')), findsOneWidget);
+        expect(find.byKey(const ValueKey('agent-plan')), findsOneWidget);
+        expect(find.descendant(of: find.byType(GuideAppBar), matching: find.byType(IconButton)), findsNWidgets(3), reason: 'exactly three buttons');
+      }
+    });
+
+    testWidgets('Plan opens the Plan page', (tester) async {
+      final c = await wire(tester);
       await open(tester, c);
-      expect(find.byKey(const ValueKey('agent-log')), findsOneWidget);
-      c = await wire(tester, who: Who.guide);
-      await open(tester, c);
-      expect(find.byKey(const ValueKey('agent-log')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('agent-plan')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('plan-tab-today')), findsOneWidget);
     });
 
     testWidgets('the mic puts clean text in the box for the guide to edit, and sends nothing by itself', (tester) async {
@@ -555,6 +569,189 @@ void main() {
   });
 
   // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  group('"do it all": one card, one confirmation, every action in turn with live progress and a summary', () {
+    late Map<String, Completer<AgentResult>> gates;
+
+    /// A controller whose tools wait on a gate each, so the card can be looked at between items.
+    Future<AgentController> gated(WidgetTester tester, List<String> names) async {
+      final db = await prepareApp(tester);
+      replies = [];
+      requests = [];
+      HierarchyApi.useForTests((name, args) async {
+        if (name == 'guideAgentTurn') {
+          requests.add(args);
+          return replies.removeAt(0);
+        }
+        return <String, dynamic>{};
+      });
+      gates = {for (final n in names) n: Completer<AgentResult>()};
+      final c = AgentController(
+        env: AgentEnv(profile: adminProfile(Who.hod), db: db, clock: () => DateTime(2026, 10, 23, 12)),
+        tools: {for (final n in names) n: (args, env) => gates[n]!.future},
+      );
+      AgentSession.useForTests(c);
+      addTearDown(() => AgentSession.useForTests(null));
+      return c;
+    }
+
+    Map<String, dynamic> batch(List<String> names, {Set<String> double = const {}}) => _reply('confirm', {
+          'proposal': {
+            'id': 'pb', 'tainted': false, 'headsUp': <String>[],
+            'actions': [
+              for (var i = 0; i < names.length; i++)
+                _action('c${i + 1}', names[i], {}, title: 'Task ${i + 1}', dbl: double.contains(names[i]), lines: [
+                  {'label': 'What', 'value': 'Do task ${i + 1}', 'items': <String>[]},
+                ]),
+            ],
+          },
+        });
+
+    testWidgets('ONE card lists every action; one tap runs them one after another, each with its own progress, then a ✓/✗ summary (partial failure included)', (tester) async {
+      final c = await gated(tester, ['t1', 't2', 't3']);
+      await open(tester, c);
+      replies.add(batch(['t1', 't2', 't3']));
+      await say(tester, 'Do all my tasks for today');
+      expect(find.byKey(const ValueKey('agent-proposal-pb')), findsOneWidget, reason: 'one card');
+      for (var i = 1; i <= 3; i++) {
+        expect(find.text('Task $i'), findsOneWidget);
+      }
+      expect(find.byKey(const ValueKey('agent-confirm')), findsOneWidget, reason: 'one confirmation');
+
+      replies.add(_reply('message', {'text': 'Two of three are done.'}));
+      await tester.tap(find.byKey(const ValueKey('agent-confirm')));
+      await tester.pump();
+      // 0 of 3: the first spins, the others wait
+      expect(find.text('Doing it… 0 of 3 done'), findsOneWidget);
+      expect(find.byKey(const ValueKey('agent-item-running-c1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('agent-item-waiting-c2')), findsOneWidget);
+      expect(find.byKey(const ValueKey('agent-item-waiting-c3')), findsOneWidget);
+
+      gates['t1']!.complete(AgentResult.ok({'done': 'First done.'}));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Doing it… 1 of 3 done'), findsOneWidget);
+      expect(find.text('First done.'), findsOneWidget, reason: 'its own result appears as soon as it is done');
+      expect(find.byKey(const ValueKey('agent-item-running-c2')), findsOneWidget);
+
+      gates['t2']!.complete(AgentResult.failed('That student is not yours.'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Doing it… 2 of 3 done'), findsOneWidget);
+      expect(find.text('That student is not yours.'), findsOneWidget, reason: 'a failure is shown on its own item and the rest carries on');
+      expect(find.byKey(const ValueKey('agent-item-running-c3')), findsOneWidget);
+
+      gates['t3']!.complete(AgentResult.ok({'done': 'Third done.'}));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('2 of 3 done'), findsOneWidget, reason: 'the summary names the partial result');
+      final summary = find.byKey(const ValueKey('agent-batch-summary'));
+      expect(find.descendant(of: summary, matching: find.text('2 done')), findsOneWidget);
+      expect(find.descendant(of: summary, matching: find.text('1 failed')), findsOneWidget);
+      expect(find.byIcon(Icons.check_circle), findsWidgets);
+      expect(find.byIcon(Icons.cancel), findsWidgets);
+      // the server is told every item's result, in order
+      final results = (requests.last['results'] as List).cast<Map>();
+      expect(results.map((r) => r['ok']), [true, false, true]);
+      expect(requests.last['outcome'], 'executed');
+    });
+
+    testWidgets('all of them done: "Done" and "3 done", no failures', (tester) async {
+      final c = await gated(tester, ['t1', 't2', 't3']);
+      await open(tester, c);
+      replies.add(batch(['t1', 't2', 't3']));
+      await say(tester, 'Do all my tasks for today');
+      replies.add(_reply('message', {'text': 'All done.'}));
+      await tester.tap(find.byKey(const ValueKey('agent-confirm')));
+      await tester.pump();
+      for (final n in ['t1', 't2', 't3']) {
+        gates[n]!.complete(AgentResult.ok({'done': 'ok'}));
+        await tester.pump();
+        await tester.pump();
+      }
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Done'), findsOneWidget);
+      final summary = find.byKey(const ValueKey('agent-batch-summary'));
+      expect(find.descendant(of: summary, matching: find.text('3 done')), findsOneWidget);
+      expect(find.descendant(of: summary, matching: find.textContaining('failed')), findsNothing);
+    });
+
+    testWidgets('nothing went through: "None of these went through"', (tester) async {
+      final c = await gated(tester, ['t1', 't2']);
+      await open(tester, c);
+      replies.add(batch(['t1', 't2']));
+      await say(tester, 'Do all my tasks');
+      replies.add(_reply('message', {'text': 'Nothing worked.'}));
+      await tester.tap(find.byKey(const ValueKey('agent-confirm')));
+      await tester.pump();
+      for (final n in ['t1', 't2']) {
+        gates[n]!.complete(AgentResult.failed('No.'));
+        await tester.pump();
+        await tester.pump();
+      }
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('None of these went through'), findsOneWidget);
+    });
+
+    testWidgets('a deletion inside the batch still needs its extra confirmation, and nothing runs before it', (tester) async {
+      final c = await gated(tester, ['t1', 'td']);
+      await open(tester, c);
+      replies.add(batch(['t1', 'td'], double: {'td'}));
+      await say(tester, 'Do all my tasks for today');
+      expect(find.text('This will delete — please check'), findsOneWidget);
+      await tester.tap(find.text('Delete…'));
+      await tester.pumpAndSettle();
+      expect(find.text('This cannot be undone. You are about to:'), findsOneWidget);
+      expect(find.textContaining('Task 1'), findsWidgets, reason: 'the dialog lists every action');
+      expect(gates['t1']!.isCompleted, isFalse);
+      await tester.tap(find.byKey(const ValueKey('agent-keep')));
+      await tester.pumpAndSettle();
+      expect(requests.where((r) => r['outcome'] == 'executed'), isEmpty, reason: 'nothing was run');
+    });
+
+    testWidgets('every state at text scale 1.0 / 1.3 / 1.6 on a phone: no overflow', (tester) async {
+      for (final scale in kScales) {
+        final c = await gated(tester, ['t1', 't2', 't3']);
+        await open(tester, c, scale: scale);
+        replies.add(batch(['t1', 't2', 't3']));
+        await say(tester, 'Do all my tasks for today');
+        expect(tester.takeException(), isNull);
+        replies.add(_reply('message', {'text': 'ok'}));
+        await tester.tap(find.byKey(const ValueKey('agent-confirm')));
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+        gates['t1']!.complete(AgentResult.failed('A rather long reason that explains in some detail exactly why this task could not be done today.'));
+        await tester.pump();
+        await tester.pump();
+        gates['t2']!.complete(AgentResult.ok({'done': 'ok'}));
+        gates['t3']!.complete(AgentResult.ok({'done': 'ok'}));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      }
+    });
+  });
+
+  group('navigation buttons for the plan', () {
+    testWidgets('"Where do I find my plan?" comes with a "Take me there: Your plan" button that opens it', (tester) async {
+      final c = await wire(tester);
+      await open(tester, c);
+      replies.add(_reply('message', {'text': 'Open Assistant → Plan.', 'links': [{'route': 'plan'}]}));
+      await say(tester, 'Where do I find my plan?');
+      expect(find.text('Take me there: Your plan'), findsOneWidget);
+      await tester.tap(find.text('Take me there: Your plan'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('plan-tab-today')), findsOneWidget);
+    });
+
+    test('the plan route exists and builds the page', () {
+      expect(kAgentRoutes.containsKey('plan'), isTrue);
+      expect(kAgentRoutes['plan']!.needsStudent, isFalse);
+      expect(agentLinkLabel(const AgentLink(route: 'plan')), 'Take me there: Your plan');
+    });
+  });
+
   group('Take me there', () {
     testWidgets('every route builds the page it names', (tester) async {
       await prepareApp(tester);
@@ -567,7 +764,7 @@ void main() {
         }
         expect(e.value.page!(ctx), isA<Widget>(), reason: e.key);
       }
-      expect(kAgentRoutes.keys.length, 25);
+      expect(kAgentRoutes.keys.length, 26);
     });
 
     testWidgets('a route that opens a student refuses to without one', (tester) async {

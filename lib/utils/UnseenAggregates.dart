@@ -150,6 +150,16 @@ class UnseenAggregates {
     );
   }
 
+  /// The Today / This week plan: its content changed (a new target, a calendar event, a follow-up, a priority reason ...) since this
+  /// admin last opened the Plan page (`seenMarkers/{admin}.plan`). The orange dot on "Plan" and on the assistant button.
+  static Stream<bool> planUnseen(String admin) {
+    if (debugDisable || admin.isEmpty) return Stream.value(false);
+    return SeenMarkers.unseenFrom(
+      GuideDb.instance.collection('guidePlans').doc(admin).snapshots().map((d) => d.data()?['changedAt'] as Timestamp?),
+      SeenMarkers.seenAt(admin, 'plan'),
+    );
+  }
+
   static Stream<bool> calendarEventsUnseen(String guide) {
     if (debugDisable) return Stream.value(false);
     return SeenMarkers.unseenFrom(
