@@ -8,7 +8,7 @@ import '../Pages/GoalSetup.dart';
 import '../widgets/GuideButtons.dart';
 import '../Pages/GuideCalendarPage.dart';
 import '../Pages/GuideSignIn.dart';
-import '../Pages/WeeklyPlanning.dart';
+import '../Pages/PlanPage.dart';
 import '../Services/UpdateFCM.dart';
 import '../Services/UpdateToken.dart';
 import '../theme/GuideColors.dart';
@@ -20,7 +20,7 @@ import '../utils/GoalCompoundQueries.dart';
 import '../utils/GoalMetrics.dart';
 import '../utils/GuideLogout.dart';
 import '../utils/HomeData.dart';
-import '../utils/WeekSummary.dart';
+import '../utils/PlanData.dart';
 import '../utils/PlanningQueries.dart';
 import '../utils/UnseenAggregates.dart';
 import '../utils/UnseenDot.dart';
@@ -40,13 +40,15 @@ import 'FolkBoysWorkspace.dart';
 /// Nothing here is new data. Each piece reads a source the app already reads on
 /// another screen, scoped to the signed-in admin exactly as that screen is:
 ///
-///  * Hero "Targets"    — `compoundTargetsStream(guideId)` (the stream behind
-///                        This Week's "Your targets this week" and the Targets
-///                        screen): active targets that have a plan.
-///  * Hero "Follow-ups" — `scopedInteractionLogsStream()` (This Week's
-///                        "Follow-ups due"), filtered by `followUpsDue`.
-///  * Hero "Overdue"    — `scopedAssociationsStream()` (This Week's "Overdue
-///                        meetings"), filtered by `overdueAssociations`.
+///  * THIS WEEK (navy)  — "Targets": `compoundTargetsStream(guideId)` (active
+///                        targets that have a plan); "To contact" and "Done": the
+///                        week's progress in the guide's plan. Opens the Plan
+///                        page on THIS WEEK.
+///  * TODAY'S TASKS     — three live counts from the same plan (`guidePlans/{id}`,
+///                        `PlanCounts`): Follow-ups (interactions students need),
+///                        Target tasks (made by the guide's own targets) and Other
+///                        tasks. The card, or any one count, opens the Plan page
+///                        on TODAY at that section.
 ///  * Target cards      — the same `compoundTargetsStream` (phase x of y).
 ///  * Board tile count  — `StudentScope.current().studentsStream()` (the roster
 ///                        the board lists, role-scoped).
@@ -73,16 +75,15 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
   Stream<bool>? _boardUnseen;
 
   List<CompoundTarget>? _targets;
-  List<FollowUpItem>? _followUps;
-  List<OverdueItem>? _overdue;
+  PlanDoc? _plan;
+  bool _planLoaded = false;
   int? _studentCount;
   List<CalendarEvent>? _events;
   final List<StreamSubscription<Object?>> _subs = [];
 
   /// A source that failed (shown as a frozen ghost with Retry, never a blank).
   bool _targetsFailed = false;
-  bool _followUpsFailed = false;
-  bool _overdueFailed = false;
+  bool _planFailed = false;
   bool _countFailed = false;
   bool _eventsFailed = false;
 
@@ -123,22 +124,23 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
   /// Starts the dashboard's own listeners, once.
   void _listen(String guide) {
     if (_subs.isNotEmpty) return;
-    final week = currentWeekRange();
     final data = HomeData.instance;
     _subs.add(data.targets(guide).listen((t) {
       if (mounted) setState(() => _targets = t);
     }, onError: (_) {
       if (mounted) setState(() => _targetsFailed = true);
     }));
-    _subs.add(data.followUps(week).listen((f) {
-      if (mounted) setState(() => _followUps = f);
+    // the plan the server keeps for this guide: live, so the counts follow every tick and every new item
+    _subs.add(PlanData.instance.plan(guide).listen((p) {
+      if (mounted) {
+        setState(() {
+          _plan = p;
+          _planLoaded = true;
+          _planFailed = false;
+        });
+      }
     }, onError: (_) {
-      if (mounted) setState(() => _followUpsFailed = true);
-    }));
-    _subs.add(data.overdue().listen((o) {
-      if (mounted) setState(() => _overdue = o);
-    }, onError: (_) {
-      if (mounted) setState(() => _overdueFailed = true);
+      if (mounted) setState(() => _planFailed = true);
     }));
     _subs.add(data.studentCount().listen((n) {
       if (mounted) setState(() => _studentCount = n);
@@ -161,7 +163,7 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     }
     _subs.clear();
     setState(() {
-      _targetsFailed = _followUpsFailed = _overdueFailed = _countFailed = _eventsFailed = false;
+      _targetsFailed = _planFailed = _countFailed = _eventsFailed = false;
     });
     _listen(guide);
   }
@@ -314,11 +316,16 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     return 'Nothing due today';
   }
 
-  // The three areas of Home that wait for data.
+  // The areas of Home that wait for data.
   GuideLoad get _heroState {
-    if (_targetsFailed || _followUpsFailed || _overdueFailed) return GuideLoad.error;
-    if (_targets == null || _followUps == null || _overdue == null) return GuideLoad.loading;
+    if (_targetsFailed || _planFailed) return GuideLoad.error;
+    if (_targets == null || !_planLoaded) return GuideLoad.loading;
     return GuideLoad.content;
+  }
+
+  GuideLoad get _todayState {
+    if (_planFailed) return GuideLoad.error;
+    return _planLoaded ? GuideLoad.content : GuideLoad.loading;
   }
 
   GuideLoad get _targetsState {
@@ -333,22 +340,95 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
   bool get _tilesReady =>
       _guide != null && ((_studentCount != null || _countFailed) && (_events != null || _eventsFailed));
 
+  /// THIS WEEK (navy): opens the Plan page on its This week tab (the full plan, target progress, phases and what to do this week).
   Widget _heroCard(List<CompoundTarget> active, {bool placeholder = false}) {
     const dash = '–';
+    final progress = placeholder ? null : _plan?.progress;
     return GuideHeroCard(
+      key: const ValueKey('home-this-week'),
       label: 'This week',
       trailing: _weekLabel,
       onTap: placeholder
           ? null
           : () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const WeeklyPlanningPage()),
+                MaterialPageRoute(builder: (_) => const PlanPage(initialWeek: true)),
               ),
       stats: [
         GuideHeroStat(placeholder ? dash : '${active.length}', 'Targets'),
-        GuideHeroStat(placeholder ? dash : '${_followUps!.length}', 'Follow-ups'),
-        GuideHeroStat(placeholder ? dash : '${_overdue!.length}', 'Overdue'),
+        if (placeholder || progress != null) GuideHeroStat(placeholder ? dash : '${progress!.left}', 'To contact'),
+        if (placeholder || progress != null) GuideHeroStat(placeholder ? dash : '${progress!.done}', 'Done'),
       ],
+    );
+  }
+
+  /// The two plan widgets stay compact on a wide window (left-aligned, like the tiles); a phone gets the whole width.
+  Widget _compact(Widget child) => Align(alignment: Alignment.centerLeft, child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: kHomeCardMaxWidth), child: child));
+
+  void _openToday([PlanGroup? section]) => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => PlanPage(section: section)),
+      );
+
+  /// TODAY'S TASKS: three live counts (Follow-ups, Target tasks, Other tasks). The card, or any one count, opens the Plan page on TODAY
+  /// at that section.
+  Widget _todayCard({bool placeholder = false}) {
+    final t = context.gText;
+    final g = context.g;
+    final counts = PlanCounts.of(placeholder ? null : _plan);
+    Widget count(PlanGroup group, String key, String label) {
+      final n = placeholder || _plan == null ? '–' : '${switch (group) { PlanGroup.followUp => counts.followUps, PlanGroup.target => counts.targets, PlanGroup.other => counts.others }}';
+      return Expanded(
+        child: GestureDetector(
+          key: ValueKey('home-today-$key'),
+          behavior: HitTestBehavior.opaque,
+          onTap: placeholder ? null : () => _openToday(group),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(n, key: ValueKey('home-today-$key-count'), style: t.heroNumber.copyWith(color: g.text, fontSize: 26)),
+                const SizedBox(height: 2),
+                Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.small),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Semantics(
+      button: !placeholder,
+      child: GestureDetector(
+        key: const ValueKey('home-today-tasks'),
+        behavior: HitTestBehavior.opaque,
+        onTap: placeholder ? null : () => _openToday(),
+        child: GuideCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: Text("TODAY'S TASKS", style: t.heroLabel.copyWith(color: g.mutedText))),
+                  Icon(Icons.chevron_right_rounded, size: 20, color: g.mutedText),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  count(PlanGroup.followUp, 'followups', 'Follow-ups'),
+                  count(PlanGroup.target, 'targets', 'Target tasks'),
+                  count(PlanGroup.other, 'other', 'Other tasks'),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -468,7 +548,7 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
           index: 1,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: GuideSpace.pagePadding),
-            child: GuideStateView(
+            child: _compact(GuideStateView(
               state: _heroState,
               ghost: GuideGhostOf(
                 radius: GuideShape.heroRadius,
@@ -477,13 +557,26 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
               content: _heroState == GuideLoad.content ? _heroCard(active) : const SizedBox.shrink(),
               errorMessage: 'Could not load this week. Check your connection and try again.',
               onRetry: _retry,
-            ),
+            )),
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 16, GuideSpace.pagePadding, 0),
+          padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 12, GuideSpace.pagePadding, 0),
           child: GuideEntry(
             index: 2,
+            child: _compact(GuideStateView(
+              state: _todayState,
+              ghost: GuideGhostOf(radius: GuideShape.tileRadius, placeholder: _todayCard(placeholder: true)),
+              content: _todayState == GuideLoad.content ? _todayCard() : const SizedBox.shrink(),
+              errorMessage: "Could not load today's tasks. Check your connection and try again.",
+              onRetry: _retry,
+            )),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 12, GuideSpace.pagePadding, 0),
+          child: GuideEntry(
+            index: 3,
             child: GuideStateView(
               state: _targetsState == GuideLoad.empty ? GuideLoad.content : _targetsState,
               ghost: GuideGhostOf(radius: GuideShape.tileRadius, placeholder: _targetsCard(placeholder: true)),

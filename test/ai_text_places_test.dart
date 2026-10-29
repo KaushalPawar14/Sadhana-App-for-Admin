@@ -306,7 +306,6 @@ void main() {
       'lib/Pages/AgentLogPage.dart': ["AiText((a['title']", "AiText((d['note'])"],
       'lib/Pages/InteractionLogger.dart': ['AiText(action', 'AiText(\n                        reasoning', 'plainAiText((value ?? \'\').toString())'],
       'lib/Pages/AssociationManager.dart': ['AiText(body, maxLines: 2'],
-      'lib/Pages/WeeklyPlanning.dart': ['AiText(item.action'],
       'lib/Pages/PriorityStudents.dart': ['AiText(\n                      flag.label'],
       'lib/Pages/FlaggedMessages.dart': ['AiText(\n                  pastoralReason'],
       'lib/Pages/GoalWeeklyPhasePage.dart': ['AiText(pending.note'],

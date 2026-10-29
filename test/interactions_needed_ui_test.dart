@@ -82,7 +82,6 @@ PlanDoc _plan({bool done = false, String source = 'ai'}) => PlanDoc(
       ],
       generatedAt: _now.subtract(const Duration(minutes: 20)),
       status: 'upToDate',
-      pendingRunAt: null,
       changedAt: _now,
     );
 
@@ -318,12 +317,12 @@ void main() {
       await _openPlan(tester, doc: _plan(source: 'fallback'));
       await tester.tap(find.byKey(const ValueKey('plan-topics-toggle-interaction:u1:2026-10-28')));
       await tester.pump();
-      expect(find.text('A plain version: the AI had not written these yet.'), findsOneWidget);
+      expect(find.text('A plain version: tap Refresh for the AI-written questions.'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
       await _openPlan(tester, doc: _plan());
       await tester.tap(find.byKey(const ValueKey('plan-topics-toggle-interaction:u1:2026-10-28')));
       await tester.pump();
-      expect(find.text('A plain version: the AI had not written these yet.'), findsNothing);
+      expect(find.text('A plain version: tap Refresh for the AI-written questions.'), findsNothing);
     });
 
     testWidgets('once the guide has reported back, the item is ticked (a tick and "Done"), read-only as always', (tester) async {

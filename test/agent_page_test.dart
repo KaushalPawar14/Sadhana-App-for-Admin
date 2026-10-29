@@ -764,7 +764,7 @@ void main() {
         }
         expect(e.value.page!(ctx), isA<Widget>(), reason: e.key);
       }
-      expect(kAgentRoutes.keys.length, 26);
+      expect(kAgentRoutes.keys.length, 25);
     });
 
     testWidgets('a route that opens a student refuses to without one', (tester) async {

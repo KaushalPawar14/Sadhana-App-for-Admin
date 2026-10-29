@@ -65,7 +65,6 @@ PlanDoc _plan({List<PlanItem>? today, PlanBatch? batch, PlanProgress? progress, 
           ],
       generatedAt: _now.subtract(const Duration(minutes: 20)),
       status: 'upToDate',
-      pendingRunAt: null,
       changedAt: _now,
       batch: batch ?? const PlanBatch(size: 4, round: 1, members: 4, carried: 1, nextReady: false, done: 1, left: 3),
       progress: progress ??
@@ -143,12 +142,12 @@ void main() {
     expect(find.byKey(const ValueKey('plan-topics-interaction:u1:2026-10-28')), findsOneWidget);
   });
 
-  testWidgets('the other one-day items are short and separate, under "Also today"', (tester) async {
+  testWidgets('the other one-day items are short and separate, under "Other tasks"', (tester) async {
     await _open(tester);
-    expect(find.byKey(const ValueKey('plan-also-today')), findsOneWidget);
+    expect(find.byKey(const ValueKey('plan-section-other')), findsOneWidget);
     expect(find.text('Meet Harsh'), findsOneWidget);
     expect(find.text('2 doubts waiting for your answer'), findsOneWidget);
-    final alsoY = tester.getTopLeft(find.byKey(const ValueKey('plan-also-today'))).dy;
+    final alsoY = tester.getTopLeft(find.byKey(const ValueKey('plan-section-other'))).dy;
     expect(tester.getTopLeft(find.text('Interaction with Mohit')).dy, lessThan(alsoY), reason: 'the batch comes first');
   });
 
@@ -218,7 +217,7 @@ void main() {
   });
 
   testWidgets('a HOD plan (no batch, no progress) still shows as before', (tester) async {
-    await _open(tester, doc: PlanDoc(todayDate: '2026-10-30', todayItems: const [PlanItem(id: 'guide:G', kind: 'guideSummary', title: 'Gopal: 0 for today, 3 interactions needed')], weekOf: '2026-10-26', intro: 'Hare Krishna', sections: const [], generatedAt: _now, status: 'upToDate', pendingRunAt: null, changedAt: _now));
+    await _open(tester, doc: PlanDoc(todayDate: '2026-10-30', todayItems: const [PlanItem(id: 'guide:G', kind: 'guideSummary', title: 'Gopal: 0 for today, 3 interactions needed')], weekOf: '2026-10-26', intro: 'Hare Krishna', sections: const [], generatedAt: _now, status: 'upToDate', changedAt: _now));
     expect(find.byKey(const ValueKey('plan-batch')), findsNothing);
     expect(find.text('Gopal: 0 for today, 3 interactions needed'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('plan-tab-week')));

@@ -11,7 +11,6 @@ import 'package:folk_guide_app/Pages/MusicCurriculumPage.dart';
 import 'package:folk_guide_app/Pages/StudentDoubtsPage.dart';
 import 'package:folk_guide_app/Pages/StudentMusicPage.dart';
 import 'package:folk_guide_app/Pages/StudentNotificationSettings.dart';
-import 'package:folk_guide_app/Pages/WeeklyPlanning.dart';
 import 'package:folk_guide_app/theme/GuideTheme.dart';
 import 'package:folk_guide_app/theme/ThemeModeController.dart';
 import 'package:folk_guide_app/utils/AdminProfile.dart';
@@ -48,7 +47,6 @@ final Map<String, Widget Function()> extraScreens = {
   'folk_boys_board': () => const FolkBoysWorkspace(selectedGuide: 'H'),
   'goal_home': () => const GoalHomePage(guideId: 'G'),
   'leaderboard': () => const LeaderboardPage(),
-  'weekly_planning': () => const WeeklyPlanningPage(),
   'student_doubts': () => const StudentDoubtsPage(),
   'music_curriculum': () => const MusicCurriculumPage(),
   'student_music': () => const StudentMusicPage(studentUid: 's1', studentName: 'Arjun Kumar'),

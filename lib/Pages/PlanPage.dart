@@ -10,6 +10,7 @@ import '../utils/AdminProfile.dart';
 import '../utils/PlanData.dart';
 import '../utils/SeenMarkers.dart';
 import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideButtons.dart';
 import '../widgets/GuideEntry.dart';
 import '../widgets/GuideStates.dart';
 import '../widgets/GuideSurface.dart';
@@ -17,15 +18,23 @@ import '../widgets/GuideSurface.dart';
 /// "Plan": the guide's TODAY and THIS WEEK plans, worked out by the server and shown READ-ONLY (no ticking, no replying: for any help,
 /// ask the assistant in a chat).
 ///
-/// Under "Last updated" the page says honestly where the plan stands, from the server's own schedule (never a made-up timer):
-///   Up to date                                        nothing has changed since the last update
-///   New changes found - updating in N min (at 4:30 PM) changes found, but an update ran less than an hour ago; the countdown runs
-///                                                     to `pendingRunAt`, the real time the server will run it. At night (11 PM - 5 AM)
-///                                                     nothing runs automatically: "Next update at 6:00 AM"
-///   Updating now...                                   the server is working the plan out; then the new plan appears with a short
-///                                                     "Updated" highlight
+/// HOW IT STAYS CURRENT. Ticks, finished items going away and new doubts / worries / items appear BY THEMSELVES (free: no AI). The AI rewrites
+/// the plan (new questions) only when asked: the REFRESH button at the top of this page (once per 2 minutes; a HOD also has "Refresh all
+/// guides"), every morning at 6 AM, and on Monday morning (This week). Under "Last updated" the page says honestly when and by what:
+///   Last updated: Fri 30 Oct, 6:00 AM (daily update)      (by refresh / daily update / weekly update)
+///   Refreshing…                                            the AI is writing it now; then the new plan appears with a short "Updated" highlight
+///   You can refresh again in N sec                         the 2-minute wait after a refresh
+///
+/// Opened from Home: THIS WEEK opens the This week tab ([initialWeek]); TODAY'S TASKS (or one of its three counts) opens Today at that
+/// section ([section]: Follow-ups, Target tasks or Other tasks).
 class PlanPage extends StatefulWidget {
-  const PlanPage({super.key});
+  const PlanPage({super.key, this.initialWeek = false, this.section});
+
+  /// Open on THIS WEEK.
+  final bool initialWeek;
+
+  /// On TODAY, scroll to this section when the page opens.
+  final PlanGroup? section;
 
   @override
   State<PlanPage> createState() => _PlanPageState();
@@ -34,6 +43,9 @@ class PlanPage extends StatefulWidget {
 /// How long the "Updated" highlight stays.
 const Duration kPlanUpdatedHighlight = Duration(seconds: 4);
 
+/// The server lets a guide refresh once per this long.
+const Duration kPlanRefreshGap = Duration(minutes: 2);
+
 /// "6:00 AM" for the instant, in India time (the server's clock), whatever the phone's own zone.
 String planClock(DateTime t) {
   final ist = t.toUtc().add(const Duration(hours: 5, minutes: 30));
@@ -41,30 +53,29 @@ String planClock(DateTime t) {
   return '$h:${ist.minute.toString().padLeft(2, '0')} ${ist.hour < 12 ? 'AM' : 'PM'}';
 }
 
-/// Whether the instant is exactly 6:00 AM India time: the night's changes wait for that run.
-bool isSixAmIst(DateTime t) {
-  final ist = t.toUtc().add(const Duration(hours: 5, minutes: 30));
-  return ist.hour == 6 && ist.minute == 0;
+/// "Last updated: Fri 30 Oct, 6:00 AM (daily update)": when the AI last rewrote the plan and by what (a refresh, the 6 AM run, Monday's run).
+/// A plan the AI has not rewritten yet shows the time it was worked out, with no "by".
+String planLastUpdated(PlanDoc plan) {
+  final at = plan.refreshedAt ?? plan.generatedAt;
+  final stamp = at == null ? '—' : DateFormat('EEE d MMM, h:mm a').format(at.toUtc().add(const Duration(hours: 5, minutes: 30)));
+  final by = plan.refreshedAt == null
+      ? ''
+      : switch (plan.refreshedBy) {
+          'refresh' => ' (by refresh)',
+          'daily' => ' (daily update)',
+          'weekly' => ' (weekly update)',
+          _ => '',
+        };
+  return 'Last updated: $stamp$by';
 }
 
 /// The status line under "Last updated".
-String planStatusText(PlanDoc plan, DateTime now) {
-  switch (plan.status) {
-    case 'updating':
-      return 'Updating now…';
-    case 'pending':
-      final at = plan.pendingRunAt;
-      if (at == null) return 'New changes found — updating soon';
-      if (isSixAmIst(at) && at.difference(now).inMinutes >= 60) return 'New changes found — next update at ${planClock(at)}';
-      final left = at.difference(now);
-      if (left.inSeconds <= 0) return 'New changes found — updating any moment now…';
-      if (left.inSeconds < 60) return 'New changes found — updating in ${left.inSeconds} s (at ${planClock(at)})';
-      final mins = (left.inSeconds / 60).ceil();
-      return 'New changes found — updating in $mins min (at ${planClock(at)})';
-    default:
-      return 'Up to date';
-  }
-}
+String planStatusText(PlanDoc plan, {bool refreshing = false}) => refreshing || plan.status == 'updating' ? 'Refreshing…' : 'Up to date';
+
+/// The names of Today's three groups, as the page's sections.
+const Map<PlanGroup, String> kPlanGroupTitles = {PlanGroup.followUp: 'Follow-ups', PlanGroup.target: 'Target tasks', PlanGroup.other: 'Other tasks'};
+
+String _sectionKey(PlanGroup g) => switch (g) { PlanGroup.followUp => 'followups', PlanGroup.target => 'targets', PlanGroup.other => 'other' };
 
 class _PlanPageState extends State<PlanPage> {
   /// Interaction cards whose questions were toggled by the guide (a batch card starts open, any other starts closed).
@@ -74,15 +85,26 @@ class _PlanPageState extends State<PlanPage> {
   int? _sizeChosen;
   bool _savingSize = false;
 
-  bool _week = false;
+  late bool _week = widget.initialWeek;
   PlanDoc? _plan;
   bool _loaded = false;
   bool _failed = false;
   bool _justUpdated = false;
   DateTime? _lastGenerated;
   StreamSubscription<PlanDoc?>? _sub;
-  Timer? _tick;
   Timer? _highlight;
+
+  /// Refresh: busy (own / everyone's), the seconds left of the 2-minute wait for each, and the server's refusal in words (the budget).
+  bool _refreshing = false;
+  bool _refreshingAll = false;
+  int _waitOwn = 0;
+  int _waitAll = 0;
+  Timer? _waitTimer;
+  String? _refreshError;
+
+  /// Opened from a Home count: scroll to that section once the plan is on screen.
+  final Map<PlanGroup, GlobalKey> _sectionKeys = {for (final g in PlanGroup.values) g: GlobalKey()};
+  bool _scrolled = false;
 
   String get _me => AdminProfileProvider.current?.id ?? '';
 
@@ -112,7 +134,10 @@ class _PlanPageState extends State<PlanPage> {
           });
           if (_me.isNotEmpty) SeenMarkers.markSeen(_me, 'plan').catchError((_) {});
         }
-        _syncTicker();
+        if (!_scrolled && widget.section != null && !_week && p != null) {
+          _scrolled = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToSection());
+        }
       },
       onError: (_) {
         if (mounted) setState(() => _failed = true);
@@ -120,25 +145,58 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
-  /// The live countdown ticks only while an update is pending: nothing runs otherwise.
-  void _syncTicker() {
-    final pending = _plan?.status == 'pending';
-    if (pending && _tick == null) {
-      _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) setState(() {});
-      });
-    } else if (!pending) {
-      _tick?.cancel();
-      _tick = null;
+  void _scrollToSection({bool retry = true}) {
+    if (!mounted) return;
+    final ctx = _sectionKeys[widget.section]?.currentContext;
+    if (ctx == null) {
+      if (retry) WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToSection(retry: false));
+      return;
     }
+    Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
   }
 
   @override
   void dispose() {
     _sub?.cancel();
-    _tick?.cancel();
     _highlight?.cancel();
+    _waitTimer?.cancel();
     super.dispose();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Refresh
+  // ---------------------------------------------------------------------------
+
+  void _startWait(bool all, int seconds) {
+    setState(() => all ? _waitAll = seconds : _waitOwn = seconds);
+    _waitTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        if (_waitOwn > 0) _waitOwn--;
+        if (_waitAll > 0) _waitAll--;
+      });
+      if (_waitOwn == 0 && _waitAll == 0) {
+        _waitTimer?.cancel();
+        _waitTimer = null;
+      }
+    });
+  }
+
+  /// The AI rewrites the plan, now. The server decides (once per 2 minutes, the guide's own plan only, not while the budget is used up).
+  Future<void> _refresh({bool all = false}) async {
+    if (_refreshing || (all ? _waitAll : _waitOwn) > 0) return;
+    setState(() {
+      _refreshing = true;
+      _refreshingAll = all;
+      _refreshError = null;
+    });
+    try {
+      final r = await HierarchyApi.instance.refreshPlan(all: all);
+      if (mounted) _startWait(all, r.ok ? kPlanRefreshGap.inSeconds : r.retryInSec);
+    } catch (e) {
+      if (mounted) setState(() => _refreshError = e is HierarchyException ? e.message : 'Could not refresh the plan. Please try again.');
+    }
+    if (mounted) setState(() => _refreshing = false);
   }
 
   @override
@@ -161,30 +219,77 @@ class _PlanPageState extends State<PlanPage> {
 
   Widget _body(BuildContext context) {
     final t = context.gText;
-    final g = context.g;
     final plan = _plan;
-    return ListView(
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 12, GuideSpace.pagePadding, 40),
-      children: [
-        Text('Read-only — for any help, ask the AI in a chat.', key: const ValueKey('plan-readonly'), style: t.bodyStrong),
-        const SizedBox(height: 6),
-        Text(
-          'Changes you make in the app (e.g. marking a book completed, changing a date) appear here within about an hour. For an instant answer, ask the AI in a chat.',
-          key: const ValueKey('plan-note'),
-          style: t.small.copyWith(height: 1.4),
-        ),
-        const SizedBox(height: 12),
-        if (plan == null)
-          GuideCard(
-            padding: const EdgeInsets.all(16),
-            child: Text('Your plan is being prepared. It appears here shortly.', key: const ValueKey('plan-empty'), style: t.small),
-          )
-        else ...[
-          _statusCard(context, plan),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _refreshBar(context),
+          const SizedBox(height: 10),
+          Text('Read-only — for any help, ask the AI in a chat.', key: const ValueKey('plan-readonly'), style: t.bodyStrong),
+          const SizedBox(height: 6),
+          Text(
+            'Tap Refresh to update the plan with your latest changes.',
+            key: const ValueKey('plan-note'),
+            style: t.small.copyWith(height: 1.4),
+          ),
           const SizedBox(height: 12),
-          if (_week) ..._weekBody(context, plan) else ..._todayBody(context, plan),
+          if (plan == null)
+            GuideCard(
+              padding: const EdgeInsets.all(16),
+              child: Text('Your plan is being prepared. It appears here shortly.', key: const ValueKey('plan-empty'), style: t.small),
+            )
+          else ...[
+            _statusCard(context, plan),
+            const SizedBox(height: 12),
+            if (_week) ..._weekBody(context, plan) else ..._todayBody(context, plan),
+          ],
         ],
-        SizedBox(height: g.isDark ? 0 : 0),
+      ),
+    );
+  }
+
+  /// REFRESH at the top: one button (a HOD also has "Refresh all guides"), the wait that follows, and the server's refusal in words.
+  Widget _refreshBar(BuildContext context) {
+    final t = context.gText;
+    final g = context.g;
+    final hod = AdminProfileProvider.current?.isHod ?? false;
+    final ownBusy = _refreshing && !_refreshingAll;
+    final allBusy = _refreshing && _refreshingAll;
+    final wait = _waitOwn > 0 ? _waitOwn : (hod ? _waitAll : 0);
+    final waitText = _waitOwn > 0 ? 'You can refresh again in $_waitOwn sec' : (hod && _waitAll > 0 ? 'You can refresh all guides again in $_waitAll sec' : null);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 10,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            GuidePrimaryButton(
+              key: const ValueKey('plan-refresh'),
+              label: ownBusy ? 'Refreshing…' : 'Refresh',
+              icon: Icons.refresh_rounded,
+              expand: false,
+              onPressed: _refreshing || _waitOwn > 0 ? null : () => _refresh(),
+            ),
+            if (hod)
+              GuideSecondaryButton(
+                key: const ValueKey('plan-refresh-all'),
+                label: allBusy ? 'Refreshing…' : 'Refresh all guides',
+                icon: Icons.refresh_rounded,
+                onPressed: _refreshing || _waitAll > 0 ? null : () => _refresh(all: true),
+              ),
+          ],
+        ),
+        if (waitText != null && wait > 0 && _refreshError == null)
+          Padding(padding: const EdgeInsets.only(top: 4), child: Text(waitText, key: const ValueKey('plan-refresh-wait'), style: t.caption)),
+        if (_refreshError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(_refreshError!, key: const ValueKey('plan-refresh-error'), style: t.small.copyWith(color: g.warning, height: 1.4)),
+          ),
       ],
     );
   }
@@ -192,10 +297,8 @@ class _PlanPageState extends State<PlanPage> {
   Widget _statusCard(BuildContext context, PlanDoc plan) {
     final g = context.g;
     final t = context.gText;
-    final now = PlanData.instance.now();
-    final stamp = plan.generatedAt == null ? '—' : DateFormat('EEE d MMM, h:mm a').format(plan.generatedAt!.toUtc().add(const Duration(hours: 5, minutes: 30)));
-    final status = planStatusText(plan, now);
-    final busy = plan.status != 'upToDate';
+    final refreshing = _refreshing || plan.status == 'updating';
+    final status = planStatusText(plan, refreshing: _refreshing);
     return AnimatedContainer(
       key: const ValueKey('plan-status'),
       duration: const Duration(milliseconds: 300),
@@ -208,22 +311,22 @@ class _PlanPageState extends State<PlanPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Last updated: $stamp', key: const ValueKey('plan-last-updated'), style: t.small),
+          Text(planLastUpdated(plan), key: const ValueKey('plan-last-updated'), style: t.small),
           const SizedBox(height: 4),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(
-                _justUpdated ? Icons.check_circle_outline : (plan.status == 'updating' ? Icons.sync : (busy ? Icons.schedule : Icons.check_circle_outline)),
+                refreshing && !_justUpdated ? Icons.sync : Icons.check_circle_outline,
                 size: 18,
-                color: busy ? g.warning : g.success,
+                color: refreshing && !_justUpdated ? g.warning : g.success,
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   _justUpdated ? 'Updated' : status,
                   key: const ValueKey('plan-status-text'),
-                  style: t.bodyStrong.copyWith(color: busy && !_justUpdated ? g.text : g.text),
+                  style: t.bodyStrong,
                 ),
               ),
             ],
@@ -233,24 +336,40 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
+  /// TODAY: the day's batch, then three sections: Follow-ups (the interactions students need), Target tasks (made by the guide's own targets)
+  /// and Other tasks (everything else for today). A section with nothing in it is left out unless Home sent the guide to it.
   List<Widget> _todayBody(BuildContext context, PlanDoc plan) {
     final t = context.gText;
     final items = plan.todayItems;
-    final students = items.where((i) => i.isInteraction).toList();
-    final others = items.where((i) => !i.isInteraction).toList();
     final date = DateTime.tryParse(plan.todayDate);
-    return [
+    final sectioned = plan.batch != null; // a HOD's summary has no batch, and no sections
+    final students = items.where((i) => i.isInteraction).length;
+    final out = <Widget>[
       GuideSectionTitle(date == null ? 'Today' : 'Today — ${DateFormat('EEEE d MMMM').format(date)}'),
       const SizedBox(height: 4),
       if (plan.batch != null) _batchCard(context, plan.batch!),
-      if (items.isEmpty)
-        GuideCard(padding: const EdgeInsets.all(16), child: Text('Nothing is planned for today. A quiet day — enjoy it.', key: const ValueKey('plan-today-empty'), style: t.small))
-      else ...[
-        for (var i = 0; i < students.length; i++) GuideEntry(index: i, child: _itemCard(context, students[i], total: plan.batch?.members ?? students.length)),
-        if (others.isNotEmpty && students.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 14), child: GuideSectionTitle('Also today', key: const ValueKey('plan-also-today'))),
-        for (var i = 0; i < others.length; i++) GuideEntry(index: students.length + i, child: _itemCard(context, others[i])),
-      ],
     ];
+    if (items.isEmpty) {
+      out.add(GuideCard(padding: const EdgeInsets.all(16), child: Text('Nothing is planned for today. A quiet day — enjoy it.', key: const ValueKey('plan-today-empty'), style: t.small)));
+      return out;
+    }
+    var n = 0;
+    Widget card(PlanItem it) => GuideEntry(index: n++, child: _itemCard(context, it, total: it.isInteraction ? (plan.batch?.members ?? students) : 0));
+    if (!sectioned) return [...out, for (final it in items) card(it)];
+    for (final g in PlanGroup.values) {
+      final mine = items.where((i) => i.group == g).toList();
+      if (mine.isEmpty && widget.section != g) continue;
+      out.add(Padding(
+        key: _sectionKeys[g],
+        padding: const EdgeInsets.only(top: 14),
+        child: GuideSectionTitle(kPlanGroupTitles[g]!, key: ValueKey('plan-section-${_sectionKey(g)}')),
+      ));
+      if (mine.isEmpty) out.add(Padding(padding: const EdgeInsets.only(top: 6), child: Text('Nothing here today.', key: ValueKey('plan-section-empty-${_sectionKey(g)}'), style: t.small)));
+      for (final it in mine) {
+        out.add(card(it));
+      }
+    }
+    return out;
   }
 
   /// The day's batch: how many students, how many done and left, "Next 4 ready", and the guide's own number a day.
@@ -458,7 +577,7 @@ class _PlanPageState extends State<PlanPage> {
             key: ValueKey('plan-topics-${it.id}'),
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (it.briefSource == 'fallback') Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('A plain version: the AI had not written these yet.', style: t.caption)),
+              if (it.briefSource == 'fallback') Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('A plain version: tap Refresh for the AI-written questions.', style: t.caption)),
               for (final topic in it.topics) ...[
                 const SizedBox(height: 6),
                 Text(topic.label, style: t.bodyStrong),

@@ -121,7 +121,6 @@ void main() {
       const allowed = <String, String>{
         'lib/widgets/GuideGate.dart': "Google's brand blue on the sign-in button",
         'lib/utils/Snackbar.dart': 'the snackbar shadow; its tones map the colour a caller passes',
-        'lib/Pages/WeeklyPlanning.dart': 'a hairline on the navy hero panel',
         'lib/widgets/GuideBoard.dart': 'the lifted shadow of a card being dragged (same in both themes, per the design)',
         'lib/widgets/GuideTiles.dart': 'the progress track on a pastel tile (same in both themes, per the design)',
       };

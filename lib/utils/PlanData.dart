@@ -5,7 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'GuideDb.dart';
 
 /// The Today / This week plans, as the server wrote them (`guidePlans/{adminId}`, worked out by `functions/guidePlans.js`; the app only
-/// reads it). Read-only everywhere: a plan changes only through the assistant, or when its data changes.
+/// reads it). Read-only everywhere: a plan changes when its data changes (a tick, a finished item, a new doubt: free and automatic), through the
+/// assistant, or when the guide taps Refresh (the AI writes the questions again; also every morning at 6 AM and on Monday morning).
 
 /// One topic of an interaction: the reason it was triggered, and the questions to ask and suggestions to make around it (written by the
 /// AI, or the plain version when it could not be reached).
@@ -61,6 +62,7 @@ class PlanItem {
     this.encourage = const [],
     this.reportBack = '',
     this.carriedOver = false,
+    this.reasonSources = const [],
     this.batchPosition,
     this.batchRound,
     this.inToday = false,
@@ -101,6 +103,9 @@ class PlanItem {
   final List<String> encourage;
   final String reportBack;
   final bool carriedOver;
+
+  /// An interaction's reasons by source (`target`, `sadhana`, `doubts`, `concern`, `surrender` ...): what decides its group on Home.
+  final List<String> reasonSources;
   final int? batchPosition;
   final int? batchRound;
 
@@ -109,6 +114,16 @@ class PlanItem {
   final List<String> topicLabels;
 
   bool get isInteraction => kind == 'interaction';
+
+  /// Which of Today's three groups this is in: a follow-up (an interaction a student needs), a target task (made by the guide's own targets:
+  /// an interaction there only because of a target, or a phase / deadline of one), or any other task. Each item is in exactly one.
+  PlanGroup get group {
+    if (kind == 'targetDeadline' || kind == 'phaseTask') return PlanGroup.target;
+    if (isInteraction) {
+      return reasonSources.isNotEmpty && reasonSources.every((s) => s == 'target') ? PlanGroup.target : PlanGroup.followUp;
+    }
+    return PlanGroup.other;
+  }
 
   static PlanItem fromMap(Map<String, dynamic> m) => PlanItem(
         id: (m['id'] ?? '').toString(),
@@ -132,11 +147,46 @@ class PlanItem {
         encourage: PlanTopic._strings(m['encourage']),
         reportBack: (m['reportBack'] ?? '').toString(),
         carriedOver: m['carriedOver'] == true,
+        reasonSources: [
+          if (m['reasons'] is List)
+            for (final r in (m['reasons'] as List))
+              if (r is Map && (r['source'] ?? '').toString().isNotEmpty) r['source'].toString(),
+        ],
         batchPosition: m['batch'] is Map && (m['batch'] as Map)['position'] is num ? ((m['batch'] as Map)['position'] as num).round() : null,
         batchRound: m['batch'] is Map && (m['batch'] as Map)['round'] is num ? ((m['batch'] as Map)['round'] as num).round() : null,
         inToday: m['inToday'] == true,
         topicLabels: PlanTopic._strings(m['topicLabels']),
       );
+}
+
+/// The three groups of Today's tasks (the Home widget's three counts, and the sections of the Plan page's Today tab).
+enum PlanGroup { followUp, target, other }
+
+/// How many of Today's tasks are still to do in each group. Done ones (ticked) are not counted: the number goes down as the guide works.
+class PlanCounts {
+  const PlanCounts({required this.followUps, required this.targets, required this.others});
+
+  final int followUps;
+  final int targets;
+  final int others;
+
+  int get total => followUps + targets + others;
+
+  static PlanCounts of(PlanDoc? plan) {
+    var f = 0, t = 0, o = 0;
+    for (final it in plan?.todayItems ?? const <PlanItem>[]) {
+      if (it.done) continue;
+      switch (it.group) {
+        case PlanGroup.followUp:
+          f++;
+        case PlanGroup.target:
+          t++;
+        case PlanGroup.other:
+          o++;
+      }
+    }
+    return PlanCounts(followUps: f, targets: t, others: o);
+  }
 }
 
 /// Today's batch of students: the guide's number a day, which round of the day it is, how many are done and left. [nextReady]: a refill just
@@ -205,7 +255,8 @@ class PlanSection {
   final List<PlanItem> items;
 }
 
-/// Where the plan stands: `upToDate`, `pending` (changes found, waiting for [PlanDoc.pendingRunAt]) or `updating`.
+/// Where the plan stands: `upToDate`, or `updating` (an AI run is writing it: the guide's Refresh, the 6 AM run). [refreshedAt] / [refreshedBy]
+/// say when and by what the AI last rewrote it (`refresh`, `daily`, `weekly`); the free updates in between do not change them.
 class PlanDoc {
   const PlanDoc({
     required this.todayDate,
@@ -215,8 +266,9 @@ class PlanDoc {
     required this.sections,
     required this.generatedAt,
     required this.status,
-    required this.pendingRunAt,
     required this.changedAt,
+    this.refreshedAt,
+    this.refreshedBy = '',
     this.batch,
     this.progress,
   });
@@ -228,8 +280,9 @@ class PlanDoc {
   final List<PlanSection> sections;
   final DateTime? generatedAt;
   final String status;
-  final DateTime? pendingRunAt;
   final DateTime? changedAt;
+  final DateTime? refreshedAt;
+  final String refreshedBy;
 
   /// Today's batch (null for a HOD's plan, which has none) and the week's progress.
   final PlanBatch? batch;
@@ -258,8 +311,9 @@ class PlanDoc {
       ],
       generatedAt: _ts(d['generatedAt']),
       status: (d['status'] ?? 'upToDate').toString(),
-      pendingRunAt: _ts(d['pendingRunAt']),
       changedAt: _ts(d['changedAt']),
+      refreshedAt: _ts(d['refreshedAt']),
+      refreshedBy: (d['refreshedBy'] ?? '').toString(),
       batch: PlanBatch.fromMap(today['batch']),
       progress: PlanProgress.fromMap(week['progress']),
     );

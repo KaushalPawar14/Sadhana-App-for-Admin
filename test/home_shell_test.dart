@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/Home/FolkBoysEntry.dart';
 import 'package:folk_guide_app/Pages/GoalSetup.dart';
+import 'package:folk_guide_app/Pages/PlanPage.dart';
+import 'package:folk_guide_app/agent/AgentRoutes.dart';
 import 'package:folk_guide_app/theme/GuideTheme.dart';
 import 'package:folk_guide_app/theme/ThemeModeController.dart';
 import 'package:folk_guide_app/utils/AdminProfile.dart';
@@ -12,38 +15,31 @@ import 'package:folk_guide_app/utils/CalendarQueries.dart';
 import 'package:folk_guide_app/utils/ColorProvider.dart';
 import 'package:folk_guide_app/utils/GoalCompoundQueries.dart';
 import 'package:folk_guide_app/utils/HomeData.dart';
+import 'package:folk_guide_app/utils/SeenMarkers.dart';
 import 'package:folk_guide_app/utils/UnseenAggregates.dart';
-import 'package:folk_guide_app/utils/WeekSummary.dart';
+import 'package:folk_guide_app/utils/PlanData.dart';
 import 'package:folk_guide_app/widgets/GuideNav.dart';
 import 'package:folk_guide_app/widgets/GuideTiles.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/guide_test_support.dart';
+import 'support/plan_fakes.dart';
 
 /// Plain values instead of Firestore.
 class FakeHomeData implements HomeData {
   FakeHomeData({
     this.targetList = const [],
-    this.followUpList = const [],
-    this.overdueList = const [],
     this.students = 20,
     this.eventList = const [],
   });
 
   final List<CompoundTarget> targetList;
-  final List<FollowUpItem> followUpList;
-  final List<OverdueItem> overdueList;
   final int students;
   final List<CalendarEvent> eventList;
 
   @override
   Stream<List<CompoundTarget>> targets(String guide) => Stream.value(targetList);
-  @override
-  Stream<List<FollowUpItem>> followUps(({DateTime start, DateTime end}) week) =>
-      Stream.value(followUpList);
-  @override
-  Stream<List<OverdueItem>> overdue() => Stream.value(overdueList);
   @override
   Stream<int> studentCount() => Stream.value(students);
   @override
@@ -94,16 +90,25 @@ class _App extends StatelessWidget {
   }
 }
 
-Future<ThemeModeController> pumpShell(WidgetTester tester, {HomeData? data, AdminProfile? me}) async {
+/// Today's plan as the tests of Home see it: 3 follow-ups (one of them done), 1 target task, 2 other tasks; the week: 6 to contact, 2 done.
+PlanDoc homePlan() => planDoc(left: 6, done: 2, today: [
+      interactionItem('u1', 'Ravi', ['sadhana']),
+      interactionItem('u2', 'Amit', ['doubts', 'target']),
+      interactionItem('u3', 'Sohan', ['concern'], done: true),
+      interactionItem('u4', 'Mohit', ['target']),
+      const PlanItem(id: 'meeting:u9:2026-10-30', kind: 'meeting', title: 'Meet Harsh', forYou: true),
+      const PlanItem(id: 'calendar::x', kind: 'calendar', title: 'Midterm'),
+    ]);
+
+Future<ThemeModeController> pumpShell(WidgetTester tester, {HomeData? data, AdminProfile? me, PlanDoc? plan, PlanData? planData}) async {
   SharedPreferences.setMockInitialValues({'selected_guide': 'G'});
   final controller = await ThemeModeController.load();
   AdminProfileProvider.instance.debugSet(me ?? profile('G', 'GUIDE'));
   HomeData.instance = data ??
       FakeHomeData(
         targetList: [target('chanting', 10, 16, 1, 8), target('books', 10, 5, 2, 8)],
-        followUpList: [(student: 'A', when: DateTime.now(), action: 'x')],
-        overdueList: [(student: 'B', days: 3), (student: 'C', days: 1)],
       );
+  PlanData.instance = planData ?? FixedPlanData(plan ?? homePlan());
   await tester.pumpWidget(
     MultiProvider(
       providers: [
@@ -127,6 +132,7 @@ void main() {
   tearDownAll(() {
     UnseenAggregates.debugDisable = false;
     HomeData.instance = const FirestoreHomeData();
+    PlanData.instance = const FirestorePlanData();
     AdminProfileProvider.instance.debugSet(null);
   });
 
@@ -136,13 +142,14 @@ void main() {
     expect(find.text('G Prabhu'), findsOneWidget, reason: 'the guide name, not a mockup name');
     expect(find.text('Hare Krishna,'), findsOneWidget);
     expect(find.text('THIS WEEK'), findsOneWidget);
-    // Targets 2, Follow-ups 1, Overdue 2
+    // THIS WEEK: Targets 2, To contact 6, Done 2
     final hero = find.byType(GuideHeroCard);
-    expect(find.descendant(of: hero, matching: find.text('2')), findsNWidgets(2), reason: 'targets and overdue');
-    expect(find.descendant(of: hero, matching: find.text('1')), findsOneWidget);
+    expect(find.descendant(of: hero, matching: find.text('2')), findsNWidgets(2), reason: 'targets and done');
+    expect(find.descendant(of: hero, matching: find.text('6')), findsOneWidget);
     expect(find.text('Targets'), findsOneWidget, reason: 'the hero stat; the target cards are gone');
-    expect(find.text('Follow-ups'), findsOneWidget);
-    expect(find.text('Overdue'), findsOneWidget);
+    expect(find.text('To contact'), findsOneWidget);
+    expect(find.text('Overdue'), findsNothing, reason: 'the old hero stats are gone');
+    expect(find.text('Follow-ups'), findsOneWidget, reason: "today's tasks: the count's name, once");
     expect(find.textContaining('Phase 1 of 8'), findsNothing, reason: 'no per-target cards: status and progress are viewed in the assistant');
     expect(find.textContaining('10 students at 16'), findsNothing);
     expect(find.text("You haven't set your FOLK-residents target"), findsOneWidget, reason: 'chanting and books are set; the third is asked for');
@@ -154,6 +161,154 @@ void main() {
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Analysis'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  group('THE TWO PLAN WIDGETS on Home: THIS WEEK (navy) and TODAY\'S TASKS', () {
+    setUp(() => SeenMarkers.debugDisable = true);
+    tearDown(() => SeenMarkers.debugDisable = false);
+
+    String count(WidgetTester tester, String key) => tester.widget<Text>(find.byKey(ValueKey('home-today-$key-count'))).data!;
+
+    testWidgets('both are there, in this order: THIS WEEK first, TODAY\'S TASKS under it; the old hero stats (Overdue ...) are gone', (tester) async {
+      phone(tester, 1.0);
+      await pumpShell(tester);
+      expect(find.byKey(const ValueKey('home-this-week')), findsOneWidget);
+      expect(find.byKey(const ValueKey('home-today-tasks')), findsOneWidget);
+      expect(find.text("TODAY'S TASKS"), findsOneWidget);
+      expect(find.text('THIS WEEK'), findsOneWidget);
+      expect(tester.getTopLeft(find.byKey(const ValueKey('home-this-week'))).dy, lessThan(tester.getTopLeft(find.byKey(const ValueKey('home-today-tasks'))).dy));
+      expect(tester.getTopLeft(find.byKey(const ValueKey('home-today-tasks'))).dy, lessThan(tester.getTopLeft(find.byKey(const ValueKey('home-targets-card'))).dy));
+      expect(find.text('Overdue'), findsNothing);
+    });
+
+    testWidgets('THE THREE COUNTS: follow-ups (interactions students need), target tasks (made by the targets), other tasks; a done one is not counted', (tester) async {
+      phone(tester, 1.0);
+      await pumpShell(tester);
+      // homePlan(): Ravi (sadhana), Amit (doubts + target: a follow-up), Sohan (concern, DONE), Mohit (target only), a meeting, a calendar item
+      expect(count(tester, 'followups'), '2');
+      expect(count(tester, 'targets'), '1');
+      expect(count(tester, 'other'), '2');
+      expect(find.text('Follow-ups'), findsOneWidget);
+      expect(find.text('Target tasks'), findsOneWidget);
+      expect(find.text('Other tasks'), findsOneWidget);
+    });
+
+    testWidgets('the counts are LIVE: a tick lowers one, a new item raises one, with nothing to reopen', (tester) async {
+      phone(tester, 1.0);
+      final live = ManualPlanData();
+      await pumpShell(tester, planData: live);
+      expect(count(tester, 'followups'), '–', reason: 'a dash until the plan is there');
+      live.c.add(homePlan());
+      await tester.pump();
+      await tester.pump();
+      expect(count(tester, 'followups'), '2');
+      // Ravi is ticked, a new doubt shows up in Other tasks, a new target task appears
+      live.c.add(planDoc(left: 5, done: 3, today: [
+        interactionItem('u1', 'Ravi', ['sadhana'], done: true),
+        interactionItem('u2', 'Amit', ['doubts', 'target']),
+        interactionItem('u4', 'Mohit', ['target']),
+        interactionItem('u5', 'Hari', ['target']),
+        const PlanItem(id: 'doubts::x', kind: 'doubtsToAnswer', title: '1 doubt waiting'),
+        const PlanItem(id: 'meeting:u9:2026-10-30', kind: 'meeting', title: 'Meet Harsh', forYou: true),
+        const PlanItem(id: 'calendar::x', kind: 'calendar', title: 'Midterm'),
+      ]));
+      await tester.pump();
+      await tester.pump();
+      expect(count(tester, 'followups'), '1');
+      expect(count(tester, 'targets'), '2');
+      expect(count(tester, 'other'), '3');
+      expect(tester.binding.transientCallbackCount, 0, reason: 'a live update replays nothing');
+    });
+
+    testWidgets('a quiet day shows 0 0 0, not blanks', (tester) async {
+      phone(tester, 1.0);
+      await pumpShell(tester, plan: planDoc());
+      expect([count(tester, 'followups'), count(tester, 'targets'), count(tester, 'other')], ['0', '0', '0']);
+    });
+
+    testWidgets('THIS WEEK opens the Plan page on its This week tab', (tester) async {
+      phone(tester, 1.0);
+      await pumpShell(tester);
+      await tester.tap(find.byKey(const ValueKey('home-this-week')));
+      await tester.pumpAndSettle();
+      final page = tester.widget<PlanPage>(find.byType(PlanPage));
+      expect(page.initialWeek, isTrue);
+      expect(page.section, isNull);
+      expect(find.textContaining('Hare Krishna Gopal!'), findsOneWidget, reason: 'the This week tab is showing');
+    });
+
+    testWidgets("TODAY'S TASKS (the card) opens the Plan page on the Today tab", (tester) async {
+      phone(tester, 1.0);
+      await pumpShell(tester);
+      await tester.tap(find.text("TODAY'S TASKS"));
+      await tester.pumpAndSettle();
+      final page = tester.widget<PlanPage>(find.byType(PlanPage));
+      expect(page.initialWeek, isFalse);
+      expect(page.section, isNull);
+      expect(find.textContaining('Today — Friday 30 October'), findsOneWidget);
+    });
+
+    for (final e in {'followups': PlanGroup.followUp, 'targets': PlanGroup.target, 'other': PlanGroup.other}.entries) {
+      testWidgets('tapping the ${e.key} count opens Today at that section', (tester) async {
+        phone(tester, 1.0);
+        await pumpShell(tester);
+        await tester.tap(find.byKey(ValueKey('home-today-${e.key}')));
+        await tester.pumpAndSettle();
+        final page = tester.widget<PlanPage>(find.byType(PlanPage));
+        expect(page.section, e.value);
+        expect(page.initialWeek, isFalse);
+        expect(find.byKey(ValueKey('plan-section-${e.key}')), findsOneWidget);
+      });
+    }
+
+    testWidgets('THE OLD WEEKLY PLANNING PAGE IS GONE: no file, no agent route, no helper', (tester) async {
+      expect(File('lib/Pages/WeeklyPlanning.dart').existsSync(), isFalse);
+      expect(File('lib/utils/WeekData.dart').existsSync(), isFalse);
+      expect(kAgentRoutes.containsKey('week_planning'), isFalse);
+      expect(kAgentRoutes.containsKey('plan'), isTrue, reason: 'the assistant\'s Plan page is the one place');
+      final home = File('lib/Home/FolkBoysEntry.dart').readAsStringSync();
+      expect(home.contains('WeeklyPlanning'), isFalse);
+    });
+
+    testWidgets('a failed plan: the cards say so with Retry (never a blank), and the rest of Home is there', (tester) async {
+      phone(tester, 1.0, size: const Size(360, 1800));
+      final live = ManualPlanData();
+      await pumpShell(tester, planData: live);
+      live.c.addError('boom');
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.textContaining("Could not load today's tasks"), findsOneWidget);
+      expect(find.textContaining('boom'), findsNothing);
+      expect(find.text('FOLK Boys Board'), findsOneWidget);
+    });
+
+    for (final wide in [false, true]) {
+      for (final dark in [false, true]) {
+        for (final scale in kScales) {
+          testWidgets('${wide ? 'website 1280' : 'phone 360'}, ${dark ? 'dark' : 'light'}, text scale $scale: compact, nothing overflows, each count is a 48 dp target', (tester) async {
+            phone(tester, scale, size: wide ? const Size(1280, 900) : const Size(360, 800));
+            await pumpShell(tester);
+            if (dark) {
+              tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+              addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+              await tester.pump();
+            }
+            expect(tester.takeException(), isNull);
+            final week = tester.getRect(find.byKey(const ValueKey('home-this-week')));
+            final today = tester.getRect(find.byKey(const ValueKey('home-today-tasks')));
+            expect(today.width, closeTo(week.width, 0.5), reason: 'same width, one column');
+            if (wide) expect(today.width, lessThan(700), reason: 'a compact column on a wide screen');
+            for (final k in ['followups', 'targets', 'other']) {
+              final r = tester.getRect(find.byKey(ValueKey('home-today-$k')));
+              expect(r.height, greaterThanOrEqualTo(48), reason: k);
+              expect(today.contains(r.topLeft) && today.contains(r.bottomRight), isTrue, reason: '$k inside the card');
+            }
+            if (scale == 1.0 && !wide) expect(today.height, lessThan(130), reason: 'compact on a phone');
+          });
+        }
+      }
+    }
   });
 
   testWidgets('the Calendar tile names what is happening or coming up', (tester) async {

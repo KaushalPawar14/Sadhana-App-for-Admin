@@ -16,6 +16,9 @@ const double kDesktopMin = 900;
 const double kContentMaxWidth = 1080;
 
 /// A square tile (Home, Tasks ...) never grows past this on a wide window: it flows into a grid with several per row instead of stretching.
+/// A Home plan widget (THIS WEEK, TODAY'S TASKS) on a wide window: compact, like the tiles under it, never stretched across the column.
+const double kHomeCardMaxWidth = 560;
+
 const double kTileMaxSide = 220;
 
 /// A navigation card in a wide grid (Analysis, Tasks ...): about three per row of the content column.

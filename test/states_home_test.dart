@@ -9,18 +9,19 @@ import 'package:folk_guide_app/utils/CalendarQueries.dart';
 import 'package:folk_guide_app/utils/GoalCompoundQueries.dart';
 import 'package:folk_guide_app/utils/HomeData.dart';
 import 'package:folk_guide_app/utils/UnseenAggregates.dart';
-import 'package:folk_guide_app/utils/WeekSummary.dart';
+import 'package:folk_guide_app/utils/PlanData.dart';
 import 'package:folk_guide_app/widgets/GuideGhost.dart';
 import 'package:folk_guide_app/widgets/GuideTiles.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/guide_test_support.dart';
+import 'support/plan_fakes.dart';
 
 /// Home data that the test releases by hand.
 class ManualHomeData implements HomeData {
   final targetsC = StreamController<List<CompoundTarget>>.broadcast();
-  final followC = StreamController<List<FollowUpItem>>.broadcast();
-  final overdueC = StreamController<List<OverdueItem>>.broadcast();
+  /// The guide's plan (Home's two plan widgets read it); [pumpHome] and the ghost shots install it as PlanData.instance.
+  final plan = ManualPlanData();
   final countC = StreamController<int>.broadcast();
   Completer<List<CalendarEvent>> eventsC = Completer();
   int targetListens = 0;
@@ -31,10 +32,6 @@ class ManualHomeData implements HomeData {
     return targetsC.stream;
   }
 
-  @override
-  Stream<List<FollowUpItem>> followUps(({DateTime start, DateTime end}) week) => followC.stream;
-  @override
-  Stream<List<OverdueItem>> overdue() => overdueC.stream;
   @override
   Stream<int> studentCount() => countC.stream;
   @override
@@ -75,6 +72,7 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({'selected_guide': 'G'}));
   tearDown(() {
     HomeData.instance = const FirestoreHomeData();
+    PlanData.instance = const FirestorePlanData();
     AdminProfileProvider.instance.debugSet(null);
   });
 
@@ -83,6 +81,7 @@ void main() {
     AdminProfileProvider.instance.debugSet(me());
     final data = ManualHomeData();
     HomeData.instance = data;
+    PlanData.instance = data.plan;
     await tester.pumpWidget(guideHost(
       const Scaffold(body: FolkBoysEntryScreen(selectedGuide: 'G')),
       dark: dark,
@@ -93,13 +92,13 @@ void main() {
     return data;
   }
 
-  testWidgets('loading: ghost hero, one targets card and two tiles, no spinner, one shared clock', (tester) async {
+  testWidgets('loading: ghost hero, the tasks card, one targets card and two tiles, no spinner, one shared clock', (tester) async {
     await pumpHome(tester);
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.byKey(const ValueKey('content')), findsNothing);
-    // hero + the targets card + 2 tiles
-    expect(find.byType(GuideGhostOf), findsNWidgets(4));
+    // hero + today's tasks + the targets card + 2 tiles
+    expect(find.byType(GuideGhostOf), findsNWidgets(5));
     expect(GhostClock.instance.running, isTrue);
     // The real top bar and greeting stay real.
     expect(find.text('G Prabhu'), findsOneWidget);
@@ -112,13 +111,13 @@ void main() {
       final data = await pumpHome(tester, scale: scale);
       await tester.pump(const Duration(milliseconds: 900)); // entry settled
       final heroGhost = tester.getRect(find.byType(GuideGhostOf).first);
-      final tilesGhost = tester.getRect(find.byType(GuideGhostOf).at(2));
+      final todayGhost = tester.getRect(find.byType(GuideGhostOf).at(1));
+      final tilesGhost = tester.getRect(find.byType(GuideGhostOf).at(3));
       final listHeight = tester.getSize(find.byType(ListView)).height;
       final scrollExtent = tester.state<ScrollableState>(find.byType(Scrollable)).position.maxScrollExtent;
 
       data.targetsC.add([target('chanting', 2), target('books', 3)]);
-      data.followC.add([(student: 'A', when: DateTime.now(), action: 'x')]);
-      data.overdueC.add([(student: 'B', days: 3)]);
+      data.plan.c.add(planDoc(left: 3, today: [interactionItem('u1', 'Ravi', ['sadhana'])]));
       data.countC.add(20);
       data.eventsC.complete(<CalendarEvent>[]);
       await tester.pump();
@@ -130,6 +129,7 @@ void main() {
       }
       await tester.pumpAndSettle();
       expect(tester.getRect(loaded(GuideHeroCard)), heroGhost);
+      expect(tester.getRect(find.byKey(const ValueKey('home-today-tasks'))), todayGhost, reason: "today's tasks card has the ghost's size and place");
       // the tiles keep their size; they sit under the targets card, whose height depends on the message it shows (one line when both
       // targets are set, two when one is missing), so their top may differ from the ghost's by that difference only
       final tiles = tester.getRect(find.descendant(of: find.byKey(const ValueKey('tiles')), matching: find.byType(GuideGradientTile)).first);
@@ -147,27 +147,26 @@ void main() {
   testWidgets('the hero numbers count up once; a live update does not replay it', (tester) async {
     final data = await pumpHome(tester);
     data.targetsC.add([target('chanting', 2)]);
-    data.followC.add([]);
-    data.overdueC.add([(student: 'B', days: 3), (student: 'C', days: 1), (student: 'D', days: 2)]);
+    data.plan.c.add(planDoc(left: 7));
     data.countC.add(5);
     data.eventsC.complete(<CalendarEvent>[]);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 260));
     await tester.pump(const Duration(milliseconds: 100));
     await tester.pumpAndSettle();
-    expect(find.text('3'), findsWidgets);
+    expect(find.text('7'), findsWidgets);
     // A live update: replaced at once, nothing animating.
-    data.overdueC.add([(student: 'B', days: 3)]);
+    data.plan.c.add(planDoc(left: 5));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
     expect(tester.binding.transientCallbackCount, 0);
-    expect(find.text('1'), findsWidgets);
+    expect(find.text('5'), findsWidgets);
   });
 
   testWidgets('no targets: a still ghost with one friendly line and an action', (tester) async {
     final data = await pumpHome(tester);
     data.targetsC.add([]);
-    data.followC.add([]);
-    data.overdueC.add([]);
+    data.plan.c.add(planDoc());
     data.countC.add(0);
     data.eventsC.complete(<CalendarEvent>[]);
     await tester.pumpAndSettle();
@@ -190,8 +189,7 @@ void main() {
     await tester.pump();
     expect(data.targetListens, before + 1);
     data.targetsC.add([target('chanting', 1)]);
-    data.followC.add([]);
-    data.overdueC.add([]);
+    data.plan.c.add(planDoc());
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(loaded(GuideHeroCard), findsOneWidget);
@@ -202,6 +200,7 @@ void main() {
     AdminProfileProvider.instance.debugSet(me());
     final data = ManualHomeData();
     HomeData.instance = data;
+    PlanData.instance = data.plan;
     await tester.pumpWidget(guideHost(const CurvedNavBar('G'), reduce: false));
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 50));
@@ -230,8 +229,7 @@ void main() {
       testWidgets('Board and Calendar tiles: equal, side by side, square (${dark ? 'dark' : 'light'}, text scale $scale)', (tester) async {
         final data = await pumpHome(tester, scale: scale, dark: dark);
         data.targetsC.add([target('chanting', 2)]);
-        data.followC.add([]);
-        data.overdueC.add([]);
+        data.plan.c.add(planDoc());
         data.countC.add(24);
         data.eventsC.complete(<CalendarEvent>[]);
         await tester.pump();
@@ -260,8 +258,7 @@ void main() {
   testWidgets('with the dot showing, the two tiles are still the same size', (tester) async {
     final data = await pumpHome(tester);
     data.targetsC.add([]);
-    data.followC.add([]);
-    data.overdueC.add([]);
+    data.plan.c.add(planDoc());
     data.countC.add(3);
     data.eventsC.complete(<CalendarEvent>[]);
     await tester.pump();

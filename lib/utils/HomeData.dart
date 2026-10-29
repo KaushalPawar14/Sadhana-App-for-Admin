@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'CalendarQueries.dart';
 import 'GoalCompoundQueries.dart';
-import 'PlanningQueries.dart';
 import 'StudentScope.dart';
 import 'UnseenFeatureBadge.dart';
-import 'WeekSummary.dart';
 import 'GuideDb.dart';
 
 /// The data behind the Home dashboard. Each member is an existing source the app
@@ -18,12 +16,6 @@ abstract class HomeData {
 
   /// This guide's compound targets (`guideTargets/{guide}/targets`).
   Stream<List<CompoundTarget>> targets(String guide);
-
-  /// Follow-ups due in [week] (from `interactionLogs`).
-  Stream<List<FollowUpItem>> followUps(({DateTime start, DateTime end}) week);
-
-  /// Overdue meetings (from `associations`).
-  Stream<List<OverdueItem>> overdue();
 
   /// How many students the signed-in admin's roster has.
   Stream<int> studentCount();
@@ -42,14 +34,6 @@ class FirestoreHomeData implements HomeData {
   @override
   Stream<List<CompoundTarget>> targets(String guide) =>
       compoundTargetsStream(guide);
-
-  @override
-  Stream<List<FollowUpItem>> followUps(({DateTime start, DateTime end}) week) =>
-      scopedInteractionLogsStream().map((snap) => followUpsDue(snap.docs, week));
-
-  @override
-  Stream<List<OverdueItem>> overdue() =>
-      scopedAssociationsStream().map((snap) => overdueAssociations(snap.docs));
 
   @override
   Stream<int> studentCount() =>

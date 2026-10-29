@@ -198,6 +198,14 @@ class HierarchyApi {
   /// The guide's number of students in a day's batch (1 to 12); the server works the plan out again at once.
   Future<void> savePlanSettings({required int dailyBatch}) => _call('savePlanSettings', {'dailyBatch': dailyBatch});
 
+  /// The Refresh button at the top of the Plan page: the AI writes the questions again and the plan is worked out afresh. A guide refreshes only
+  /// his own plan; a HOD may refresh every guide's ([all]). Once per 2 minutes: then `ok` is false and `retryInSec` says how long is left.
+  /// While the month's AI budget is used up the server refuses with its own clear sentence (a [HierarchyException]).
+  Future<({bool ok, int retryInSec})> refreshPlan({bool all = false}) async {
+    final r = await _call('refreshPlan', {if (all) 'all': true});
+    return (ok: r['ok'] != false, retryInSec: r['retryInSec'] is num ? (r['retryInSec'] as num).round() : 0);
+  }
+
   /// The monthly budget (₹) of the guides' AI (HOD only; the server checks).
   Future<void> setAiBudget({required double monthlyInr}) => _call('setAiBudget', {'monthlyInr': monthlyInr});
 
