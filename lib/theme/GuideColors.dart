@@ -153,6 +153,14 @@ class GuideColors extends ThemeExtension<GuideColors> {
     end: Alignment.bottomRight,
     colors: [Color(0xFF1B2A4A), Color(0xFF2C4170)],
   );
+  /// TODAY'S TASKS on Home: the hero card's style in a rich DARK GREEN (the same depth, the same rings and shadow), in both themes. The same
+  /// light text (`heroText`, `heroMuted`, `heroLabel`) reads on it at 4.5:1 or better.
+  static const LinearGradient todayGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF0E3B2C), Color(0xFF1C5C42)],
+  );
+  static const Color todayShadow = Color(0x380E3B2C); // rgba(14,59,44,.22)
   static const Color heroText = Color(0xFFF4F1EA);
   static const Color heroMuted = Color(0xB8F4F1EA); // rgba(244,241,234,.72)
   static const Color heroLabel = Color(0xFFE3C071);

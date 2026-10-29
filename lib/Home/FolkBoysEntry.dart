@@ -77,6 +77,9 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
   List<CompoundTarget>? _targets;
   PlanDoc? _plan;
   bool _planLoaded = false;
+
+  /// What changed since the guide's last plan refresh that the AI has not looked at yet (the badge on both plan widgets; a tap lists them).
+  PendingChanges _pending = PendingChanges.none;
   int? _studentCount;
   List<CalendarEvent>? _events;
   final List<StreamSubscription<Object?>> _subs = [];
@@ -130,6 +133,9 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     }, onError: (_) {
       if (mounted) setState(() => _targetsFailed = true);
     }));
+    _subs.add(PlanData.instance.pending(guide).listen((p) {
+      if (mounted) setState(() => _pending = p);
+    }, onError: (_) {}));
     // the plan the server keeps for this guide: live, so the counts follow every tick and every new item
     _subs.add(PlanData.instance.plan(guide).listen((p) {
       if (mounted) {
@@ -354,6 +360,7 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
                 context,
                 MaterialPageRoute(builder: (_) => const PlanPage(initialWeek: true)),
               ),
+      footer: placeholder || _pending.count == 0 ? null : _pendingLine('week'),
       stats: [
         GuideHeroStat(placeholder ? dash : '${active.length}', 'Targets'),
         if (placeholder || progress != null) GuideHeroStat(placeholder ? dash : '${progress!.left}', 'To contact'),
@@ -365,6 +372,23 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
   /// The two plan widgets stay compact on a wide window (left-aligned, like the tiles); a phone gets the whole width.
   Widget _compact(Widget child) => Align(alignment: Alignment.centerLeft, child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: kHomeCardMaxWidth), child: child));
 
+  /// "● 3 changes the AI has not looked at yet" on a dark card: a brass badge and a short line; a tap lists them.
+  Widget _pendingLine(String id) {
+    final t = context.gText;
+    return GestureDetector(
+      key: ValueKey('home-pending-$id'),
+      behavior: HitTestBehavior.opaque,
+      onTap: () => showPendingChanges(context, _pending),
+      child: Row(
+        children: [
+          PendingBadge(count: _pending.count, onDark: true, onTap: () => showPendingChanges(context, _pending)),
+          const SizedBox(width: 8),
+          Expanded(child: Text('change${_pending.count == 1 ? '' : 's'} not in the plan yet — tap Refresh', style: t.heroCaption, maxLines: 2, overflow: TextOverflow.ellipsis)),
+        ],
+      ),
+    );
+  }
+
   void _openToday([PlanGroup? section]) => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => PlanPage(section: section)),
@@ -374,7 +398,6 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
   /// at that section.
   Widget _todayCard({bool placeholder = false}) {
     final t = context.gText;
-    final g = context.g;
     final counts = PlanCounts.of(placeholder ? null : _plan);
     Widget count(PlanGroup group, String key, String label) {
       final n = placeholder || _plan == null ? '–' : '${switch (group) { PlanGroup.followUp => counts.followUps, PlanGroup.target => counts.targets, PlanGroup.other => counts.others }}';
@@ -389,9 +412,9 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(n, key: ValueKey('home-today-$key-count'), style: t.heroNumber.copyWith(color: g.text, fontSize: 26)),
+                Text(n, key: ValueKey('home-today-$key-count'), style: t.heroNumber.copyWith(fontSize: 26)),
                 const SizedBox(height: 2),
-                Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.small),
+                Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.heroCaption),
               ],
             ),
           ),
@@ -405,15 +428,18 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
         key: const ValueKey('home-today-tasks'),
         behavior: HitTestBehavior.opaque,
         onTap: placeholder ? null : () => _openToday(),
-        child: GuideCard(
+        // the hero card's style in a rich dark green (THIS WEEK next to it stays navy), light text in both themes
+        child: GuideHeroPanel(
+          gradient: GuideColors.todayGradient,
+          shadowColor: GuideColors.todayShadow,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Expanded(child: Text("TODAY'S TASKS", style: t.heroLabel.copyWith(color: g.mutedText))),
-                  Icon(Icons.chevron_right_rounded, size: 20, color: g.mutedText),
+                  Expanded(child: Text("TODAY'S TASKS", style: t.heroLabel)),
+                  const Icon(Icons.chevron_right_rounded, size: 20, color: GuideColors.heroMuted),
                 ],
               ),
               const SizedBox(height: 8),
@@ -425,6 +451,10 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
                   count(PlanGroup.other, 'other', 'Other tasks'),
                 ],
               ),
+              if (!placeholder && _pending.count > 0) ...[
+                const SizedBox(height: 8),
+                _pendingLine('today'),
+              ],
             ],
           ),
         ),

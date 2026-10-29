@@ -24,8 +24,36 @@ enum PriorityTone { danger, warning, brass, brown }
 /// student comes back only when a NEW kind of concern appears.
 typedef PriorityFlag = ({String kind, String label, PriorityTone tone});
 
-/// A student with at least one concern, and the concerns themselves.
-typedef PriorityStudent = ({String uid, String name, List<PriorityFlag> flags});
+/// A student with at least one concern, and the concerns themselves. [percent] is his Surrender % (null: none yet), shown beside his name;
+/// [distress] / [acute]: a worrying message from his AI chat (acute: it suggested real difficulty), which keeps him at the very top.
+typedef PriorityStudent = ({String uid, String name, List<PriorityFlag> flags, int? percent, bool distress, bool acute});
+
+/// How urgent a need is (lower first), the same tiers as the server's plans: a worry, a doubt, sadhana slipping, a surrender step, a target, then
+/// those going well.
+double priorityTierOf(String key) {
+  if (key.startsWith('concern')) return 0;
+  if (key.startsWith('doubt')) return 0.5;
+  if (key == 'good_sadhana') return 5;
+  if (key.startsWith('surrender')) return 3;
+  if (key.startsWith('target')) return 4;
+  return 2;
+}
+
+/// THE ORDER of the Interactions needed list (and of every list of students to interact with): SURRENDER %, HIGHEST FIRST. A worrying / distress
+/// message from the AI chat stays at the very top whatever the % (an acute one first); equal % -> the more urgent reasons first, then more
+/// reasons, then the name. Mirrors `functions/dailyBatch.js` `byImportance`.
+int comparePriority(PriorityStudent a, PriorityStudent b) {
+  if (a.distress != b.distress) return a.distress ? -1 : 1;
+  if (a.distress && a.acute != b.acute) return a.acute ? -1 : 1;
+  int pct(PriorityStudent s) => s.percent ?? -1;
+  double tier(PriorityStudent s) => s.flags.map((f) => priorityTierOf(f.kind)).fold<double>(9, (m, t) => t < m ? t : m);
+  final byPct = pct(b).compareTo(pct(a));
+  if (byPct != 0) return byPct;
+  final byTier = tier(a).compareTo(tier(b));
+  if (byTier != 0) return byTier;
+  final byCount = b.flags.length.compareTo(a.flags.length);
+  return byCount != 0 ? byCount : a.name.compareTo(b.name);
+}
 
 /// What the priority list came to for the signed-in admin.
 class PriorityList {
@@ -120,14 +148,21 @@ Future<PriorityList> loadPriorityList() async {
       continue;
     }
 
-    result.add((uid: student.uid, name: student.name, flags: flags));
+    final needList = [for (final n in (doc['needs'] as List? ?? const [])) if (n is Map) Map<String, dynamic>.from(n)];
+    final concerns = needList.where((n) => (n['source'] ?? '') == 'concern').toList();
+    final p = doc['percent'];
+    result.add((
+      uid: student.uid,
+      name: student.name,
+      flags: flags,
+      percent: p is num ? p.round() : null,
+      distress: concerns.isNotEmpty,
+      acute: concerns.any((n) => n['facts'] is Map && (n['facts'] as Map)['acute'] == true),
+    ));
   }
 
-  // Most reasons first; alphabetical within the same count so the order is stable rather than arbitrary.
-  result.sort((a, b) {
-    final byCount = b.flags.length.compareTo(a.flags.length);
-    return byCount != 0 ? byCount : a.name.compareTo(b.name);
-  });
+  // Surrender %, highest first (a worry stays on top; ties: the more urgent reasons, then the name).
+  result.sort(comparePriority);
 
   return PriorityList(
     students: result,

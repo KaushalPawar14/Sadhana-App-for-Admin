@@ -25,6 +25,9 @@ final DateTime _now = DateTime.utc(2026, 10, 30, 4, 30);
 class _FakePlanData extends PlanData {
   _FakePlanData();
   final controller = StreamController<PlanDoc?>.broadcast();
+  final pendingC = StreamController<PendingChanges>.broadcast();
+  @override
+  Stream<PendingChanges> pending(String adminId) => pendingC.stream;
   DateTime clock = _now;
   @override
   Stream<PlanDoc?> plan(String adminId) => controller.stream;
@@ -317,6 +320,94 @@ void main() {
     testWidgets('a plan that is the same as before does not flash "Updated" on first show', (tester) async {
       await _open(tester);
       expect(_statusText(tester), 'Up to date');
+    });
+  });
+
+  group('THE PENDING-CHANGES BADGE on the Refresh button', () {
+    Future<void> emitPending(WidgetTester tester, _FakePlanData data, PendingChanges p) async {
+      data.pendingC.add(p);
+      await tester.pump();
+      await tester.pump();
+    }
+
+    String badge(WidgetTester tester) => tester.widget<Text>(find.descendant(of: find.byKey(const ValueKey('plan-refresh-badge')), matching: find.byType(Text))).data!;
+
+    testWidgets('no pending changes: "✓ Up to date" and no badge', (tester) async {
+      final data = await _open(tester);
+      await emitPending(tester, data, PendingChanges.none);
+      expect(find.byKey(const ValueKey('plan-pending-ok')), findsOneWidget);
+      expect(find.text('✓ Up to date'), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-refresh-badge')), findsNothing);
+      expect(find.byKey(const ValueKey('plan-pending-line')), findsNothing);
+    });
+
+    testWidgets('the badge shows the count; the line says so; a tap lists them newest first', (tester) async {
+      final data = await _open(tester);
+      await emitPending(tester, data, pendingOf(['interaction with Amit', 'interaction with Ravi']));
+      expect(badge(tester), '2');
+      expect(find.byKey(const ValueKey('plan-pending-ok')), findsNothing);
+      expect(find.text('2 changes the AI has not looked at yet — tap to see'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('plan-refresh-badge')));
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(find.byKey(const ValueKey('pending-summary'))).data, '2 changes: interaction with Ravi; interaction with Amit');
+      expect(find.text('2 changes since the last refresh'), findsOneWidget);
+      expect(find.text('• interaction with Ravi'), findsOneWidget);
+      expect(find.text('• interaction with Amit'), findsOneWidget);
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      // the line opens the same list; one change reads in the singular
+      await emitPending(tester, data, pendingOf(['doubt from Amit Shah']));
+      expect(find.text('1 change the AI has not looked at yet — tap to see'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('plan-pending-line')));
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(find.byKey(const ValueKey('pending-summary'))).data, '1 change: doubt from Amit Shah');
+    });
+
+    testWidgets('it counts live, also during the 2-minute wait after a refresh; the refresh clears it', (tester) async {
+      HierarchyApi.useForTests((name, data) async => {'ok': true});
+      final data = await _open(tester);
+      await emitPending(tester, data, pendingOf(['interaction with Ravi']));
+      expect(badge(tester), '1');
+      await tester.tap(find.byKey(const ValueKey('plan-refresh')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('plan-refresh-wait')), findsOneWidget, reason: 'the 2-minute wait is running');
+      // the server cleared the list when the AI considered it ...
+      await emitPending(tester, data, PendingChanges.none);
+      expect(find.text('✓ Up to date'), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-refresh-badge')), findsNothing);
+      // ... and a new change during the wait shows at once, the button still waiting
+      await emitPending(tester, data, pendingOf(['book change: Ravi Kumar, Gita']));
+      expect(badge(tester), '1');
+      expect(find.byKey(const ValueKey('plan-refresh-wait')), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a long list still fits: 120 changes read as 99+; no overflow in light, dark or large text', (tester) async {
+      for (final dark in [false, true]) {
+        for (final scale in kScales) {
+          final data = await _open(tester, scale: scale, dark: dark);
+          await emitPending(tester, data, pendingOf([for (var i = 0; i < 120; i++) 'interaction with Student $i']));
+          expect(badge(tester), '99+');
+          await tester.tap(find.byKey(const ValueKey('plan-refresh-badge')));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: '$dark $scale');
+          await tester.tap(find.text('Close'));
+          await tester.pumpAndSettle();
+          await tester.pumpWidget(const SizedBox());
+        }
+      }
+    });
+
+    test('PendingChanges: the newest first, the summary line, empty records ignored', () {
+      final p = PendingChanges.fromDocs([
+        {'type': 'interaction', 'text': 'older', 'at': Timestamp.fromDate(DateTime(2026, 10, 30, 9))},
+        {'type': 'doubt', 'text': 'newer', 'at': Timestamp.fromDate(DateTime(2026, 10, 30, 11))},
+        {'type': 'x', 'text': ''},
+      ]);
+      expect(p.count, 2);
+      expect(p.summary, '2 changes: newer; older');
+      expect(PendingChanges.none.summary, '');
     });
   });
 

@@ -307,26 +307,31 @@ class GuidePastelRow extends StatelessWidget {
 }
 
 /// The navy panel of the hero card (the same in both themes) with the three thin
-/// concentric rings top-right. [padding] is inside the panel.
+/// concentric rings top-right. [padding] is inside the panel. [gradient] / [shadowColor] give the same panel another colour (TODAY'S TASKS is
+/// the dark green one).
 class GuideHeroPanel extends StatelessWidget {
   const GuideHeroPanel({
     super.key,
     required this.child,
     this.padding = const EdgeInsets.symmetric(vertical: 18),
+    this.gradient = GuideColors.heroGradient,
+    this.shadowColor = GuideColors.heroShadow,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
+  final Gradient gradient;
+  final Color shadowColor;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        gradient: GuideColors.heroGradient,
+        gradient: gradient,
         borderRadius: BorderRadius.circular(GuideShape.heroRadius),
-        boxShadow: const [
-          BoxShadow(color: GuideColors.heroShadow, blurRadius: 28, offset: Offset(0, 14)),
+        boxShadow: [
+          BoxShadow(color: shadowColor, blurRadius: 28, offset: const Offset(0, 14)),
         ],
       ),
       child: ClipRRect(

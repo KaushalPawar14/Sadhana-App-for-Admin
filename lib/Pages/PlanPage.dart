@@ -11,7 +11,9 @@ import '../utils/PlanData.dart';
 import '../utils/Pronouns.dart';
 import '../utils/SeenMarkers.dart';
 import '../widgets/GuideAppBar.dart';
+import '../theme/GuideColors.dart';
 import '../widgets/GuideButtons.dart';
+import '../widgets/GuideDialog.dart';
 import '../widgets/GuideEntry.dart';
 import '../widgets/GuideStates.dart';
 import '../widgets/GuideSurface.dart';
@@ -93,6 +95,8 @@ class _PlanPageState extends State<PlanPage> {
   bool _justUpdated = false;
   DateTime? _lastGenerated;
   StreamSubscription<PlanDoc?>? _sub;
+  StreamSubscription<PendingChanges>? _pendingSub;
+  PendingChanges _pending = PendingChanges.none;
   Timer? _highlight;
 
   /// Refresh: busy (own / everyone's), the seconds left of the 2-minute wait for each, and the server's refusal in words (the budget).
@@ -114,6 +118,10 @@ class _PlanPageState extends State<PlanPage> {
     super.initState();
     // opening the plan clears its orange dot
     if (_me.isNotEmpty) SeenMarkers.markSeen(_me, 'plan').catchError((_) {});
+    // the live badge: what changed since the last refresh that the AI has not considered yet (counted by the server, no AI)
+    _pendingSub = PlanData.instance.pending(_me).listen((p) {
+      if (mounted) setState(() => _pending = p);
+    }, onError: (_) {});
     _sub = PlanData.instance.plan(_me).listen(
       (p) {
         if (!mounted) return;
@@ -159,6 +167,7 @@ class _PlanPageState extends State<PlanPage> {
   @override
   void dispose() {
     _sub?.cancel();
+    _pendingSub?.cancel();
     _highlight?.cancel();
     _waitTimer?.cancel();
     super.dispose();
@@ -268,12 +277,24 @@ class _PlanPageState extends State<PlanPage> {
           runSpacing: 6,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            GuidePrimaryButton(
-              key: const ValueKey('plan-refresh'),
-              label: ownBusy ? 'Refreshing…' : 'Refresh',
-              icon: Icons.refresh_rounded,
-              expand: false,
-              onPressed: _refreshing || _waitOwn > 0 ? null : () => _refresh(),
+            // the live badge on the button: how many changes the AI has not considered yet
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                GuidePrimaryButton(
+                  key: const ValueKey('plan-refresh'),
+                  label: ownBusy ? 'Refreshing…' : 'Refresh',
+                  icon: Icons.refresh_rounded,
+                  expand: false,
+                  onPressed: _refreshing || _waitOwn > 0 ? null : () => _refresh(),
+                ),
+                if (_pending.count > 0)
+                  Positioned(
+                    top: -6,
+                    right: -6,
+                    child: PendingBadge(key: const ValueKey('plan-refresh-badge'), count: _pending.count, onTap: () => showPendingChanges(context, _pending)),
+                  ),
+              ],
             ),
             if (hod)
               GuideSecondaryButton(
@@ -283,6 +304,24 @@ class _PlanPageState extends State<PlanPage> {
                 onPressed: _refreshing || _waitAll > 0 ? null : () => _refresh(all: true),
               ),
           ],
+        ),
+        // pending changes (tap for the list), or "✓ Up to date"
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: _pending.count == 0
+              ? Text('✓ Up to date', key: const ValueKey('plan-pending-ok'), style: t.small.copyWith(color: g.success, fontWeight: FontWeight.w600))
+              : GestureDetector(
+                  key: const ValueKey('plan-pending-line'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => showPendingChanges(context, _pending),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('${_pending.count} change${_pending.count == 1 ? '' : 's'} the AI has not looked at yet — tap to see', style: t.small.copyWith(color: g.warning, fontWeight: FontWeight.w700, height: 1.3)),
+                    ),
+                  ),
+                ),
         ),
         if (waitText != null && wait > 0 && _refreshError == null)
           Padding(padding: const EdgeInsets.only(top: 4), child: Text(waitText, key: const ValueKey('plan-refresh-wait'), style: t.caption)),
@@ -501,7 +540,8 @@ class _PlanPageState extends State<PlanPage> {
                   Icon(Icons.check_circle, key: ValueKey('plan-done-${it.id}'), size: 18, color: g.success),
                   const SizedBox(width: 6),
                 ],
-                Expanded(child: Text(it.title, style: t.cardTitleSmall)),
+                // the student's Surrender % beside his name (the list is in that order: highest first, a worry on top)
+                Expanded(child: Text(it.isInteraction && it.percent != null ? '${it.title} · ${it.percent}%' : it.title, key: ValueKey('plan-title-${it.id}'), style: t.cardTitleSmall)),
               ],
             ),
             if (inBatch) ...[
@@ -605,6 +645,64 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 }
+
+/// The small round badge with the number of pending changes (the Refresh button, the Home plan widgets). Tapping it lists them.
+class PendingBadge extends StatelessWidget {
+  const PendingBadge({super.key, required this.count, this.onTap, this.onDark = false});
+
+  final int count;
+  final VoidCallback? onTap;
+
+  /// On the dark hero cards: a brass pill with dark text; elsewhere the warning colour with white text.
+  final bool onDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.g;
+    final bg = onDark ? GuideColors.heroLabel : g.warning;
+    final fg = onDark ? GuideColors.onPastel : Colors.white;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Semantics(
+        label: '$count pending change${count == 1 ? '' : 's'}',
+        child: Container(
+          constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(11), border: Border.all(color: g.pageBackground, width: 1.5)),
+          child: Text(count > 99 ? '99+' : '$count', style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w800, height: 1.1)),
+        ),
+      ),
+    );
+  }
+}
+
+/// The short list a tap on the badge shows: "2 changes: interaction with Ravi; interaction with Amit", one line each. They are cleared when the plan
+/// is refreshed (the AI then considers them).
+Future<void> showPendingChanges(BuildContext context, PendingChanges pending) => showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        final t = dialogContext.gText;
+        return GuideDialog(
+          title: Text('${pending.count} change${pending.count == 1 ? '' : 's'} since the last refresh', key: const ValueKey('pending-title')),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(pending.summary, key: const ValueKey('pending-summary'), style: t.small.copyWith(height: 1.4)),
+                const SizedBox(height: 10),
+                for (final c in pending.items) Padding(padding: const EdgeInsets.only(bottom: 4), child: Text('• ${c.text}', style: t.body.copyWith(fontSize: 14, height: 1.35))),
+                const SizedBox(height: 8),
+                Text('Tap Refresh and the AI will take them into account.', style: t.caption),
+              ],
+            ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close'))],
+        );
+      },
+    );
 
 /// TODAY | THIS WEEK, a two-way toggle under the app bar: each side a 48 dp target, the chosen one in the assistant's sky blue.
 class _PlanToggle extends StatelessWidget implements PreferredSizeWidget {

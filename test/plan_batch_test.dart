@@ -121,6 +121,28 @@ void main() {
     expect(find.byKey(const ValueKey('plan-report-interaction:u4:2026-10-28')), findsNothing);
   });
 
+  testWidgets("THE ORDER: each student's Surrender % is beside his name, in the order the server sent (highest first), on Today and in the week's list", (tester) async {
+    PlanItem withPct(String uid, String name, int pos, int pct) => PlanItem(
+          id: 'interaction:$uid:2026-10-28', kind: 'interaction', title: 'Interaction with $name', studentName: name, forYou: true, percent: pct, batchPosition: pos, batchRound: 1,
+          topics: const [PlanTopic(key: 'sadhana_slip', label: 'His sadhana', reason: 'x', questions: ['Why?'], suggestions: [])],
+        );
+    await _open(tester, doc: _plan(today: [withPct('u1', 'Top', 1, 91), withPct('u2', 'High', 2, 88), withPct('u3', 'Mid', 3, 47)], sections: [
+      PlanSection(id: 'interactions', title: 'Students to contact — planned days', items: [
+        PlanItem(id: 'interaction:u1:2026-10-28', kind: 'interaction', title: 'Interaction with Top', percent: 91, scheduledFor: '2026-10-30'),
+        PlanItem(id: 'interaction:u4:2026-10-28', kind: 'interaction', title: 'Interaction with Low', percent: 12, scheduledFor: '2026-10-31'),
+      ]),
+    ]));
+    expect(find.text('Interaction with Top · 91%'), findsOneWidget);
+    expect(find.text('Interaction with High · 88%'), findsOneWidget);
+    double y(String t) => tester.getTopLeft(find.text(t)).dy;
+    expect(y('Interaction with Top · 91%'), lessThan(y('Interaction with High · 88%')));
+    expect(y('Interaction with High · 88%'), lessThan(y('Interaction with Mid · 47%')));
+    await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
+    await tester.pumpAndSettle();
+    expect(find.text('Interaction with Low · 12%'), findsOneWidget);
+    expect(find.text('Interaction with Top · 91%'), findsOneWidget);
+  });
+
   testWidgets('a student the guide has reported to the AI shows a tick; "Carried over" marks one from an earlier day', (tester) async {
     await _open(tester);
     expect(find.byKey(const ValueKey('plan-done-interaction:u4:2026-10-28')), findsOneWidget);

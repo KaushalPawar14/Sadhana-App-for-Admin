@@ -7,6 +7,8 @@ import 'package:folk_guide_app/Home/FolkBoysEntry.dart';
 import 'package:folk_guide_app/Pages/GoalSetup.dart';
 import 'package:folk_guide_app/Pages/PlanPage.dart';
 import 'package:folk_guide_app/agent/AgentRoutes.dart';
+import 'package:folk_guide_app/theme/AgentLook.dart' show contrastRatio;
+import 'package:folk_guide_app/theme/GuideColors.dart';
 import 'package:folk_guide_app/theme/GuideTheme.dart';
 import 'package:folk_guide_app/theme/ThemeModeController.dart';
 import 'package:folk_guide_app/utils/AdminProfile.dart';
@@ -261,6 +263,44 @@ void main() {
       });
     }
 
+    testWidgets('PENDING CHANGES: both widgets show the live badge and a line; a tap lists them; none pending: no badge', (tester) async {
+      phone(tester, 1.0);
+      await pumpShell(tester, planData: FixedPlanData(homePlan(), changes: pendingOf(['interaction with Amit', 'interaction with Ravi'])));
+      for (final id in ['week', 'today']) {
+        expect(find.byKey(ValueKey('home-pending-$id')), findsOneWidget, reason: id);
+      }
+      expect(find.text('changes not in the plan yet — tap Refresh'), findsNWidgets(2));
+      await tester.tap(find.byKey(const ValueKey('home-pending-today')));
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(find.byKey(const ValueKey('pending-summary'))).data, '2 changes: interaction with Ravi; interaction with Amit');
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox());
+      await pumpShell(tester);
+      expect(find.byKey(const ValueKey('home-pending-week')), findsNothing);
+      expect(find.byKey(const ValueKey('home-pending-today')), findsNothing);
+    });
+
+    testWidgets('the pending line is live on Home: a change arrives, then the refresh clears it', (tester) async {
+      phone(tester, 1.0);
+      final live = ManualPlanData();
+      await pumpShell(tester, planData: live);
+      live.c.add(homePlan());
+      live.pendingC.add(PendingChanges.none);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('home-pending-today')), findsNothing);
+      live.pendingC.add(pendingOf(["worry from Ravi's AI chat"]));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('home-pending-today')), findsOneWidget);
+      expect(find.text('change not in the plan yet — tap Refresh'), findsNWidgets(2));
+      live.pendingC.add(PendingChanges.none);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('home-pending-today')), findsNothing);
+    });
+
     testWidgets('THE OLD WEEKLY PLANNING PAGE IS GONE: no file, no agent route, no helper', (tester) async {
       expect(File('lib/Pages/WeeklyPlanning.dart').existsSync(), isFalse);
       expect(File('lib/utils/WeekData.dart').existsSync(), isFalse);
@@ -307,6 +347,73 @@ void main() {
             if (scale == 1.0 && !wide) expect(today.height, lessThan(130), reason: 'compact on a phone');
           });
         }
+      }
+    }
+  });
+
+  group("TODAY'S TASKS IN DARK GREEN (THIS WEEK stays navy)", () {
+    /// the gradient painted behind a Home card (the hero panel's own decoration)
+    LinearGradient? gradientOf(WidgetTester tester, String key) {
+      for (final c in tester.widgetList<Container>(find.descendant(of: find.byKey(ValueKey(key)), matching: find.byType(Container)))) {
+        final d = c.decoration;
+        if (d is BoxDecoration && d.gradient is LinearGradient) return d.gradient as LinearGradient;
+      }
+      return null;
+    }
+
+    Color blend(Color fg) => Color.alphaBlend(fg, GuideColors.todayGradient.colors.last);
+
+    test('the colours: a dark green gradient with the same depth as the navy one, and light text that reads on both ends at 4.5:1 or better', () {
+      final navy = GuideColors.heroGradient.colors;
+      final green = GuideColors.todayGradient.colors;
+      expect(green.length, navy.length, reason: 'the same two-stop depth');
+      expect(green.first, const Color(0xFF0E3B2C));
+      expect(green.last, const Color(0xFF1C5C42));
+      expect(GuideColors.todayGradient.begin, GuideColors.heroGradient.begin);
+      expect(GuideColors.todayGradient.end, GuideColors.heroGradient.end);
+      // it is green, not navy: the green channel leads at both ends
+      for (final c in green) {
+        expect(c.g, greaterThan(c.b));
+        expect(c.g, greaterThan(c.r));
+      }
+      for (final bg in green) {
+        // the text colours the card uses, over each end of the gradient (the muted one is translucent: blended over the background first)
+        expect(contrastRatio(GuideColors.heroText, bg), greaterThanOrEqualTo(4.5), reason: 'the numbers on ${bg.toARGB32().toRadixString(16)}');
+        expect(contrastRatio(Color.alphaBlend(GuideColors.heroMuted, bg), bg), greaterThanOrEqualTo(4.5), reason: 'the captions');
+        expect(contrastRatio(GuideColors.heroLabel, bg), greaterThanOrEqualTo(4.5), reason: "the TODAY'S TASKS label");
+        expect(contrastRatio(blend(GuideColors.heroMuted), bg), greaterThanOrEqualTo(4.5), reason: 'the chevron');
+      }
+    });
+
+    for (final wide in [false, true]) {
+      for (final dark in [false, true]) {
+        testWidgets('${wide ? 'website 1280' : 'phone 360'}, ${dark ? 'dark' : 'light'}: TODAY\'S TASKS is the dark green gradient, THIS WEEK is still navy, the text is the light hero text', (tester) async {
+          phone(tester, 1.0, size: wide ? const Size(1280, 900) : const Size(360, 800));
+          await pumpShell(tester);
+          if (dark) {
+            tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+            addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+            await tester.pump();
+          }
+          final week = gradientOf(tester, 'home-this-week')!;
+          final today = gradientOf(tester, 'home-today-tasks')!;
+          expect(week.colors, GuideColors.heroGradient.colors, reason: 'THIS WEEK stays navy blue');
+          expect(today.colors, GuideColors.todayGradient.colors, reason: "TODAY'S TASKS is dark green");
+          Color colorOf(Finder f) => tester.widget<Text>(f).style!.color!;
+          final card = find.byKey(const ValueKey('home-today-tasks'));
+          expect(colorOf(find.descendant(of: card, matching: find.text("TODAY'S TASKS"))), GuideColors.heroLabel);
+          for (final k in ['followups', 'targets', 'other']) {
+            expect(colorOf(find.byKey(ValueKey('home-today-$k-count'))), GuideColors.heroText, reason: k);
+          }
+          expect(colorOf(find.descendant(of: card, matching: find.text('Follow-ups'))), GuideColors.heroMuted);
+          // measured on what is rendered: every text of the card against the lighter end of the gradient
+          for (final tx in tester.widgetList<Text>(find.descendant(of: card, matching: find.byType(Text)))) {
+            final c = tx.style?.color;
+            if (c == null) continue;
+            expect(contrastRatio(Color.alphaBlend(c, GuideColors.todayGradient.colors.last), GuideColors.todayGradient.colors.last), greaterThanOrEqualTo(4.5), reason: tx.data);
+          }
+          expect(tester.takeException(), isNull);
+        });
       }
     }
   });

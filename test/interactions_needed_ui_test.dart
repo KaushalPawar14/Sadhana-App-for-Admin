@@ -290,7 +290,7 @@ void main() {
   group('an interaction in the plan: one card per student, a section for each topic', () {
     testWidgets('Today shows ONE card for Harsh with every reason; the questions open with a tap, a section per topic', (tester) async {
       await _openPlan(tester);
-      expect(find.text('Interaction with Harsh'), findsOneWidget);
+      expect(find.text('Interaction with Harsh · 42%'), findsOneWidget);
       expect(find.textContaining('Why: Sounded discouraged or worried'), findsOneWidget);
       expect(find.text('Surrender 42%'), findsOneWidget);
       expect(find.text('Questions and suggestions (3 topics)'), findsOneWidget);

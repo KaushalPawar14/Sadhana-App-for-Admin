@@ -653,7 +653,8 @@ Future<AgentResult> listPriority(Map<String, dynamic> a, AgentEnv env) async {
     {
       'count': p.students.length,
       'students': [
-        for (final s in p.students) {'name': s.name, 'concerns': [for (final f in s.flags) f.label]},
+        // in the order of the screen: Surrender %, highest first (a worry on top)
+        for (final s in p.students) {'name': s.name, if (s.percent != null) 'surrenderPercent': s.percent, 'concerns': [for (final f in s.flags) f.label]},
       ],
       'removedByYou': p.hiddenCount,
     },

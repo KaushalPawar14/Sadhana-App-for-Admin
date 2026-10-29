@@ -5,7 +5,11 @@ import 'package:folk_guide_app/utils/PlanData.dart';
 /// A plan whose documents the test releases by hand (Home listens to the guide's plan for its two plan widgets).
 class ManualPlanData extends PlanData {
   final c = StreamController<PlanDoc?>.broadcast();
+  final pendingC = StreamController<PendingChanges>.broadcast();
   int listens = 0;
+
+  @override
+  Stream<PendingChanges> pending(String adminId) => pendingC.stream;
 
   @override
   Stream<PlanDoc?> plan(String adminId) {
@@ -19,8 +23,12 @@ class ManualPlanData extends PlanData {
 
 /// A plan that is already there.
 class FixedPlanData extends PlanData {
-  FixedPlanData(this.doc);
+  FixedPlanData(this.doc, {this.changes = PendingChanges.none});
   final PlanDoc? doc;
+  final PendingChanges changes;
+
+  @override
+  Stream<PendingChanges> pending(String adminId) => Stream.value(changes);
 
   @override
   Stream<PlanDoc?> plan(String adminId) => Stream.value(doc);
@@ -28,6 +36,11 @@ class FixedPlanData extends PlanData {
   @override
   DateTime now() => DateTime.utc(2026, 10, 30, 4, 30);
 }
+
+/// Pending changes as the server's records would give them (the newest is the LAST in [texts]).
+PendingChanges pendingOf(List<String> texts) => PendingChanges([
+      for (var i = 0; i < texts.length; i++) PendingChange(type: 'interaction', text: texts[i], at: DateTime(2026, 10, 30, 10, i)),
+    ].reversed.toList());
 
 /// One interaction in today's batch, [sources] being the sources of its reasons (`sadhana`, `doubts`, `target` ...).
 PlanItem interactionItem(String uid, String name, List<String> sources, {bool done = false}) => PlanItem(

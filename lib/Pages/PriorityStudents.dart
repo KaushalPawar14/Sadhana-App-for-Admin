@@ -19,9 +19,10 @@ import '../widgets/GuideWait.dart';
 ///
 /// **A transparent checklist, never a score.** Each student shows the actual
 /// reasons they surfaced, in plain words. Nothing here computes a blended
-/// priority number, a rating, a tier or a percentage — the ordering is simply
-/// *how many separate concerns* a student has, and every one of them is named
-/// on the card so the guide can disagree with any of them.
+/// priority number, a rating or a tier. The list is ordered by the student's
+/// SURRENDER % (highest first; a worrying message from his AI chat stays on top),
+/// which is shown beside his name, and every concern is named on the card so
+/// the guide can disagree with any of them.
 ///
 /// LIT axes are checked and displayed **independently** (Section 8): L, I and
 /// T each produce their own line, and are never summed or averaged with each
@@ -379,7 +380,8 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
                 ),
               Expanded(
                 child: Text(
-                  item.name,
+                  item.percent == null ? item.name : '${item.name} · ${item.percent}%',
+                  key: ValueKey('priority-name-${item.uid}'),
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,

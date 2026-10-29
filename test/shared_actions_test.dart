@@ -468,6 +468,9 @@ void main() {
           uid: uid,
           name: 'Student $uid',
           flags: [for (final k in kinds) (kind: k, label: k, tone: PriorityTone.warning)],
+          percent: null,
+          distress: false,
+          acute: false,
         );
 
     test('removing remembers the kinds shown, one record per student, under this admin', () async {

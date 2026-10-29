@@ -325,6 +325,37 @@ class PlanDoc {
   }
 }
 
+/// One change since the guide's last plan refresh that the AI has not considered yet ("interaction with Ravi").
+class PendingChange {
+  const PendingChange({required this.type, required this.text, this.at});
+
+  final String type;
+  final String text;
+  final DateTime? at;
+}
+
+/// What is pending for one guide (`planChanges/{adminId}/items`, written by the server for THAT guide's own students, cleared when the AI
+/// rewrites his plan): the number on the Refresh badge, and the list a tap shows.
+class PendingChanges {
+  const PendingChanges(this.items);
+
+  static const PendingChanges none = PendingChanges([]);
+
+  final List<PendingChange> items;
+  int get count => items.length;
+
+  /// "2 changes: interaction with Ravi; interaction with Amit" (the newest first).
+  String get summary => count == 0 ? '' : '$count change${count == 1 ? '' : 's'}: ${items.map((c) => c.text).join('; ')}';
+
+  static PendingChanges fromDocs(Iterable<Map<String, dynamic>> docs) {
+    final list = [
+      for (final d in docs)
+        if ((d['text'] ?? '').toString().isNotEmpty) PendingChange(type: (d['type'] ?? '').toString(), text: (d['text'] ?? '').toString(), at: d['at'] is Timestamp ? (d['at'] as Timestamp).toDate() : null),
+    ]..sort((a, b) => (b.at ?? DateTime(2000)).compareTo(a.at ?? DateTime(2000)));
+    return PendingChanges(list);
+  }
+}
+
 /// What the Plan page and the dots read, behind one interface (tests hand in a fake).
 abstract class PlanData {
   const PlanData();
@@ -333,6 +364,9 @@ abstract class PlanData {
 
   /// The admin's plan, live; null until the server has written one.
   Stream<PlanDoc?> plan(String adminId);
+
+  /// The changes since the admin's last plan refresh that the AI has not considered yet, live (no AI cost: counted by the server as they happen).
+  Stream<PendingChanges> pending(String adminId) => Stream.value(PendingChanges.none);
 
   /// The moment the admin last looked at the plan page.
   DateTime now() => DateTime.now();
@@ -346,4 +380,12 @@ class FirestorePlanData extends PlanData {
         final d = s.data();
         return s.exists && d != null ? PlanDoc.fromMap(d) : null;
       });
+
+  @override
+  Stream<PendingChanges> pending(String adminId) => GuideDb.instance
+      .collection('planChanges')
+      .doc(adminId)
+      .collection('items')
+      .snapshots()
+      .map((s) => PendingChanges.fromDocs(s.docs.map((d) => d.data())));
 }
