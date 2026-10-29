@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/Pages/AgentLogPage.dart';
 import 'package:folk_guide_app/Pages/AgentPage.dart';
-import 'package:folk_guide_app/Pages/HolisticSuggestion.dart';
 import 'package:folk_guide_app/Pages/InteractionLogger.dart';
 import 'package:folk_guide_app/Services/HierarchyApi.dart';
 import 'package:folk_guide_app/Services/VoiceRecorder.dart';
@@ -248,35 +247,6 @@ void main() {
     });
   });
 
-  // ------------------------------------------------------------------------------------------ suggestions
-  group("a student's AI suggestions", () {
-    for (final scale in kScales) {
-      for (final dark in [false, true]) {
-        testWidgets('show bold and lists, never symbols, at text ${scale}x, ${dark ? 'dark' : 'light'}', (tester) async {
-          final db = await prepareApp(tester);
-          await db.collection('holisticSuggestions').doc('s1').set({
-            'suggestions': [
-              {'action': 'Invite him to the **Sunday** programme', 'why': 'He has *not* met anyone in **three weeks**:\n- no interactions\n- no meetings', 'next': 'Ask him on **Friday** for 5 pm'},
-              {'action': '## Assign book 2', 'why': 'Book 1 was done in `May`', 'next': '1. Hand it over\n2. Note it down'},
-            ],
-          });
-          await pumpScreen(
-            tester,
-            const Scaffold(body: SingleChildScrollView(child: HolisticSuggestionSection(studentUid: 's1', studentName: 'Arjun Kumar'))),
-            scale: scale,
-            dark: dark,
-          );
-          await letDataArrive(tester);
-          expectNoMarks(tester, where: 'the suggestions');
-          expect(drawnBold(tester, 'Sunday'), isTrue);
-          expect(drawnBold(tester, 'three weeks'), isTrue);
-          expect(find.textContaining('Assign book 2'), findsOneWidget);
-          expectNoOverflow(tester);
-        });
-      }
-    }
-  });
-
   // ------------------------------------------------------------------------------------------ interactions
   group("an interaction's analysis", () {
     Future<String> seed(FakeFirebaseFirestore db) async {
@@ -334,7 +304,6 @@ void main() {
     const sites = <String, List<String>>{
       'lib/Pages/AgentPage.dart': ['AiText(e.text, selectable: true', 'AiText(l.value', 'AiText(a.title', 'AiText(line,', "AiText(result.\$2"],
       'lib/Pages/AgentLogPage.dart': ["AiText((a['title']", "AiText((d['note'])"],
-      'lib/Pages/HolisticSuggestion.dart': ['AiText(\n                s.action', 'AiText(\n                  s.why', 'AiText(\n                      s.next'],
       'lib/Pages/InteractionLogger.dart': ['AiText(action', 'AiText(\n                        reasoning', 'plainAiText((value ?? \'\').toString())'],
       'lib/Pages/AssociationManager.dart': ['AiText(body, maxLines: 2'],
       'lib/Pages/WeeklyPlanning.dart': ['AiText(item.action'],

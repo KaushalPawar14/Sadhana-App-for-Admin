@@ -161,6 +161,13 @@ class HierarchyApi {
     return (r['message'] ?? 'Done.').toString();
   }
 
+  /// What the guide told the assistant about a student: a note ([kind] `note`, with [text]), or whether he could ever come to FOLK
+  /// (`not_folk` / `folk_open`). The server remembers it for the plans, adds a line to his history, and regenerates the plan at once.
+  Future<String> studentGuideNote({required String studentUid, required String kind, String? text}) async {
+    final r = await _call('studentGuideNote', {'studentUid': studentUid, 'kind': kind, if (text != null && text.trim().isNotEmpty) 'text': text});
+    return (r['message'] ?? 'Done.').toString();
+  }
+
   Future<void> setTeamGuide(String id, String teamGuide) =>
       _call('setTeamGuide', {'id': id, 'teamGuide': teamGuide});
 
@@ -198,11 +205,6 @@ class HierarchyApi {
 
   /// New suggestions for a student, made now by the server (OpenAI) and stored for the profile to read.
   /// Returns how many; throws [HierarchyException] with a message that is safe to show the guide.
-  Future<int> generateStudentSuggestions(String studentUid) async {
-    final r = await _call('generateStudentSuggestions', {'studentUid': studentUid});
-    final n = r['count'];
-    return n is num ? n.toInt() : 0;
-  }
 
   /// Runs the AI analysis again over an interaction whose original notes are still stored; the
   /// server saves the result.

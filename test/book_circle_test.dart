@@ -7,11 +7,12 @@ import 'package:folk_guide_app/utils/BoardData.dart';
 import 'package:folk_guide_app/utils/BookProgressData.dart';
 import 'package:folk_guide_app/utils/GuideDb.dart';
 import 'package:folk_guide_app/utils/SeenMarkers.dart';
+import 'package:folk_guide_app/widgets/StudentBooksPanel.dart';
 
-import 'board_test.dart' show openBoard;
+import 'board_test.dart' show FakeBoardData, everyone, profile, roster;
 import 'support/guide_test_support.dart';
 
-/// Feature 2 — the checkpoint circle in every level's book list marks a book
+/// The BOOKS tab of the student page (it was the board card's dropdown): the checkpoint circle in every level's book list marks a book
 /// completed, and un-marks it again, through the SAME `booksRead` write path
 /// the old in-dialog button used.
 
@@ -29,10 +30,18 @@ Future<FakeFirebaseFirestore> openWithDb(WidgetTester tester,
     {double scale = 1.0, bool dark = false}) async {
   final db = FakeFirebaseFirestore();
   GuideDb.useForTests(db);
-  await openBoard(tester,
-      books: _books, scale: scale, dark: dark, size: const Size(420, 900));
-  await tester.tap(find.text('Arjun Kumar'));
-  await tester.pumpAndSettle();
+  await db.collection('users').doc('sg1').set({'name': 'Arjun Kumar', 'gender': 'male', 'guideId': 'G', 'teamGuide': 'G'});
+  phone(tester, scale, size: const Size(420, 900));
+  AdminProfileProvider.instance.debugSet(profile('G', 'GUIDE', admins: everyone));
+  BoardData.instance = FakeBoardData(users: roster, books: _books);
+  HierarchyApi.useForTests((name, args) async => {});
+  // the Books tab of the student page
+  await tester.pumpWidget(guideHost(
+      const Scaffold(body: SingleChildScrollView(child: StudentBooksPanel(studentUid: 'sg1', studentName: 'Arjun Kumar'))),
+      dark: dark));
+  for (var i = 0; i < 6; i++) {
+    await tester.pump(const Duration(milliseconds: 30));
+  }
   await tester.tap(find.text('Level 1'));
   await tester.pumpAndSettle();
   return db;

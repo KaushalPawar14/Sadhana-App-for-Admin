@@ -171,7 +171,7 @@ void main() {
     data.countC.add(0);
     data.eventsC.complete(<CalendarEvent>[]);
     await tester.pumpAndSettle();
-    expect(find.text("You haven't set your chanting and book-reading targets"), findsOneWidget);
+    expect(find.text("You haven't set your chanting, book-reading and FOLK-residents targets"), findsOneWidget);
     expect(find.text('Set a target'), findsOneWidget);
     expect(tester.binding.transientCallbackCount, 0, reason: 'a still ghost holds no ticker');
   });

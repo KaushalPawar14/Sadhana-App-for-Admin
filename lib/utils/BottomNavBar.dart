@@ -107,7 +107,6 @@ class _CurvedNavBarState extends State<CurvedNavBar> {
       UnseenAggregates.calendarEventsUnseen(guide),
       UnseenAggregates.studentCommentsRosterUnseen(guide, isHod),
       UnseenAggregates.bookCommitmentsRosterUnseen(guide, isHod),
-      UnseenAggregates.suggestionsReadyRosterUnseen(guide, isHod),
     ]);
   }
 

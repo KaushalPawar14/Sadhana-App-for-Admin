@@ -128,7 +128,13 @@ const String kCompoundPhaseFailed = 'failed';
 
 /// The only two metrics a compound target may carry — reuses the existing ids
 /// from `GoalMetrics.dart` (Rule 1: never invent a parallel metric-id space).
-const List<String> kCompoundMetrics = [kMetricChanting, kMetricBooks];
+const List<String> kCompoundMetrics = [kMetricChanting, kMetricBooks, kMetricFolk];
+
+/// The metrics this admin may set: the FOLK-residents target is for boys only, so a Female Enabler does not get it.
+List<String> compoundMetricsFor(AdminProfile me) => [
+      for (final m in kCompoundMetrics)
+        if (m != kMetricFolk || me.role != AdminRole.femaleEnabler) m,
+    ];
 
 bool validCompoundMetric(String metric) => kCompoundMetrics.contains(metric);
 
@@ -255,6 +261,9 @@ class CompoundTask {
   final int? toLevel;
   final List<String> studentUids;
 
+  /// True on the tasks of a FOLK-residents target (`folk: true`).
+  final bool folk;
+
   /// Books targets only, and only on plans generated after this existed —
   /// an older plan simply has none and renders exactly as it used to.
   final List<BookAction> bookActions;
@@ -267,9 +276,13 @@ class CompoundTask {
     this.toLevel,
     this.studentUids = const [],
     this.bookActions = const [],
+    this.folk = false,
   });
 
   bool get isRoster => type == kTaskTypeRoster;
+
+  /// A FOLK-residents task: a roster-style count of boys living in FOLK.
+  bool get isFolk => folk;
 
   static CompoundTask? from(Object? raw) {
     if (raw is! Map) return null;
@@ -289,6 +302,7 @@ class CompoundTask {
       bookActions: actionsRaw is List
           ? actionsRaw.map(BookAction.from).whereType<BookAction>().toList()
           : const [],
+      folk: raw['folk'] == true,
     );
   }
 
@@ -298,6 +312,7 @@ class CompoundTask {
         if (toCount != null) 'toCount': toCount,
         if (fromLevel != null) 'fromLevel': fromLevel,
         if (toLevel != null) 'toLevel': toLevel,
+        if (folk) 'folk': true,
         if (type == kTaskTypeValue) 'studentUids': studentUids,
         if (bookActions.isNotEmpty)
           'bookActions': bookActions.map((a) => a.toMap()).toList(),
@@ -324,6 +339,9 @@ class CompoundTask {
   /// `studentUids` (those students don't exist yet, see [isRoster]) — so
   /// it stays exactly as generic as before, unaffected by this change.
   String describe(String unit, [Map<String, String>? uidToName]) {
+    if (isRoster && isFolk) {
+      return 'Bring the boys living in FOLK from ${fromCount ?? 0} to ${toCount ?? 0}';
+    }
     if (isRoster) {
       return 'Bring roster from ${fromCount ?? 0} to ${toCount ?? 0} students';
     }
@@ -685,10 +703,11 @@ Future<CompoundTarget?> activeTargetOfMetric(
 }
 
 /// The sentence a guide sees when they already have one.
-String targetLimitMessage(String metric) =>
-    metric == 'books'
-        ? 'Delete your current book reading target first'
-        : 'Delete your current chanting target first';
+String targetLimitMessage(String metric) => switch (metric) {
+      'books' => 'Delete your current book reading target first',
+      'folk' => 'Delete your current FOLK-residents target first',
+      _ => 'Delete your current chanting target first',
+    };
 
 Future<String> createCompoundTargetShell({
   required String guideId,
@@ -698,7 +717,7 @@ Future<String> createCompoundTargetShell({
   required DateTime endDate,
 }) async {
   if (!validCompoundMetric(metric)) {
-    throw ArgumentError('Compound targets support only chanting or books.');
+    throw ArgumentError('Compound targets support only chanting, books or FOLK residents.');
   }
 
   // ONE active target per metric (Master 1, A1). Checked here rather than

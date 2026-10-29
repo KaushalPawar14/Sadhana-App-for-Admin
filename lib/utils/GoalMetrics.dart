@@ -99,6 +99,10 @@ class GoalMetric {
 const String kMetricBooks = 'books';
 const String kMetricChanting = 'chanting';
 
+/// The third target: how many of the guide's BOYS live in FOLK by a date. Boys only (a Female Enabler does not get it); counted
+/// automatically from each student's residence.
+const String kMetricFolk = 'folk';
+
 /// The selectable list. Service is absent by design — see the library
 /// comment. Association/expeditions are absent because they were retired
 /// entirely, not because of a capability limitation.
@@ -122,6 +126,14 @@ const List<GoalMetric> kGoalMetrics = [
     caveat: 'This counts students who have COMMITTED to this many rounds a '
         'day, not who actually chanted that much this week — a student sets '
         'their own commitment from their profile.',
+  ),
+  GoalMetric(
+    id: kMetricFolk,
+    label: 'FOLK residents',
+    unit: 'boys living in FOLK',
+    capability: MetricCapability.live,
+    caveat: "Counted automatically from each boy's residence: when a boy of yours "
+        'moves into FOLK he counts at once.',
   ),
 ];
 

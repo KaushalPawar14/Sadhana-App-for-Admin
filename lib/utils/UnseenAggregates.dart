@@ -6,7 +6,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'CalendarQueries.dart' show kScopeMandatory;
 import 'GoalCompoundQueries.dart' show kGuideTargetsCollection;
 import 'SeenMarkers.dart';
-import 'SuggestionsReady.dart';
 import 'StudentDoubts.dart';
 import 'StudentScope.dart';
 import 'GuideDb.dart';
@@ -323,52 +322,6 @@ class UnseenAggregates {
   static Stream<bool> bookCommitmentsRosterUnseen(String guide, bool isHod) =>
       bookCommitmentUnseenUids(guide).map((uids) => uids.isNotEmpty);
 
-  /// The students on this admin's board whose NEW suggestions (made by the server after an interaction was saved)
-  /// have not been opened yet — see [SuggestionsReady]. The Home tab's dot is "this is not empty"; the board entry
-  /// shows one too, and the board puts a dot on the profile icon of each of these students' cards.
-  static Stream<Set<String>> suggestionsReadyUnseenUids(String guide) {
-    if (debugDisable) return Stream.value(const <String>{});
-    late StreamController<Set<String>> controller;
-    List<QueryDocumentSnapshot<Map<String, dynamic>>>? docs;
-    Map<String, Timestamp>? cursors;
-    Set<String>? roster;
-    final subs = <StreamSubscription>[];
-
-    void emit() {
-      if (docs == null || cursors == null || roster == null) return;
-      controller.add({
-        for (final doc in docs!)
-          if (roster!.contains(doc.id) && SuggestionsReady.isUnseen(doc.data(), cursors![doc.id])) doc.id,
-      });
-    }
-
-    controller = StreamController<Set<String>>.broadcast(
-      onListen: () {
-        _boardRosterUids().then((r) {
-          roster = r;
-          emit();
-        }, onError: (_) {});
-        subs.add(_scope.historyStream('holisticSuggestions').listen((snap) {
-          docs = snap.docs;
-          emit();
-        }, onError: (_) {}));
-        subs.add(SeenMarkers.subCursors(guide, SuggestionsReady.featureKey).listen((c) {
-          cursors = c;
-          emit();
-        }, onError: (_) {}));
-      },
-      onCancel: () {
-        for (final s in subs) {
-          s.cancel();
-        }
-      },
-    );
-    return controller.stream;
-  }
-
-  /// "Is ANY student's new-suggestions label unopened" (the Home tab and the board entry).
-  static Stream<bool> suggestionsReadyRosterUnseen(String guide, bool isHod) =>
-      suggestionsReadyUnseenUids(guide).map((uids) => uids.isNotEmpty);
 
   /// Roster-wide aggregate over `studentComments/{uid}/messages` — one
   /// subcollection per student, with no `studentUid` field on the message

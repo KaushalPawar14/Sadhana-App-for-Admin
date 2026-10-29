@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/GoalCompoundQueries.dart';
 import '../utils/GoalMetrics.dart';
@@ -71,7 +72,11 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
   String? _validate() {
     if (_endDate == null) return "Choose an end date";
     final sc = int.tryParse(_studentCountController.text.trim());
-    if (sc == null || sc <= 0) return "Enter how many students, as a whole number";
+    if (sc == null || sc <= 0) {
+      return _metric == kMetricFolk ? "Enter how many of your boys should live in FOLK, as a whole number" : "Enter how many students, as a whole number";
+    }
+    // a FOLK-residents target has no per-student value: the boy either lives in FOLK or does not
+    if (_metric == kMetricFolk) return null;
     final pv = int.tryParse(_perStudentValueController.text.trim());
     if (pv == null || pv <= 0) {
       return _metric == kMetricChanting
@@ -94,7 +99,7 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
         guideId: widget.guideId,
         metric: _metric,
         studentCountGoal: int.parse(_studentCountController.text.trim()),
-        perStudentValueGoal: int.parse(_perStudentValueController.text.trim()),
+        perStudentValueGoal: _metric == kMetricFolk ? 1 : int.parse(_perStudentValueController.text.trim()),
         endDate: _endDate!,
       );
 
@@ -173,7 +178,7 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
                   children: [
                     const Text("Metric",
                         style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-                    for (final id in kCompoundMetrics)
+                    for (final id in compoundMetricsFor(AdminProfileProvider.require()))
                       RadioListTile<String>(
                         contentPadding: EdgeInsets.zero,
                         dense: true,
@@ -186,21 +191,30 @@ class _CompoundGoalSetupPageState extends State<CompoundGoalSetupPage> {
                     TextField(
                       controller: _studentCountController,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: "How many students",
-                        isDense: true,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _perStudentValueController,
-                      keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText: "At what value, each",
-                        suffixText: metricInfo?.unit,
+                        labelText: _metric == kMetricFolk ? "How many of your boys live in FOLK" : "How many students",
                         isDense: true,
                       ),
                     ),
+                    if (_metric != kMetricFolk) ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _perStudentValueController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: "At what value, each",
+                          suffixText: metricInfo?.unit,
+                          isDense: true,
+                        ),
+                      ),
+                    ] else
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          "Counted automatically from each boy's residence; the weekly plan steps up to your number by the end date.",
+                          style: TextStyle(fontSize: 12.5, height: 1.4, color: colorProvider.secondColor.withValues(alpha: .75)),
+                        ),
+                      ),
                   ],
                 ),
                 ),

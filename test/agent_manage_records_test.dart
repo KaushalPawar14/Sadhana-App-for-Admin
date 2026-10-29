@@ -85,7 +85,6 @@ void main() {
       await expectLater(kAgentWritesA['interaction_followup_remove']!({'interactionIds': ['i2']}, env()), throwsA(isA<AgentFailure>()));
       expect(((await doc('interactionLogs/i2'))!['approvedSummary'] as Map).containsKey('followUpDate'), isTrue);
     });
-  });
 
   // ------------------------------------------------------------------------------------------ comments
   group('comments', () {
@@ -156,7 +155,7 @@ void main() {
   });
 
   // ------------------------------------------------------------------------------------------ books, suggestions
-  group('book assignment and AI suggestions', () {
+  group('book assignment', () {
     test("taking back a guide's assignment removes the commitment; the student's own reading is untouched", () async {
       await db.collection('booksRead').doc('u1_level-1_book_1').set({
         'uid': 'u1', 'level': 'level-1', 'bookKey': 'book_1', 'bookTitle': 'Bhagavad-gita', 'isCurrentBook': true, 'startDate': '2026-10-01',
@@ -181,14 +180,7 @@ void main() {
       expect((await doc('booksRead/u1_level-1_book_2'))!['commitmentDate'], '2026-10-09');
       expect((await doc('booksRead/u1_level-1_book_3'))!['isCurrentBook'], isTrue);
     });
-
-    test('deleting the AI suggestions removes only that document, for a student in scope', () async {
-      await db.collection('holisticSuggestions').doc('u1').set({'studentUid': 'u1', 'suggestions': [{'action': 'x', 'why': 'y', 'next': 'z'}], ...stamp});
-      final r = await kAgentWritesA['suggestions_delete']!({'studentUid': 'u1'}, env());
-      expect(r.ok, isTrue);
-      expect(await doc('holisticSuggestions/u1'), isNull);
-      await expectLater(kAgentWritesA['suggestions_delete']!({'studentUid': 'u2'}, env()), throwsA(isA<AgentFailure>()));
-    });
+  });
   });
 
   // ------------------------------------------------------------------------------------------ competitions, trips, meetings

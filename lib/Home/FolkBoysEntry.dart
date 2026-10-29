@@ -113,7 +113,6 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
         _boardUnseen = UnseenAggregates.anyOf([
           UnseenAggregates.studentCommentsRosterUnseen(guide, isHod),
           UnseenAggregates.bookCommitmentsRosterUnseen(guide, isHod),
-          UnseenAggregates.suggestionsReadyRosterUnseen(guide, isHod),
         ]);
       }
     });
@@ -210,33 +209,41 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
           if (t.isActive && t.totalPhases > 0) t,
       ];
 
-  /// Which of the two targets (chanting rounds, book reading) the guide has already set (an active one).
-  ({bool chanting, bool books}) get _targetsSet => (
-        chanting: (_targets ?? const <CompoundTarget>[]).any((t) => t.isActive && t.metric == kMetricChanting),
-        books: (_targets ?? const <CompoundTarget>[]).any((t) => t.isActive && t.metric == kMetricBooks),
-      );
+  /// The targets this guide may have (chanting, book reading and, for everyone but a Female Enabler, FOLK residents), and which of
+  /// them are already set (an active one of that type).
+  List<String> get _targetsMissing {
+    final me = AdminProfileProvider.current;
+    final wanted = me == null ? const [kMetricChanting, kMetricBooks] : compoundMetricsFor(me);
+    final all = _targets ?? const <CompoundTarget>[];
+    return [for (final m in wanted) if (!all.any((t) => t.isActive && t.metric == m)) m];
+  }
+
+  static const _metricWords = {
+    kMetricChanting: 'chanting',
+    kMetricBooks: 'book-reading',
+    kMetricFolk: 'FOLK-residents',
+  };
 
   /// The ONE compact targets card. Targets themselves (status, phases, progress) are viewed in the AI assistant.
-  ///   none set  -> "You haven't set your chanting and book-reading targets" + Set a target
-  ///   one set   -> "You haven't set your book-reading target" (or chanting) + Set a target
-  ///   both set  -> "Both your targets are set", no button
+  ///   none set -> "You haven't set your chanting, book-reading and FOLK-residents targets" + Set a target
+  ///   some set -> "You haven't set your FOLK-residents target" (or the two missing ones) + Set a target
+  ///   all set  -> "All your targets are set", no button
+  /// (A Female Enabler has two targets: the FOLK-residents one is for boys only.)
   Widget _targetsCard({bool placeholder = false}) {
     final t = context.gText;
     final g = context.g;
-    final set = placeholder ? (chanting: false, books: false) : _targetsSet;
-    final both = set.chanting && set.books;
+    final me = AdminProfileProvider.current;
+    final wantedCount = me == null ? 2 : compoundMetricsFor(me).length;
+    final missing = placeholder ? [for (final m in kCompoundMetrics.take(wantedCount)) m] : _targetsMissing;
+    final all = missing.isEmpty;
+    final words = [for (final m in missing) _metricWords[m] ?? m];
     final String message;
-    String? missing;
-    if (both) {
-      message = 'Both your targets are set';
-    } else if (set.chanting) {
-      message = "You haven't set your book-reading target";
-      missing = kMetricBooks;
-    } else if (set.books) {
-      message = "You haven't set your chanting target";
-      missing = kMetricChanting;
+    if (all) {
+      message = wantedCount == 2 ? 'Both your targets are set' : 'All your targets are set';
+    } else if (missing.length == wantedCount) {
+      message = "You haven't set your ${_joinWords(words)} ${wantedCount == 1 ? 'target' : 'targets'}";
     } else {
-      message = "You haven't set your chanting and book-reading targets";
+      message = "You haven't set your ${_joinWords(words)} ${words.length == 1 ? 'target' : 'targets'}";
     }
     final guide = _guide;
     return GuideCard(
@@ -248,10 +255,10 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(both ? Icons.check_circle_outline_rounded : Icons.track_changes_outlined, size: 22, color: both ? g.success : g.mutedText),
+              Icon(all ? Icons.check_circle_outline_rounded : Icons.track_changes_outlined, size: 22, color: all ? g.success : g.mutedText),
               const SizedBox(width: 12),
               Expanded(
-                // two lines tall in every state (the longest message takes two), so the card is the same size as its ghost
+                // two lines tall in every state, so the card is the same size as its ghost
                 child: ConstrainedBox(
                   constraints: BoxConstraints(minHeight: 2 * MediaQuery.textScalerOf(context).scale((t.bodyStrong.fontSize ?? 15) * 1.3)),
                   child: Align(
@@ -262,14 +269,14 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
               ),
             ],
           ),
-          if (!both && !placeholder && guide != null) ...[
+          if (!all && !placeholder && guide != null) ...[
             const SizedBox(height: 10),
             GuideSecondaryButton(
               key: const ValueKey('home-set-target'),
               label: 'Set a target',
               onPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => CompoundGoalSetupPage(guideId: guide, initialMetric: missing)),
+                MaterialPageRoute(builder: (_) => CompoundGoalSetupPage(guideId: guide, initialMetric: missing.length == 1 ? missing.first : null)),
               ),
             ),
           ],
@@ -277,6 +284,9 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
       ),
     );
   }
+
+  /// "chanting, book-reading and FOLK-residents".
+  static String _joinWords(List<String> w) => w.length <= 1 ? w.join() : '${w.sublist(0, w.length - 1).join(', ')} and ${w.last}';
 
   String _boardSubtitle() {
     final n = _studentCount;

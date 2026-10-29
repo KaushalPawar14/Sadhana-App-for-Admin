@@ -164,16 +164,40 @@ void main() {
     });
   });
 
-  group('submissions and suggestions', () {
+  group('submissions and what the guide tells the assistant about a student', () {
     test('submission_remind sends one nudge for one student, a list for several', () async {
       final e = env();
       await all['submission_remind']!({'studentUids': ['u1']}, e);
       expect(calls.where((c) => c['kind'] == 'submission_nudge').single['studentUid'], 'u1');
     });
-    test('suggestions_generate asks the server, which makes and stores the suggestions', () async {
-      final r = await all['suggestions_generate']!({'studentUid': 'u1'}, env());
+    test('student_note_add: goes through the server for a student in scope, with the words as given', () async {
+      final r = await all['student_note_add']!({'studentUid': 'u1', 'text': 'keen on service, loves cooking'}, env());
       expect(r.ok, isTrue);
-      expect(calls.where((c) => c['_call'] == 'generateStudentSuggestions').single['studentUid'], 'u1');
+      final c = calls.singleWhere((c) => c['_call'] == 'studentGuideNote');
+      expect(c['studentUid'], 'u1');
+      expect(c['kind'], 'note');
+      expect(c['text'], 'keen on service, loves cooking');
+    });
+    test('student_folk_interest_set: not interested / open again, reversible, with the reason', () async {
+      final e = env();
+      await all['student_folk_interest_set']!({'studentUid': 'u1', 'interest': 'not_interested', 'reason': 'his family will not allow it'}, e);
+      expect(calls.last['kind'], 'not_folk');
+      expect(calls.last['text'], 'his family will not allow it');
+      await all['student_folk_interest_set']!({'studentUid': 'u1', 'interest': 'open'}, e);
+      expect(calls.last['kind'], 'folk_open');
+      expect(calls.last.containsKey('text'), isFalse);
+    });
+    test('a student outside the scope is not found: nothing is sent', () async {
+      await db.collection('users').doc('u_far').set({'name': 'Far', 'gender': 'female', 'guideId': 'F9', 'teamGuide': '', 'role': 'Stay at Hostel'});
+      AdminProfileProvider.instance.debugSet(AdminProfile.fromMap({
+        'id': 'M1', 'displayName': 'Madhava', 'role': 'MALE_ENABLER', 'teamGuide': 'G', 'email': 'm@x.org', 'notificationPrefs': {}, 'notificationTypes': [],
+        'admins': [{'id': 'M1', 'displayName': 'Madhava', 'role': 'MALE_ENABLER', 'teamGuide': 'G'}],
+      }));
+      final before = calls.length;
+      final e = AgentEnv(profile: AdminProfileProvider.current!, db: db, clock: () => DateTime(2026, 10, 23, 12));
+      await expectLater(all['student_note_add']!({'studentUid': 'u_far', 'text': 'x'}, e), throwsA(anything));
+      await expectLater(all['student_folk_interest_set']!({'studentUid': 'u_far', 'interest': 'not_interested'}, e), throwsA(anything));
+      expect(calls.length, before);
     });
   });
 

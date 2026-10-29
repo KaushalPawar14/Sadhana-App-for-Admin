@@ -10,7 +10,6 @@ import '../theme/GuideColors.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
-import '../actions/BookActions.dart';
 import '../utils/BoardData.dart';
 import '../utils/BoardQueries.dart';
 import '../utils/BookProgressData.dart';
@@ -28,9 +27,9 @@ import '../widgets/GuideSheet.dart';
 import '../widgets/GuideStates.dart';
 import '../widgets/GuideChips.dart';
 import '../widgets/GuideSurface.dart';
-import '../widgets/GuideTiles.dart';
 import 'Calendar.dart';
 import '../widgets/GuideDialog.dart';
+import '../widgets/StudentHistoryList.dart';
 
 /// FOLK Boys board workspace — the board CANVAS reached by tapping the one
 /// tile on `FolkBoysEntry.dart` (the middle "FOLK Boys" tab's own top-level
@@ -359,12 +358,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       (screenWidth - GuideSpace.pagePadding - GuideBoardTokens.columnGap - GuideBoardTokens.peek)
           .clamp(260.0, GuideBoardTokens.columnWidth);
 
-  /// How many books a level lists before "Show N more".
-  static const int _booksShown = 5;
-
-  /// Levels (keyed `uid_level`) whose whole book list is showing.
-  final Set<String> _allBooksShown = {};
-
   /// Where the columns were scrolled to the last time (kept for the whole app session, so even a board that
   /// is built again starts exactly where it was).
   static double _lastHorizontalOffset = 0;
@@ -488,15 +481,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   /// `"${uid}_$level"` (Phase 2, Part 3).
   final Set<String> _expandedLevels = {};
 
-  /// The book config (`books/level-1..3` + link availability) — the SAME
-  /// three documents `Pages/BooksProgress.dart` reads, loaded via the shared
-  /// `loadBooksConfig()` (see `utils/BookProgressData.dart`'s header for why
-  /// this is a shared file, not a second copy). It is identical for every
-  /// student, so it is fetched at most ONCE for this whole board (lazily, on
-  /// the first card any guide expands — see [_booksSection]), never
-  /// per-student and never for a card that stays collapsed.
-  Future<BooksConfig>? _booksConfigFuture;
-
   String get _guide => widget.selectedGuide;
 
   /// Whether the signed-in admin is a HOD — read from the loaded admin
@@ -509,10 +493,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       ValueNotifier<Map<String, Set<String>>>(const {});
   StreamSubscription<Map<String, Set<String>>>? _commitmentSub;
 
-  /// Students whose NEW suggestions (made by the server after an interaction) are not opened yet: the
-  /// profile icon of each one's card shows a dot, and the profile itself says "New suggestions ready".
-  final ValueNotifier<Set<String>> _suggestionsUnseen = ValueNotifier<Set<String>>(const {});
-  StreamSubscription<Set<String>>? _suggestionsSub;
 
   /// Books already sent to be marked seen (so a rebuild never writes twice).
   final Set<String> _sentSeen = {};
@@ -520,8 +500,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
 
   /// How long an unseen book stays marked after its row is on screen: long enough to notice.
   static const Duration _seenDelay = Duration(milliseconds: 1500);
-
-  String _bookDocId(_Boy boy, BookConfigEntry b) => '${boy.uid}_${b.level}_${b.key}';
 
   /// The book is seen now (tapped, or its row has been on screen for a moment).
   void _markBookSeen(_Boy boy, String bookDocId) {
@@ -531,25 +509,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
     BoardData.instance.markBooksSeen(_guide, boy.uid, [bookDocId]);
   }
 
-  /// These books' rows are on screen (their level is open): mark each seen shortly after.
-  void _scheduleSeen(_Boy boy, String level, Iterable<String> bookDocIds) {
-    final unseen = _commitmentUnseen.value[boy.uid];
-    if (unseen == null) return;
-    for (final id in bookDocIds) {
-      if (!unseen.contains(id) || _sentSeen.contains(id) || _seenTimers.containsKey(id)) continue;
-      _seenTimers[id] = Timer(_seenDelay, () {
-        _seenTimers.remove(id);
-        // Still on screen? (the card and the level are still open)
-        if (!mounted ||
-            !_expandedUids.contains(boy.uid) ||
-            !_expandedLevels.contains('${boy.uid}_$level')) {
-          return;
-        }
-        _markBookSeen(boy, id);
-      });
-    }
-  }
-
   @override
   void initState() {
     super.initState();
@@ -557,17 +516,11 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
       (uids) => _commitmentUnseen.value = uids,
       onError: (_) {},
     );
-    _suggestionsSub = BoardData.instance.unseenSuggestions(_guide).listen(
-      (uids) => _suggestionsUnseen.value = uids,
-      onError: (_) {},
-    );
   }
 
   @override
   void dispose() {
     _commitmentSub?.cancel();
-    _suggestionsSub?.cancel();
-    _suggestionsUnseen.dispose();
     for (final t in _seenTimers.values) {
       t.cancel();
     }
@@ -2288,13 +2241,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   }
 
   /// A book-progress line while it loads.
-  Widget _bookGhost() => const GuideGhostArea(
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 10),
-          child: GuideGhostBar(height: 14),
-        ),
-      );
-
   /// The mandatory board. Every state leaves the loading ghost: data -> the board, nothing to
   /// show -> a still ghost with a friendly line, an error or no first answer in time -> a
   /// frozen ghost with Retry.
@@ -3260,27 +3206,17 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
                               }),
                     ),
                   ),
-                  // The orange dot trail for "New suggestions ready": it ends in the profile, where the label
-                  // under the picture says so; it clears only when the guide opens those suggestions.
-                  ValueListenableBuilder<Set<String>>(
-                    valueListenable: _suggestionsUnseen,
-                    builder: (context, unseen, child) => UnseenBadge(
-                      show: unseen.contains(boy.uid),
-                      offset: const Offset(10, 10),
-                      child: child!,
-                    ),
-                    child: GuideCardIconButton(
-                      icon: Icons.person_outline_rounded,
-                      tooltip: "Profile",
-                      onTap: forceCollapsed
-                          ? null
-                          : () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => StudentProfilePage(studentUid: boy.uid),
-                                ),
+                  GuideCardIconButton(
+                    icon: Icons.person_outline_rounded,
+                    tooltip: "Profile",
+                    onTap: forceCollapsed
+                        ? null
+                        : () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => StudentProfilePage(studentUid: boy.uid),
                               ),
-                    ),
+                            ),
                   ),
                 ],
               ),
@@ -3331,765 +3267,11 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   /// fetched fresh per expanded card, exactly matching how
   /// `BooksProgressPage` itself only ever loads them for the one student it
   /// was opened for.
-  Widget _expandedDetail({required _Boy boy}) {
-    _booksConfigFuture ??= BoardData.instance.booksConfig();
-    // A book commitment is "seen" per BOOK now (its level open and its row on screen, or the
-    // row tapped), not by expanding the card: see [_levelDropdown] / [_bookStatusRow].
+  /// The card's drop-down: the student's ONE-LINE HISTORY (newest first, the last 30): AI advice, interactions, dealings, the guide's notes
+  /// to the assistant and significant sadhana changes. A tap on a line opens the full details. (The books live on the student page, in
+  /// its Books tab.)
+  Widget _expandedDetail({required _Boy boy}) => StudentHistoryList(studentUid: boy.uid);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Chanting commitment — Part 5. Same field, same "absent or 0 both
-        // mean unset" rule as `BooksProgress.dart`'s own banner
-        // (`loadChantingCommitment`), just laid out to fit inside a card
-        // instead of a full-width screen banner.
-        FutureBuilder<int?>(
-          future: BoardData.instance.chantingCommitment(boy.uid),
-          builder: (context, snap) {
-            if (!snap.hasData) return const SizedBox.shrink();
-            return _commitmentRow(snap.data);
-          },
-        ),
-        const SizedBox(height: 8),
-        FutureBuilder<BooksConfig>(
-          future: _booksConfigFuture,
-          builder: (context, configSnap) {
-            if (configSnap.hasError) {
-              return Text(
-                "Could not load the book list.",
-                style: context.gText.caption,
-              );
-            }
-            if (!configSnap.hasData) {
-              return _bookGhost();
-            }
-            final config = configSnap.data!;
-
-            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              // The same `uid ==` filter `BooksProgress.dart` uses (legacy
-              // name-keyed `booksRead` documents have no `uid` and are
-              // excluded by construction), plus the one extra equality filter
-              // the security rules need to PROVE this viewer may read this
-              // student's documents (`constrainForStudent`: HOD none; else
-              // `scopeTeam` / `scopeGuide` [+ `scopeGender`] from the
-              // student's current assignment). Equality only — no index.
-              stream: BoardData.instance.booksRead(boy.ref),
-              builder: (context, progressSnap) {
-                if (!progressSnap.hasData) {
-                  return _bookGhost();
-                }
-
-                // Keyed "{level}_{bookKey}" — same shape as
-                // `BooksProgress.dart`'s own `entries` map.
-                final entries = <String, Map<String, dynamic>>{};
-                for (final doc in progressSnap.data!.docs) {
-                  final data = doc.data();
-                  final level = (data['level'] ?? '').toString();
-                  final key = (data['bookKey'] ?? '').toString();
-                  if (level.isEmpty || key.isEmpty) continue;
-                  entries['${level}_$key'] = data;
-                }
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: kBookLevels
-                      .map((level) => _levelDropdown(
-                            boy: boy,
-                            level: level,
-                            config: config,
-                            entries: entries,
-                          ))
-                      .toList(),
-                );
-              },
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  /// Compact version of `BooksProgress.dart`'s own commitment banner — same
-  /// icon, same wording, same "grey when unset" rule, just without that
-  /// screen's full-width bordered container (there is no room for one inside
-  /// a board card).
-  Widget _commitmentRow(int? commitment) {
-    final g = context.g;
-    final t = context.gText;
-    if (commitment == null) {
-      return Row(
-        children: [
-          Icon(Icons.local_fire_department_outlined, size: 16, color: g.mutedText),
-          const SizedBox(width: 6),
-          Expanded(child: Text("No chanting commitment set", style: t.caption)),
-        ],
-      );
-    }
-    // A sand chip: "Committed to N rounds/day".
-    return GuidePastelBox(
-      pastel: GuidePastel.sand,
-      radius: 12,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      child: Row(
-        children: [
-          const Icon(Icons.local_fire_department_outlined, size: 16, color: GuideColors.pastelAccent),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              "Committed to $commitment rounds/day",
-              style: t.onPastelBody.copyWith(fontSize: 13),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// One of the three level sub-dropdowns. Collapsed by default — only the
-  /// finished/reading counts show until tapped, exactly like
-  /// `BooksProgress.dart`'s own `_levelHeader` summary line.
-  ///
-  /// A plain `GestureDetector`, not `InkWell` — matching this file's own
-  /// established convention (see `_cardBody`'s header note) for anything
-  /// nested inside the draggable card, even though a same-type nested tap
-  /// (this level header vs. the outer card's own tap-to-expand) resolves
-  /// deterministically in Flutter and was never the actual source of this
-  /// file's drag conflicts — consistency with the existing idiom costs
-  /// nothing here.
-  ///
-  /// Revert task (2026-08-30), Part 5 — books are reordered for display
-  /// ONLY (never rewritten, never re-keyed): completed first, then current
-  /// books (even out of hierarchy order — Part 2 item 4 makes multiple
-  /// concurrently current expected, not a bug), then the rest in hierarchy
-  /// order. The "$finished of N finished" count line is unaffected by this
-  /// reorder — it counts the same `books` list either way.
-  Widget _levelDropdown({
-    required _Boy boy,
-    required String level,
-    required BooksConfig config,
-    required Map<String, Map<String, dynamic>> entries,
-  }) {
-    final books = config.byLevel[level] ?? const <BookConfigEntry>[];
-
-    var finished = 0;
-    var reading = 0;
-    final completedBooks = <BookConfigEntry>[];
-    final currentBooks = <BookConfigEntry>[];
-    final restBooks = <BookConfigEntry>[];
-    for (final b in books) {
-      final s = statusForBookEntry(entries['${b.level}_${b.key}']);
-      if (s == BookStatus.finished) {
-        finished++;
-        completedBooks.add(b);
-      } else if (s == BookStatus.readingNow) {
-        reading++;
-        currentBooks.add(b);
-      } else {
-        restBooks.add(b);
-      }
-    }
-    final displayOrder = [...completedBooks, ...currentBooks, ...restBooks];
-
-    final levelKey = '${boy.uid}_$level';
-    final open = _expandedLevels.contains(levelKey);
-    final showAll = _allBooksShown.contains(levelKey);
-    final listed = showAll ? displayOrder : displayOrder.take(_booksShown).toList();
-    final hidden = displayOrder.length - listed.length;
-    if (open && books.isNotEmpty) {
-      // The rows on screen now: any unseen one is seen shortly.
-      _scheduleSeen(boy, level, [for (final b in listed) _bookDocId(boy, b)]);
-    }
-
-    final g = context.g;
-    final t = context.gText;
-    final duration = GuideMotion.of(context, GuideMotion.expand);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // A plain GestureDetector, not InkWell — this file's convention for
-        // anything nested inside the draggable card.
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => setState(() {
-            if (open) {
-              _expandedLevels.remove(levelKey);
-            } else {
-              _expandedLevels.add(levelKey);
-            }
-          }),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(kBookLevelLabels[level] ?? level, style: t.cardTitleSmall),
-                      ),
-                      // An unseen book in this level (also while the level is closed).
-                      ValueListenableBuilder<Map<String, Set<String>>>(
-                        valueListenable: _commitmentUnseen,
-                        builder: (context, unseen, _) {
-                          final ids = unseen[boy.uid];
-                          final has = ids != null && books.any((b) => ids.contains(_bookDocId(boy, b)));
-                          return has
-                              ? const Padding(
-                                  padding: EdgeInsets.only(right: 6),
-                                  child: UnseenDot(size: 9),
-                                )
-                              : const SizedBox.shrink();
-                        },
-                      ),
-                      AnimatedRotation(
-                        turns: open ? .5 : 0,
-                        duration: duration,
-                        curve: GuideMotion.standard,
-                        child: Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: g.mutedText),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    books.isEmpty
-                        ? "no books configured"
-                        : "$finished of ${books.length} finished"
-                            "${reading > 0 ? ' · $reading reading' : ''}",
-                    style: t.caption,
-                  ),
-                  const SizedBox(height: 8),
-                  GuideProgressBar(
-                    value: books.isEmpty ? 0 : finished / books.length,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        GuideAnimatedSize(
-          duration: duration,
-          child: open
-              ? Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: books.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: Text("No books configured for this level.", style: t.caption),
-                        )
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            for (final b in listed)
-                              _bookStatusRow(
-                                boy: boy,
-                                book: b,
-                                status: statusForBookEntry(entries['${b.level}_${b.key}']),
-                                entry: entries['${b.level}_${b.key}'],
-                              ),
-                            if (hidden > 0)
-                              GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () => setState(() => _allBooksShown.add(levelKey)),
-                                child: ConstrainedBox(
-                                  constraints:
-                                      const BoxConstraints(minHeight: GuideShape.touchTarget),
-                                  child: Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      "Show $hidden more",
-                                      style: t.bodyStrong.copyWith(color: g.brass),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                )
-              : const SizedBox(width: double.infinity),
-        ),
-      ],
-    );
-  }
-
-  /// One book, compact single line. Same status colour/icon as
-  /// `BooksProgress.dart`'s own `_bookRow` (via the shared `bookStatusStyle`)
-  /// — green finished, grey not started, amber "reading now". The status
-  /// LABEL text, the "No file"/"Notes" badges, and the bordered card
-  /// styling from that screen's fuller row are dropped here — there is no
-  /// room for them inside a level dropdown nested inside a board card, and
-  /// the icon colour alone already carries the same three states.
-  ///
-  /// Revert task (2026-08-30), Part 3/5 — now TAPPABLE (a real behaviour
-  /// change from the prior "not tappable" state): tapping an unfinished
-  /// book opens the guide-assign dialog. Shows the student's own
-  /// `commitmentDate` and who set it (Part 5 item 2's "current books with
-  /// their commitment dates... show who set it"), replacing the removed
-  /// automatic-deadline/extension display entirely.
-  ///
-  /// Completion lives on the CHECKPOINT CIRCLE, not in the assign dialog.
-  /// Tapping the circle of an unfinished book asks "Mark this book
-  /// finished?" ([_confirmMarkBookFinished], the same single write as
-  /// before); tapping a finished one asks "Mark as not completed?"
-  /// ([_confirmMarkBookNotFinished]). The circle is tappable in every level's
-  /// list, including for a finished book, whose ROW stays untappable — the
-  /// circle's own detector is a child of the row's, so it takes the tap and
-  /// the assign dialog never opens behind the confirmation. Tapping the
-  /// title still opens the assign dialog for an unfinished book.
-  ///
-  /// The "Mark as completed" button that used to be inside that dialog is
-  /// gone; both directions now go through the circle.
-  Widget _bookStatusRow({
-    required _Boy boy,
-    required BookConfigEntry book,
-    required BookStatus status,
-    required Map<String, dynamic>? entry,
-  }) {
-    final g = context.g;
-    final t = context.gText;
-    final isCurrent = status == BookStatus.readingNow;
-    final isFinished = status == BookStatus.finished;
-    final colour = isFinished ? g.success : (isCurrent ? g.brass : g.mutedText);
-    // Open circle: not started; ring with a dot: reading now; tick: done.
-    final icon = isFinished
-        ? Icons.check_circle_rounded
-        : (isCurrent ? Icons.timelapse_rounded : Icons.radio_button_unchecked_rounded);
-    final commitmentDate = (entry?['commitmentDate'] as String?)?.trim();
-    final commitmentSetBy = (entry?['commitmentSetBy'] as String?)?.trim();
-
-    // Tapping an unfinished book opens the guide-assign dialog (the ONLY way to
-    // mark a book finished from this card); a finished one is not tappable.
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: isFinished
-          ? null
-          : () {
-              _markBookSeen(boy, _bookDocId(boy, book));
-              _openAssignBookDialog(boy: boy, book: book, entry: entry);
-            },
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: isFinished ? 36 : GuideShape.touchTarget),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            children: [
-              // The checkpoint circle is its own tap target: it marks the
-              // book completed, and un-marks it again. It sits INSIDE the
-              // row's own GestureDetector, so the child wins the tap and the
-              // assign dialog is not opened behind the confirmation. It is
-              // tappable for a finished book too, which the row itself is not.
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  _markBookSeen(boy, _bookDocId(boy, book));
-                  if (isFinished) {
-                    _confirmMarkBookNotFinished(
-                        boy: boy, book: book, entry: entry);
-                  } else {
-                    _confirmMarkBookFinished(
-                        boy: boy, book: book, entry: entry);
-                  }
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 6, vertical: 8),
-                  child: Icon(icon, size: 18, color: colour),
-                ),
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      book.title.isEmpty ? "(untitled)" : book.title,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: t.body.copyWith(
-                        fontSize: 13,
-                        color: status == BookStatus.notStarted ? g.mutedText : g.text,
-                      ),
-                    ),
-                    // The current book's commitment date and who set it.
-                    if (isCurrent && commitmentDate != null)
-                      Text(
-                        commitmentSetBy == 'guide'
-                            ? "Due $commitmentDate (set by guide)"
-                            : "Due $commitmentDate (set by student)",
-                        style: t.caption,
-                      ),
-                  ],
-                ),
-              ),
-              ValueListenableBuilder<Map<String, Set<String>>>(
-                valueListenable: _commitmentUnseen,
-                builder: (context, unseen, _) =>
-                    (unseen[boy.uid]?.contains(_bookDocId(boy, book)) ?? false)
-                        ? const Padding(
-                            padding: EdgeInsets.only(right: 6),
-                            child: UnseenDot(size: 9),
-                          )
-                        : const SizedBox.shrink(),
-              ),
-              if (!isFinished) Icon(Icons.chevron_right_rounded, size: 18, color: g.mutedText),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// The other half of the checkpoint circle: a book marked completed by
-  /// mistake, put back.
-  ///
-  /// ONE write, the mirror of [_confirmMarkBookFinished]: `endDate` and
-  /// `endedBy` are DELETED (not blanked — `statusForBookEntry` treats an empty
-  /// string as unfinished, but a deleted field is what a book that was never
-  /// finished actually looks like), and `isCurrentBook` is left FALSE.
-  ///
-  /// Leaving it false is the safe choice, and it is deliberate: the undefined
-  /// combination `isCurrentBook == false` with no `endDate` is already defined
-  /// by `statusForBookEntry` as `notStarted` — "the record asserts no progress,
-  /// so the caller claims none". Setting it true instead would silently credit
-  /// the student with reading a book their own report never claimed, and would
-  /// risk a second current book. `startDate` is untouched, so a book that had a
-  /// real start date keeps it.
-  ///
-  /// The "finished is never current" invariant holds here by construction: this
-  /// write removes the end date and sets nothing current.
-  Future<void> _confirmMarkBookNotFinished({
-    required _Boy boy,
-    required BookConfigEntry book,
-    required Map<String, dynamic>? entry,
-  }) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => GuideDialog(
-        title: const Text("Mark as not completed?"),
-        content: Text(
-          "${book.title.isEmpty ? '(untitled)' : book.title} will go back to "
-          "not completed for ${boy.name}. It does not become their current "
-          "book.",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text("Mark not completed"),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
-
-    try {
-      await markBookNotFinished(
-        studentUid: boy.uid,
-        level: book.level,
-        bookKey: book.key,
-        title: book.title,
-      );
-
-      if (!mounted) return;
-      showSnackbar(context, "Book marked not completed", Colors.green,
-          Icons.check_circle);
-    } catch (_) {
-      if (!mounted) return;
-      showSnackbar(
-          context, "Could not update the book", Colors.red, Icons.error);
-    }
-  }
-  /// Master Task Part 4 item 1 — confirms, then marks a book finished in
-  /// ONE write: `endDate = today`, `isCurrentBook = false` and (Part 2 of
-  /// the challenge/book-completion/deep-linking task) `endedBy = 'guide'`
-  /// together, so there is no intermediate state where any one of them is
-  /// set and not the others. This is the ONLY place in the Guide app that
-  /// writes `endDate`/`endedBy` — every other field this app's `booksRead`
-  /// writes touch is listed in [_openAssignBookDialog]'s own doc comment;
-  /// `madeNotes` is never touched here or there (Rule 14/15 — that field
-  /// is the student's own self-report about their notes, not something a
-  /// guide's "the book is done" action has any business overwriting).
-  ///
-  /// Reached from two places, unchanged from each other: the board's own
-  /// book-list "Mark finished" icon ([_bookStatusRow]), and — added this
-  /// task — the "Mark as completed" action inside [_openAssignBookDialog]
-  /// itself, which simply calls this SAME function rather than
-  /// duplicating its write.
-  ///
-  /// Master Task 2026-09-10, Part 5 — now callable for a book that was
-  /// NEVER started (`entry` is null, or has no `startDate` yet): the SAME
-  /// one write also sets `startDate = today` in that case, alongside
-  /// `endDate = today`, so a never-started book that is marked complete
-  /// gets a real (equal) start and end date rather than an `endDate` with
-  /// no `startDate` at all. A book that already has a `startDate` keeps
-  /// it untouched — this never overwrites a real start date the student
-  /// (or a prior guide assignment) already recorded. `isCurrentBook:
-  /// false` in every case means a finished book is never `isCurrentBook`,
-  /// satisfied by construction regardless of which path led here.
-  Future<void> _confirmMarkBookFinished({
-    required _Boy boy,
-    required BookConfigEntry book,
-    required Map<String, dynamic>? entry,
-  }) async {
-    final hasStarted =
-        ((entry?['startDate'] as String?)?.trim().isNotEmpty ?? false);
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => GuideDialog(
-        title: const Text("Mark this book finished?"),
-        content: Text(
-          hasStarted
-              ? "${book.title.isEmpty ? '(untitled)' : book.title} will no "
-                  "longer be ${boy.name}'s current book."
-              : "${book.title.isEmpty ? '(untitled)' : book.title} was "
-                  "never started by ${boy.name}. Marking it finished sets "
-                  "today as both its start and end date, and it will not "
-                  "become their current book.",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text("Mark finished"),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
-
-    try {
-      await markBookFinished(
-        studentUid: boy.uid,
-        level: book.level,
-        bookKey: book.key,
-        title: book.title,
-        hasStarted: hasStarted,
-      );
-
-      if (!mounted) return;
-      showSnackbar(context, "Book marked finished", Colors.green,
-          Icons.check_circle);
-    } catch (_) {
-      if (!mounted) return;
-      showSnackbar(
-          context, "Could not update the book", Colors.red, Icons.error);
-    }
-  }
-
-  /// Part 3 — the guide assigns a book. Tapping any unfinished book in the
-  /// dropdown above opens this: title + date picker, confirm writes the
-  /// commitment and notifies the student (item 2), naming who set the date
-  /// (item 4) so [_bookStatusRow] above can show it. Master Task Part 4
-  /// item 2 — also writes `startDate = today` (the day of assignment,
-  /// distinct from `commitmentDate`, the future due-date the guide just
-  /// picked), so the book is a real current book by the same definition
-  /// [statusForBookEntry] already uses.
-  ///
-  /// A finished book (`isFinished` in the caller) never reaches this
-  /// dialog at all — its `onTap` is null — so there is no path here that
-  /// could ever write `isCurrentBook: true` onto a book that has an
-  /// `endDate`; the "finished is never current" invariant holds by
-  /// construction, not by a runtime check inside this function.
-  ///
-  /// Rule 14/15 — the complete set of `booksRead` fields this Guide app
-  /// EVER writes, across this function and [_confirmMarkBookFinished]:
-  /// `uid`, `level`, `bookKey`, `bookTitle`, `isCurrentBook`, `startDate`,
-  /// `endDate`, `endedBy`, `commitmentDate`, `commitmentSetAt`,
-  /// `commitmentSetBy`.
-  /// `madeNotes` — the student's own self-report about taking notes — is
-  /// NEVER written by either function; it is exclusively student-authored
-  /// (`Students/.../BookPageList.dart`) and this app only ever reads it
-  /// (`BooksProgress.dart`).
-  /// Master Task Part 2 (book-completion from the assign dialog) — added
-  /// the "Mark as completed" action. `showDialog`'s type widened from
-  /// `DateTime` to `Object` so the same dialog can pop either a picked
-  /// `DateTime` (assign) or the sentinel string `'mark_finished'`
-  /// (complete) through the one `confirmed` result — resolved by the
-  /// caller below AFTER this dialog's own route has fully closed, exactly
-  /// like every other multi-step dialog flow in this file (e.g.
-  /// `_openAddStudentDialog`'s own snackbar-after-pop pattern), so there is
-  /// no nested-dialog transition for the confirm step that follows.
-  ///
-  /// Master Task 2026-09-10, Part 5 item 1 — the "Mark as completed"
-  /// action used to be gated to the CURRENT book only (a since-removed
-  /// `isCurrent` parameter); it is now offered unconditionally, since this
-  /// whole dialog only ever opens for a non-finished book to begin with
-  /// (see the row's own `onTap: isFinished ? null : ...` gate) — current
-  /// and never-started books both reach here, and both can now be marked
-  /// complete from it.
-  Future<void> _openAssignBookDialog({
-    required _Boy boy,
-    required BookConfigEntry book,
-    required Map<String, dynamic>? entry,
-  }) async {
-    DateTime? picked = DateTime.now();
-
-    final confirmed = await showDialog<Object>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return GuideDialog(
-              title: const Text("Assign this book"),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    book.title.isEmpty ? "(untitled)" : book.title,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    "Choose a commitment date. This book becomes "
-                    "${boy.name}'s current book, and they'll be notified.",
-                    style: dialogContext.gText.small,
-                  ),
-                  const SizedBox(height: 14),
-                  InkWell(
-                    onTap: () async {
-                      final result = await showDatePicker(
-                        context: dialogContext,
-                        initialDate: picked ?? DateTime.now(),
-                        firstDate: DateTime.now(),
-                        lastDate: DateTime(2100),
-                      );
-                      if (result != null) {
-                        setDialogState(() => picked = result);
-                      }
-                    },
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: dialogContext.g.border),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.calendar_today, size: 16),
-                          const SizedBox(width: 10),
-                          Flexible(child: Text(
-                            picked == null
-                                ? "Tap to choose a date"
-                                : picked!.toIso8601String().split('T')[0],
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ))],
-                      ),
-                    ),
-                  ),
-                  // The "Mark as completed" button that used to sit here is
-                  // gone: the checkpoint circle on the row itself now does
-                  // that job (and undoes it), so this dialog is once again
-                  // only about assigning a commitment date.
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text("Cancel"),
-                ),
-                ElevatedButton(
-                  onPressed: picked == null
-                      ? null
-                      : () => Navigator.pop(dialogContext, picked),
-                  child: const Text("Assign"),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (!mounted) return;
-
-    if (confirmed is! DateTime) return;
-
-    try {
-      // One shared write (actions/BookActions.dart): the AI agent assigns a book
-      // through exactly this. A transaction, so a book that is already completed
-      // is never made the student's CURRENT book.
-      final assigned = await assignBook(
-        guideId: _guide,
-        studentUid: boy.uid,
-        level: book.level,
-        bookKey: book.key,
-        title: book.title,
-        commitment: confirmed,
-      );
-
-      if (!assigned) {
-        if (!mounted) return;
-        showSnackbar(
-            context,
-            "This book is already completed, so it cannot be assigned as a current book",
-            Colors.orange,
-            Icons.info);
-        return;
-      }
-
-      if (!mounted) return;
-      showSnackbar(context, "Book assigned", Colors.green, Icons.check_circle);
-    } catch (_) {
-      if (!mounted) return;
-      showSnackbar(context, "Could not assign the book", Colors.red, Icons.error);
-    }
-  }
-
-  /// ⚠️ **Investigated this task: the product owner reported the fourth
-  /// (profile) icon looking dull and not opening `StudentProfilePage`.**
-  /// Direct, byte-level comparison of this icon's `onTap` against the
-  /// Comments icon (confirmed working) found them structurally IDENTICAL:
-  /// `onTap: forceCollapsed ? null : () => Navigator.push(...)`, same as
-  /// Comments' own `onTap: forceCollapsed ? null : () =>
-  /// showStudentCommentsDialog(...)`. `forceCollapsed` is `false` for every
-  /// on-board card (`_studentCard` calls `_cardBody(boy:, colour:)` with no
-  /// `forceCollapsed` argument at all — only the drag `feedback:` preview
-  /// passes `true`), so the profile icon's `onTap` is genuinely non-null on
-  /// the real board, exactly like Comments. There is also no `_isHod` check,
-  /// no `boy.guideId` comparison, and no other permission condition anywhere
-  /// in `_cardBody`'s icon row — the hypothesis that a HOD-only gate is
-  /// silently disabling it for a non-HOD viewer (like the reporting device,
-  /// signed in as FOLK) does not hold up under direct code inspection.
-  /// Colour is identical too: every icon shares this one `_cardIcon` helper,
-  /// so "dull" vs "active" can only ever come from `onPressed` being null vs
-  /// not — which, per the above, is not the case here.
-  ///
-  /// **No logic defect was found in the wiring, colour, or permission
-  /// gating.** The one real, verifiable gap this investigation did find:
-  /// each icon's actual tappable box was 30x30 logical pixels — below
-  /// Material's own documented minimum touch target (48x48dp), and small
-  /// enough on a real phone that a tap landing even slightly off-centre
-  /// could miss the `IconButton` and land on the card's own tap-to-expand
-  /// `GestureDetector` instead, which silently does something different
-  /// (toggle expand) with no obvious visual feedback — a real mechanism that
-  /// could plausibly produce exactly "looks the same, does nothing" on a
-  /// real device, independent of any code-logic bug. Widened to 34x34 here
-  /// (`_columnWidth` widened to match — see its own doc comment) as a
-  /// genuine, defensible improvement to tap reliability for all four icons
-  /// equally, not a confirmed fix for a confirmed cause — stated plainly
-  /// rather than claimed as "should work now."
-  /// Part 5 — always visible, never behind a tap or the expand toggle. A
-  /// small, unmistakably distinct label rather than a subtle tint (the same
-  /// judgement already made for FOLK/Hostel residence, deliberately not
-  /// repeated here): a roadmap phase can now complete on guide-entered
-  /// numbers alone, and that must read as different from a real submission
-  /// at a glance, not merely on close inspection.
   Widget _manualEntryBadge() {
     final g = context.g;
     return Padding(

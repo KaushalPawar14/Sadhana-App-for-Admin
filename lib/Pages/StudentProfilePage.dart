@@ -13,9 +13,6 @@ import 'StudentNotificationSettings.dart';
 import '../utils/StudentScope.dart';
 import 'AbcdeActivityCard.dart';
 import 'StudentMusicPage.dart';
-import 'HolisticSuggestion.dart';
-import '../utils/SuggestionsReady.dart';
-import '../utils/UnseenDot.dart';
 import 'LitAssessment.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
@@ -54,10 +51,8 @@ import '../widgets/GuideSheet.dart';
 ///     `utils/SelectableDelete.dart`, its own `_canDeleteInteraction`
 ///     permission check, and `_notifyHod`'s FCM behaviour — lives inside
 ///     `Pages/InteractionLogger.dart` itself and was never touched.
-///  4. Holistic Suggestion — [HolisticSuggestionSection]
-///     (`Pages/HolisticSuggestion.dart`), including its permanent
-///     "AI-generated suggestion — guide judgment decides the actual next
-///     step" disclaimer, unchanged.
+///  (The AI suggestions section is gone: the advice for each student is
+///  worked out inside the guide's Today / This week plans.)
 ///
 /// Two more pieces carried over because they would otherwise be lost when
 /// `Profile.dart` is deleted in Phase 6:
@@ -117,8 +112,8 @@ import '../widgets/GuideSheet.dart';
 /// act on anyone; a guide may act on their own current students; for anyone
 /// else the page still opens and is fully READABLE (every section renders,
 /// including LIT/interaction HISTORY), but the actionable controls inside
-/// [DobCard], [LitHistorySection], [InteractionLogSection] and
-/// [HolisticSuggestionSection] are inert — see [_gatedAction].
+/// [DobCard], [LitHistorySection], and [InteractionLogSection]
+/// are inert — see [_gatedAction].
 ///
 /// ⚠️ **Why `IgnorePointer` + `Opacity`, not a parameter on the reused
 /// widgets.** Adding a `readOnly` flag to any of those four would mean
@@ -135,10 +130,7 @@ import '../widgets/GuideSheet.dart';
 class StudentProfilePage extends StatefulWidget {
   final String studentUid;
 
-  /// Opened from a "New suggestions ready" notification: scroll to the suggestions as soon as the page is there.
-  final bool focusSuggestions;
-
-  const StudentProfilePage({super.key, required this.studentUid, this.focusSuggestions = false});
+  const StudentProfilePage({super.key, required this.studentUid});
 
   @override
   State<StudentProfilePage> createState() => _StudentProfilePageState();
@@ -157,72 +149,6 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
   /// else the page stays readable but its controls are inert (see
   /// [_gatedAction]).
   bool _canAct(StudentRef student) => StudentScope(_viewer).canManage(student);
-
-  /// The suggestions section, so the label under the picture (and a notification) can scroll to it.
-  final GlobalKey _suggestionsKey = GlobalKey(debugLabel: 'suggestions');
-  bool _focused = false;
-
-  /// "New suggestions ready" for this admin — the end of the orange dot trail from the board.
-  late final Stream<bool> _suggestionsUnseen = SuggestionsReady.unseenFor(_viewer.id, widget.studentUid);
-
-  /// Brings the suggestions on screen; they count as opened once they have been there a moment.
-  void _showSuggestions() {
-    final target = _suggestionsKey.currentContext;
-    if (target == null || !target.mounted) return;
-    Scrollable.ensureVisible(
-      target,
-      duration: const Duration(milliseconds: 350),
-      curve: Curves.easeOutCubic,
-      alignment: 0.05,
-    );
-  }
-
-  Widget _suggestionsReadyLabel() {
-    return StreamBuilder<bool>(
-      stream: _suggestionsUnseen,
-      builder: (context, snap) {
-        if (!(snap.data ?? false)) return const SizedBox.shrink();
-        return Padding(
-          padding: const EdgeInsets.only(top: 10),
-          child: Semantics(
-            button: true,
-            label: SuggestionsReady.label,
-            child: Material(
-              color: Colors.white.withValues(alpha: .18),
-              borderRadius: BorderRadius.circular(20),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(20),
-                onTap: _showSuggestions,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 40),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const UnseenDot(size: 9),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            SuggestionsReady.label,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: GuideColors.heroText,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
 
   /// Wraps an already-built, verbatim-reused section so its controls become
   /// inert when [allowed] is false, without modifying that section's own
@@ -562,12 +488,6 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
               // See `utils/ManualStudents.dart`'s own header for the schema.
               final isManual = data['isManualEntry'] == true;
 
-              if (widget.focusSuggestions && !_focused) {
-                _focused = true;
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) _showSuggestions();
-                });
-              }
 
               return SingleChildScrollView(
                 child: Column(
@@ -609,7 +529,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                             ),
                           ),
                           // The end of the orange dot trail: shown while the suggestions the server made are unopened.
-                          _suggestionsReadyLabel(),
+                          const SizedBox.shrink(),
                           const SizedBox(height: 16),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -752,21 +672,6 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                             ),
                           ),
 
-                          const SizedBox(height: 25),
-
-                          // SUGGESTED NEXT ACTION — gated (Part 4).
-                          _sectionTitle(colorProvider, "Suggested Next Action"),
-                          const SizedBox(height: 10),
-                          KeyedSubtree(
-                            key: _suggestionsKey,
-                            child: _gatedAction(
-                              allowed: canAct,
-                              child: HolisticSuggestionSection(
-                                studentUid: widget.studentUid,
-                                studentName: name,
-                              ),
-                            ),
-                          ),
                         ],
                       ),
                     ),

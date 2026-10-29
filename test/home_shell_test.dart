@@ -145,8 +145,7 @@ void main() {
     expect(find.text('Overdue'), findsOneWidget);
     expect(find.textContaining('Phase 1 of 8'), findsNothing, reason: 'no per-target cards: status and progress are viewed in the assistant');
     expect(find.textContaining('10 students at 16'), findsNothing);
-    expect(find.text('Both your targets are set'), findsOneWidget);
-    expect(find.text('Set a target'), findsNothing);
+    expect(find.text("You haven't set your FOLK-residents target"), findsOneWidget, reason: 'chanting and books are set; the third is asked for');
     expect(find.text('FOLK Boys Board'), findsOneWidget);
     expect(find.text('20 boys'), findsOneWidget);
     expect(find.text('Calendar'), findsOneWidget);
@@ -172,10 +171,10 @@ void main() {
     expect(find.text('Midterm'), findsOneWidget);
   });
 
-  group('the ONE compact targets card', () {
-    Future<void> shell(WidgetTester tester, List<CompoundTarget> targets, {double scale = 1.0, bool dark = false}) async {
+  group('the ONE compact targets card (three targets; a Female Enabler has two)', () {
+    Future<void> shell(WidgetTester tester, List<CompoundTarget> targets, {double scale = 1.0, bool dark = false, AdminProfile? me}) async {
       phone(tester, scale);
-      await pumpShell(tester, data: FakeHomeData(targetList: targets));
+      await pumpShell(tester, data: FakeHomeData(targetList: targets), me: me);
       if (dark) {
         tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
         addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
@@ -183,45 +182,64 @@ void main() {
       }
     }
 
-    testWidgets('none set: "You haven\'t set your chanting and book-reading targets" and a Set a target button', (tester) async {
+    final chant = target('chanting', 10, 16, 1, 8);
+    final books = target('books', 10, 5, 2, 8);
+    final folk = target('folk', 6, 1, 1, 4);
+
+    testWidgets('none set: all three are named, with a Set a target button', (tester) async {
       await shell(tester, const []);
       expect(find.byKey(const ValueKey('home-targets-card')), findsOneWidget);
-      expect(find.text("You haven't set your chanting and book-reading targets"), findsOneWidget);
+      expect(find.text("You haven't set your chanting, book-reading and FOLK-residents targets"), findsOneWidget);
       expect(find.byKey(const ValueKey('home-set-target')), findsOneWidget);
       expect(find.text('Set a target'), findsOneWidget);
     });
 
-    testWidgets('only chanting set: the book-reading target is missing', (tester) async {
-      await shell(tester, [target('chanting', 10, 16, 1, 8)]);
-      expect(find.text("You haven't set your book-reading target"), findsOneWidget);
+    testWidgets('chanting and books set: the FOLK-residents target is missing', (tester) async {
+      await shell(tester, [chant, books]);
+      expect(find.text("You haven't set your FOLK-residents target"), findsOneWidget);
       expect(find.text('Set a target'), findsOneWidget);
     });
 
-    testWidgets('only books set: the chanting target is missing', (tester) async {
-      await shell(tester, [target('books', 10, 5, 2, 8)]);
-      expect(find.text("You haven't set your chanting target"), findsOneWidget);
-      expect(find.text('Set a target'), findsOneWidget);
+    testWidgets('only chanting set: the other two are missing', (tester) async {
+      await shell(tester, [chant]);
+      expect(find.text("You haven't set your book-reading and FOLK-residents targets"), findsOneWidget);
     });
 
-    testWidgets('both set: "Both your targets are set" and no button', (tester) async {
-      await shell(tester, [target('chanting', 10, 16, 1, 8), target('books', 10, 5, 2, 8)]);
-      expect(find.text('Both your targets are set'), findsOneWidget);
+    testWidgets('only the FOLK-residents target set: chanting and book-reading are missing', (tester) async {
+      await shell(tester, [folk]);
+      expect(find.text("You haven't set your chanting and book-reading targets"), findsOneWidget);
+    });
+
+    testWidgets('all three set: "All your targets are set" and no button', (tester) async {
+      await shell(tester, [chant, books, folk]);
+      expect(find.text('All your targets are set'), findsOneWidget);
       expect(find.byKey(const ValueKey('home-set-target')), findsNothing);
       expect(find.byIcon(Icons.check_circle_outline_rounded), findsWidgets);
+    });
+
+    testWidgets('a Female Enabler has two targets: the FOLK-residents one is boys only and never asked for', (tester) async {
+      final fe = profile('F', 'FEMALE_ENABLER');
+      await shell(tester, const [], me: fe);
+      expect(find.text("You haven't set your chanting and book-reading targets"), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      await shell(tester, [chant, books], me: fe);
+      expect(find.text('Both your targets are set'), findsOneWidget);
+      expect(find.textContaining('FOLK-residents'), findsNothing);
+      expect(find.byKey(const ValueKey('home-set-target')), findsNothing);
     });
 
     testWidgets('a finished or abandoned target does not count as set', (tester) async {
       final done = CompoundTarget.from('G', 'old', {'metric': 'chanting', 'status': 'completed', 'currentPhase': 1, 'totalPhases': 1});
       await shell(tester, [done]);
-      expect(find.text("You haven't set your chanting and book-reading targets"), findsOneWidget);
+      expect(find.text("You haven't set your chanting, book-reading and FOLK-residents targets"), findsOneWidget);
     });
 
-    testWidgets('Set a target opens the create flow, on the missing metric', (tester) async {
-      await shell(tester, [target('chanting', 10, 16, 1, 8)]);
+    testWidgets('Set a target opens the create flow, on the missing metric when exactly one is missing', (tester) async {
+      await shell(tester, [target('chanting', 10, 16, 1, 8), target('books', 10, 5, 2, 8)]);
       await tester.tap(find.byKey(const ValueKey('home-set-target')));
       await tester.pumpAndSettle();
       expect(find.byType(CompoundGoalSetupPage), findsOneWidget);
-      expect(tester.widget<CompoundGoalSetupPage>(find.byType(CompoundGoalSetupPage)).initialMetric, 'books');
+      expect(tester.widget<CompoundGoalSetupPage>(find.byType(CompoundGoalSetupPage)).initialMetric, 'folk', reason: 'the one missing target is preselected');
     });
 
     testWidgets('no per-target cards, no Targets section any more', (tester) async {

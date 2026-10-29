@@ -203,6 +203,25 @@ Future<AgentResult> planItemChange(Map<String, dynamic> a, AgentEnv env) async {
   return _done('$message Your plan is updated.');
 }
 
+Future<AgentResult> studentNoteAdd(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _s(a['studentUid']);
+  final s = await env.student(uid);
+  final message = await HierarchyApi.instance.studentGuideNote(studentUid: uid, kind: 'note', text: _s(a['text']));
+  return _done('$message (${_s(s['name'])}: "${_s(a['text'])}")');
+}
+
+Future<AgentResult> studentFolkInterestSet(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _s(a['studentUid']);
+  final s = await env.student(uid);
+  final notInterested = _s(a['interest']) == 'not_interested';
+  final message = await HierarchyApi.instance.studentGuideNote(
+    studentUid: uid,
+    kind: notInterested ? 'not_folk' : 'folk_open',
+    text: a['reason'] == null ? null : _s(a['reason']),
+  );
+  return _done('$message (${_s(s['name'])})');
+}
+
 Future<AgentResult> calendarAddNotes(Map<String, dynamic> a, AgentEnv env) async {
   final mandatory = a['mandatory'] == true;
   await saveTextBlockWithEvents(
@@ -553,6 +572,8 @@ final Map<String, AgentRun> kAgentWritesB = {
   'target_proposal_reject': targetProposalReject,
   'target_suggest_plan': targetSuggestPlan,
   'target_check_advance': targetCheckAdvance,
+  'student_note_add': studentNoteAdd,
+  'student_folk_interest_set': studentFolkInterestSet,
   'plan_item_skip': planItemSkip,
   'plan_item_change': planItemChange,
   'calendar_add_notes': calendarAddNotes,

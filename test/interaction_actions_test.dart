@@ -5,7 +5,6 @@ import 'package:folk_guide_app/Pages/InteractionLogger.dart' as logger;
 import 'package:folk_guide_app/Services/GuideAi.dart';
 import 'package:folk_guide_app/Services/HierarchyApi.dart';
 import 'package:folk_guide_app/actions/InteractionActions.dart';
-import 'package:folk_guide_app/actions/SuggestionActions.dart';
 import 'package:folk_guide_app/utils/GuideDb.dart';
 
 /// Saving an interaction, as one shared write.
@@ -140,13 +139,6 @@ void main() {
       reExtractInteraction('log1'),
       throwsA(isA<AiException>().having((e) => e.message, 'message', contains('no credit left'))),
     );
-  });
-
-  test('"Generate / Refresh suggestions" asks the server and reports how many', () async {
-    expect(await generateStudentSuggestions(studentUid: 's1'), 4);
-    expect(calls, ['generateStudentSuggestions']);
-    failWith = HierarchyException('permission-denied', "I can't find that student among your students.");
-    await expectLater(generateStudentSuggestions(studentUid: 's2'), throwsA(isA<AiException>()));
   });
 
   test('dates round-trip between the AI draft and Firestore', () {

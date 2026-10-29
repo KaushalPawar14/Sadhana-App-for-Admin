@@ -11,6 +11,7 @@ import 'UnseenAggregates.dart';
 import 'UnseenFeatureBadge.dart';
 import 'AdminProfile.dart';
 import 'GuideDb.dart';
+import 'StudentHistory.dart';
 
 /// Everything the FOLK Boys board reads or writes, behind one interface. The app
 /// always uses [FirestoreBoardData] (a thin pass-through to the functions in
@@ -61,6 +62,9 @@ abstract class BoardData {
   /// One student's `booksRead` documents (scoped for the rules).
   Stream<QuerySnapshot<Map<String, dynamic>>> booksRead(StudentRef student);
 
+  /// One student's history lines, newest first (`studentHistory/{uid}`).
+  Stream<List<HistoryLine>> history(String studentUid);
+
   /// Wraps a card's Comments icon with its per-student unseen dot.
   Widget commentsBadge({required String studentUid, required Widget child});
 
@@ -71,10 +75,6 @@ abstract class BoardData {
 
   /// These books of [studentUid] have been seen by [guide] (written per book).
   Future<void> markBooksSeen(String guide, String studentUid, Iterable<String> bookDocIds);
-
-  /// The students (on this admin's board) whose new, server-made suggestions are not opened yet: the
-  /// card's profile icon shows a dot for each.
-  Stream<Set<String>> unseenSuggestions(String guide);
 }
 
 class FirestoreBoardData implements BoardData {
@@ -148,8 +148,7 @@ class FirestoreBoardData implements BoardData {
       SeenMarkers.markSeenBooks(guide, studentUid, bookDocIds);
 
   @override
-  Stream<Set<String>> unseenSuggestions(String guide) =>
-      UnseenAggregates.suggestionsReadyUnseenUids(guide);
+  Stream<List<HistoryLine>> history(String studentUid) => studentHistoryStream(studentUid);
 
   @override
   Widget commentsBadge({required String studentUid, required Widget child}) =>

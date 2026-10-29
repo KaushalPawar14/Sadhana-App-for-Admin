@@ -54,7 +54,6 @@ final Map<String, Widget Function()> extraScreens = {
   'music_curriculum': () => const MusicCurriculumPage(),
   'student_music': () => const StudentMusicPage(studentUid: 's1', studentName: 'Arjun Kumar'),
   'student_notification_settings': () => StudentNotificationSettingsPage(studentUid: 's1', studentName: 'Arjun Kumar', canEdit: true, firestore: GuideDb.instance),
-  'student_profile_at_suggestions': () => const StudentProfilePage(studentUid: 's1', focusSuggestions: true),
 };
 
 /// Screens whose own job is to refuse back (a forced update, the "install from Play" wall).

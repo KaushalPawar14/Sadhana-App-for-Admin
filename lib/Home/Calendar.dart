@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/ColorProvider.dart';
+import '../widgets/StudentBooksPanel.dart';
 import '../utils/CompetitionScore.dart';
 import '../utils/SadhanaReportSource.dart';
 import '../Pages/AllGraph.dart' show GraphicalAnalysisSection;
@@ -41,10 +42,9 @@ class CalendarPage extends StatefulWidget {
 
 /// Which section is showing.
 ///
-/// Declaration order is the display order: Calendar, Books, Points, Badges,
-/// Scores. `scores` added this task — see `_scoresPanel`'s own doc comment
+/// Declaration order is the display order: Calendar, Scores, Books (Badges are the student's own: not shown here). `scores` added this task — see `_scoresPanel`'s own doc comment
 /// for what it shows and how it relates to the pre-existing `points`.
-enum _Tab { calendar, badges, scores }
+enum _Tab { calendar, scores, books }
 
 class _CalendarPageState extends State<CalendarPage> {
   DateTime _focusedDay = DateTime.now();
@@ -265,7 +265,7 @@ class _CalendarPageState extends State<CalendarPage> {
         children: [
           chip('Calendar', Icons.calendar_month_outlined, _Tab.calendar),
           chip('Scores', Icons.leaderboard_outlined, _Tab.scores),
-          chip('Badges', Icons.military_tech_outlined, _Tab.badges),
+          chip('Books', Icons.menu_book_outlined, _Tab.books),
         ],
       ),
     );
@@ -366,67 +366,6 @@ class _CalendarPageState extends State<CalendarPage> {
         textAlign: TextAlign.center,
         style: TextStyle(fontSize: 13, color: context.g.mutedText),
       ),
-    );
-  }
-
-  /// Weekly and monthly badge counts.
-  ///
-  /// Moved from `Profile.dart`'s `BadgesSection` on 2026-08-14. Same four
-  /// fields on the same `users/{uid}` document (`weekly-winner`,
-  /// `monthly-gold`, `monthly-silver`, `monthly-bronze`) — the profile page
-  /// passed them in from a stream it already had, and this screen has no such
-  /// stream, so it opens its own on that one document. **No field, collection
-  /// or meaning changed; only where it is rendered.**
-  Widget _badgesPanel(ColorProvider colorProvider) {
-    final uid = widget.studentUid;
-    if (uid == null || uid.isEmpty) return _needsUid(colorProvider, "Badges");
-
-    return StreamBuilder<DocumentSnapshot>(
-      stream: GuideDb.instance.collection('users').doc(uid).snapshots(),
-      builder: (context, snapshot) {
-        // the loading ghost only on the very first load: a snapshot that already holds data is shown while it refreshes
-        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: const GuideWait(compact: true),
-          );
-        }
-
-        final data = snapshot.data?.data() as Map<String, dynamic>?;
-        int count(dynamic v) => v is num ? v.toInt() : 0;
-
-        final weekly = count(data?['weekly-winner']);
-        final gold = count(data?['monthly-gold']);
-        final silver = count(data?['monthly-silver']);
-        final bronze = count(data?['monthly-bronze']);
-        final total = weekly + gold + silver + bronze;
-
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(3, 12, 3, 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (total == 0)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(
-                    'No badges won yet 🏅',
-                    style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: context.g.mutedText),
-                  ),
-                )
-              else ...[
-                _infoRow('Weekly Wins', '$weekly 🏆', context.g.warning),
-                _infoRow('Monthly Gold', '$gold 🥇', context.g.warning),
-                _infoRow('Monthly Silver', '$silver 🥈', context.g.mutedText),
-                _infoRow('Monthly Bronze', '$bronze 🥉', Colors.brown.shade400),
-              ],
-            ],
-          ),
-        );
-      },
     );
   }
 
@@ -741,7 +680,9 @@ class _CalendarPageState extends State<CalendarPage> {
                 switch (_tab) {
                   _Tab.calendar => _calendarSection(colorProvider, daySize),
                   _Tab.scores => _scoresPanel(colorProvider),
-                  _Tab.badges => _badgesPanel(colorProvider),
+                  _Tab.books => widget.studentUid == null || widget.studentUid!.isEmpty
+                      ? _needsUid(colorProvider, "Books")
+                      : StudentBooksPanel(studentUid: widget.studentUid!, studentName: widget.username),
                 },
               ],
             ),

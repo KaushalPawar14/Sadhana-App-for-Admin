@@ -10,28 +10,16 @@ class AiException implements Exception {
   String toString() => message;
 }
 
-/// The two things the guide can still ask the AI for by hand. Both run on the SERVER (OpenAI,
+/// The thing the guide can still ask the AI for by hand (re-reading an interaction). Both run on the SERVER (OpenAI,
 /// `functions/interactionAI.js`); the app holds no AI key and no prompt.
 ///
 /// Everything else the AI does for a guide happens without a screen: an interaction that is
-/// saved is analysed in the background and new suggestions for that student follow by themselves.
+/// saved is analysed in the background, and the advice for each student is worked out inside the Today / This week plans.
 class GuideAi {
   GuideAi({HierarchyApi? api}) : _api = api;
 
   final HierarchyApi? _api;
   HierarchyApi get _client => _api ?? HierarchyApi.instance;
-
-  /// Makes new suggestions for [studentUid] now ("Generate / Refresh suggestions").
-  /// The server stores them where the profile reads them; returns how many.
-  Future<int> generateSuggestions(String studentUid) async {
-    try {
-      return await _client.generateStudentSuggestions(studentUid);
-    } on HierarchyException catch (e) {
-      throw AiException(e.message);
-    } catch (e) {
-      throw AiException('Could not reach the AI: $e');
-    }
-  }
 
   /// Runs the analysis again over an interaction whose original notes are still stored.
   /// The server saves the result; this only reports whether it worked.

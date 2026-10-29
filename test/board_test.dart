@@ -8,6 +8,7 @@ import 'package:folk_guide_app/Home/FolkBoysWorkspace.dart';
 import 'package:folk_guide_app/Services/HierarchyApi.dart';
 import 'package:folk_guide_app/utils/AdminProfile.dart';
 import 'package:folk_guide_app/utils/BoardData.dart';
+import 'package:folk_guide_app/utils/StudentHistory.dart';
 import 'package:folk_guide_app/utils/BoardQueries.dart';
 import 'package:folk_guide_app/utils/BookProgressData.dart';
 import 'package:folk_guide_app/utils/SeenMarkers.dart';
@@ -18,6 +19,18 @@ import 'support/fake_snapshots.dart';
 import 'support/guide_test_support.dart';
 
 // ---------------------------------------------------------------- fake data
+/// The fullest history a card can show: 30 lines of every kind, some long enough to need an ellipsis.
+List<HistoryLine> manyHistoryLines([int n = 30]) => [
+      for (var i = 0; i < n; i++)
+        HistoryLine(
+          id: 'h$i',
+          kind: const ['advice', 'interaction', 'dealing', 'note', 'sadhana'][i % 5],
+          title: i % 4 == 0 ? 'Plan advice: a rather long line about how to approach him this week and what to ask' : 'Line $i',
+          detail: 'The full details of line $i.',
+          at: DateTime(2026, 10, 29).subtract(Duration(days: i)),
+        ),
+    ];
+
 class FakeBoardData implements BoardData {
   FakeBoardData({required this.users, this.books = const {}, Map<String, String>? placementList})
       : placementList = placementList ?? {};
@@ -129,14 +142,16 @@ class FakeBoardData implements BoardData {
     yield* unseenC.stream;
   }
 
-  /// The students whose new suggestions the board shows a dot for (set by a test; empty by default).
-  final StreamController<Set<String>> suggestionsC = StreamController<Set<String>>.broadcast();
-  Set<String> suggestionsUnseen = {};
+  /// The history lines of a student (set by a test; empty by default).
+  final Map<String, List<HistoryLine>> histories = {};
+  final StreamController<void> historyC = StreamController<void>.broadcast();
 
   @override
-  Stream<Set<String>> unseenSuggestions(String guide) async* {
-    yield suggestionsUnseen;
-    yield* suggestionsC.stream;
+  Stream<List<HistoryLine>> history(String studentUid) async* {
+    yield histories[studentUid] ?? manyHistoryLines();
+    await for (final _ in historyC.stream) {
+      yield histories[studentUid] ?? manyHistoryLines();
+    }
   }
 
   @override
@@ -299,35 +314,53 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('tapping a card expands it inline: commitment chip and Level 1 / 2 / 3 with progress', (tester) async {
-    await openBoard(tester, books: {
-      'sg1': {
-        'level-1_book_1': {'endDate': '2026-01-01'},
-        'level-1_book_2': {'endDate': '2026-02-01'},
-        'level-1_book_3': {'startDate': '2026-03-01', 'isCurrentBook': true},
-      },
-    });
-    expect(find.textContaining('Committed to'), findsNothing);
+  testWidgets("tapping a card expands it inline: the student's one-line history, newest first, the last 30; a tap opens the details", (tester) async {
+    final data = FakeBoardData(users: roster)
+      ..histories['sg1'] = [
+        HistoryLine(id: 'a', kind: 'advice', title: 'Plan advice: call him about japa', detail: 'Call him. He chants 9 rounds.', at: DateTime(2026, 10, 29)),
+        HistoryLine(id: 'b', kind: 'interaction', title: 'Interaction (Call): ask about his Gita reading', detail: 'Themes: japa. Next: ask about his Gita reading.', at: DateTime(2026, 10, 27)),
+        HistoryLine(id: 'c', kind: 'sadhana', title: 'Chanting up 4 rounds a day (8 → 12)', detail: 'His weekly average moved.', at: DateTime(2026, 10, 20)),
+      ];
+    await openBoard(tester, data: data);
+    expect(find.byKey(const ValueKey('history-list')), findsNothing);
     await tester.tap(find.text('Arjun Kumar'));
     await tester.pumpAndSettle();
-    expect(find.text('Committed to 16 rounds/day'), findsOneWidget);
-    expect(find.text('Level 1'), findsOneWidget);
-    expect(find.text('Level 2'), findsOneWidget);
-    expect(find.text('Level 3'), findsOneWidget);
-    expect(find.text('2 of 8 finished · 1 reading'), findsOneWidget);
-    // the level opens: finished first, then reading, with "Show 3 more"
-    await tester.tap(find.text('Level 1'));
+    expect(find.byKey(const ValueKey('history-list')), findsOneWidget);
+    // newest first, one line each
+    final titles = tester.widgetList<Text>(find.descendant(of: find.byKey(const ValueKey('history-list')), matching: find.byType(Text))).map((t) => t.data).whereType<String>().toList();
+    expect(titles.indexOf('Plan advice: call him about japa'), lessThan(titles.indexOf('Interaction (Call): ask about his Gita reading')));
+    expect(titles.indexOf('Interaction (Call): ask about his Gita reading'), lessThan(titles.indexOf('Chanting up 4 rounds a day (8 → 12)')));
+    expect(find.text('29 Oct'), findsOneWidget);
+    // the books are no longer in the card
+    expect(find.text('Level 1'), findsNothing);
+    expect(find.textContaining('Committed to'), findsNothing);
+    // a tap: the full details
+    await tester.tap(find.text('Interaction (Call): ask about his Gita reading'));
     await tester.pumpAndSettle();
-    expect(find.text('Book 1 of level one'), findsOneWidget);
-    expect(find.text('Show 3 more'), findsOneWidget);
-    await tester.tap(find.text('Show 3 more'));
+    expect(find.byKey(const ValueKey('history-dialog-title')), findsOneWidget);
+    expect(find.text('Themes: japa. Next: ask about his Gita reading.'), findsOneWidget);
+    await tester.tap(find.text('Close'));
     await tester.pumpAndSettle();
-    expect(find.text('Show 3 more'), findsNothing);
-    expect(find.text('Book 8 of level one'), findsOneWidget);
     // collapsing the card again
     await tester.tap(find.text('Arjun Kumar'));
     await tester.pumpAndSettle();
-    expect(find.text('Committed to 16 rounds/day'), findsNothing);
+    expect(find.byKey(const ValueKey('history-list')), findsNothing);
+  });
+
+  testWidgets('a student with no history yet: a friendly line; a full history (30 lines) shows 8 and "Show 22 more"', (tester) async {
+    final data = FakeBoardData(users: roster)..histories['sg1'] = [];
+    await openBoard(tester, data: data);
+    await tester.tap(find.text('Arjun Kumar'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('history-empty')), findsOneWidget);
+    data.histories['sg1'] = manyHistoryLines();
+    data.historyC.add(null);
+    await tester.pumpAndSettle();
+    expect(find.text('Show 22 more'), findsOneWidget, reason: '30 kept, 8 shown');
+    await tester.tap(find.text('Show 22 more'));
+    await tester.pumpAndSettle();
+    expect(find.text('Show 22 more'), findsNothing);
+    expect(find.textContaining('Line 29'), findsOneWidget);
   });
 
   // ------------------------------------------------------------ drag and drop
@@ -485,7 +518,7 @@ void main() {
         }
         await tester.tap(find.text('Arjun Kumar'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Level 1'));
+        await tester.tap(find.byKey(const ValueKey('history-more')));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
         // the column on screen stays inside it
@@ -508,7 +541,7 @@ void main() {
       });
       await tester.tap(find.text('Arjun Kumar'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Level 1'));
+      await tester.tap(find.byKey(const ValueKey('history-more')));
       await tester.pumpAndSettle();
       await shot(tester, 'board_${dark ? 'dark' : 'light'}');
       await tester.pumpWidget(const SizedBox());

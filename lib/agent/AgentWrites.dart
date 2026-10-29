@@ -15,7 +15,6 @@ import '../actions/LitActions.dart';
 import '../actions/PriorityActions.dart';
 import '../actions/StudentActions.dart';
 import '../actions/SubmissionActions.dart';
-import '../actions/SuggestionActions.dart';
 import '../actions/TripActions.dart';
 import '../utils/BookProgressData.dart';
 import '../utils/StudentDeletion.dart';
@@ -145,7 +144,7 @@ Future<AgentResult> interactionAdd(Map<String, dynamic> a, AgentEnv env) async {
     interactionDate: when,
     followUpDate: a['followUpDate'] == null ? null : agentDay(a['followUpDate']),
   );
-  return _done('Interaction with ${_s(s['name'])} logged for ${_when.format(when)}. The AI analyses it in the background and will have new suggestions ready for them shortly.',
+  return _done('Interaction with ${_s(s['name'])} logged for ${_when.format(when)}. The AI analyses it in the background; what it shows is folded into the plans.',
       entities: [AgentEntity('interaction', saved.id, 'Interaction with ${_s(s['name'])} on ${_day.format(when)}')]);
 }
 
@@ -408,13 +407,6 @@ Future<AgentResult> submissionRemind(Map<String, dynamic> a, AgentEnv env) async
       '${sent < uids.length ? ' — the rest have no notification token or have muted reminders' : ''}.');
 }
 
-Future<AgentResult> suggestionsGenerate(Map<String, dynamic> a, AgentEnv env) async {
-  final uid = _s(a['studentUid']);
-  final s = await env.student(uid);
-  final n = await generateStudentSuggestions(studentUid: uid);
-  return _done('$n suggestion${n == 1 ? '' : 's'} generated for ${_s(s['name'])}; open their profile to read them.');
-}
-
 // ---------------------------------------------------------------------------
 // Competitions and trips
 // ---------------------------------------------------------------------------
@@ -558,13 +550,6 @@ Future<AgentResult> bookUnassignTool(Map<String, dynamic> a, AgentEnv env) async
   return _done('"${b.title}" is no longer assigned to ${_s(s['name'])}.');
 }
 
-Future<AgentResult> suggestionsDelete(Map<String, dynamic> a, AgentEnv env) async {
-  final uid = _s(a['studentUid']);
-  final s = await env.student(uid);
-  await deleteStudentSuggestions(uid);
-  return _done('The AI suggestions for ${_s(s['name'])} were deleted.');
-}
-
 Future<AgentResult> competitionEdit(Map<String, dynamic> a, AgentEnv env) async {
   await editChantingChallenge(
     _s(a['challengeId']),
@@ -629,7 +614,6 @@ final Map<String, AgentRun> kAgentWritesA = {
   'flagged_delete': flaggedDelete,
   'doubt_answer': doubtAnswer,
   'submission_remind': submissionRemind,
-  'suggestions_generate': suggestionsGenerate,
   'competition_create': competitionCreate,
   'competition_set_status': competitionSetStatus,
   'competition_delete': competitionDelete,
@@ -643,7 +627,6 @@ final Map<String, AgentRun> kAgentWritesA = {
   'lit_edit': litEdit,
   'lit_delete': litDelete,
   'book_unassign': bookUnassignTool,
-  'suggestions_delete': suggestionsDelete,
   'competition_edit': competitionEdit,
   'trip_edit': tripEdit,
   'meeting_notes_edit': meetingNotesEdit,
