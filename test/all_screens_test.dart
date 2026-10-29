@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/Home/Calendar.dart';
-import 'package:folk_guide_app/Home/Scores.dart';
 import 'package:folk_guide_app/Pages/AdminRegisterUserPage.dart';
 import 'package:folk_guide_app/Pages/AllGraph.dart';
 import 'package:folk_guide_app/Pages/CompoundTaskEditorPage.dart';
@@ -23,7 +22,6 @@ import 'package:folk_guide_app/Pages/FlaggedMessages.dart';
 import 'package:folk_guide_app/Pages/ForceUpdateScreen.dart';
 import 'package:folk_guide_app/Pages/GoalSetup.dart';
 import 'package:folk_guide_app/Pages/GoalWeeklyPhasePage.dart';
-import 'package:folk_guide_app/Pages/GraphicalAnalysis.dart';
 import 'package:folk_guide_app/Pages/GuideCalendarPage.dart';
 import 'package:folk_guide_app/Pages/InteractionLogger.dart';
 import 'package:folk_guide_app/Pages/NonPlayInstallScreen.dart';
@@ -63,7 +61,6 @@ final Map<String, Widget Function()> screens = {
   'flagged_messages': () => const FlaggedMessagesPage(),
   'goal_setup': () => const CompoundGoalSetupPage(guideId: 'G'),
   'goal_weekly_phase': () => const GoalWeeklyPhasePage(guideId: 'G', targetId: 't1'),
-  'graphical_analysis': () => const Graphicalanalysis(),
   'guide_calendar': () => const GuideCalendarPage(selectedGuide: 'G'),
   'interaction_logger': () => const InteractionLoggerPage(studentUid: 's1', studentName: 'Arjun Kumar'),
   'notification_settings': () => const NotificationSettingsPage(),
@@ -74,7 +71,6 @@ final Map<String, Widget Function()> screens = {
   'service_bank': () => const ServiceBankPage(),
   'student_profile': () => const StudentProfilePage(studentUid: 's1'),
   'submission_status': () => const SubmissionStatusPage(),
-  'scores': () => ScoreScreen(username: 'Arjun Kumar', selectedDate: DateTime.now()),
   'all_graph': () => const AllGraph(username: 'Arjun Kumar', role: 'Stay at FOLK'),
   'challenge_contributions': () => const ChallengeContributionsPage(challengeId: 'c1', challengeName: 'Ekadashi 64 rounds', target: 64, total: 40),
   'compound_task_editor': () => const CompoundTaskEditorPage(guideId: 'G', targetId: 't1', isHod: true, hodUid: 'H'),
