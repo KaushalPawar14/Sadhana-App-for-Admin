@@ -166,6 +166,9 @@ import 'GuideDb.dart';
 const String kCalendarFunctionsRegion = 'asia-south1';
 
 const String kScopeMandatory = 'mandatory';
+
+/// [CalendarEvent.source] of a guide's own event.
+const String kSourceManual = 'manual';
 const String kScopePersonal = 'personal';
 
 /// Part 8 — the four selectable per-event notification offsets. Keys are
@@ -337,6 +340,16 @@ class CalendarEvent {
   final String? ownerGuideId;
   final List<String> notifyOffsets;
 
+  /// Where the event comes from: [kSourceManual] (the guide's own, in `calendarEvents`: editable) or one of the automatic
+  /// kinds (`target`, `phase`, `followUp`, `interaction`, `meeting`, `trip`, `competition`: read from the source data, read-only
+  /// here; a tap opens the screen where that item is edited). [refId] is the source document's id; [studentUid] / [studentName] /
+  /// [guideId] say whose it is, for the screen it opens.
+  final String source;
+  final String refId;
+  final String studentUid;
+  final String studentName;
+  final String guideId;
+
   CalendarEvent({
     required this.id,
     required this.eventDate,
@@ -348,9 +361,17 @@ class CalendarEvent {
     required this.scope,
     required this.ownerGuideId,
     required this.notifyOffsets,
+    this.source = kSourceManual,
+    this.refId = '',
+    this.studentUid = '',
+    this.studentName = '',
+    this.guideId = '',
   });
 
   bool get isMandatory => scope == kScopeMandatory;
+
+  /// True for an event the app derives from its own data (not one a guide wrote): never edited here.
+  bool get isAutomatic => source != kSourceManual;
 
   /// Master Task Part 1 — true once this event has a real `endDate`. A
   /// single-day event (`endDate == null`) is never a range.

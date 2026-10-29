@@ -39,6 +39,14 @@ class GuideColors extends ThemeExtension<GuideColors> {
     required this.bandExam,
     required this.bandFestival,
     required this.bandProgram,
+    required this.eventTarget,
+    required this.eventFollowUp,
+    required this.eventInteraction,
+    required this.eventMeeting,
+    required this.eventTrip,
+    required this.eventCompetition,
+    required this.bandTrip,
+    required this.bandCompetition,
     required this.ghostFill,
     required this.danger,
     required this.success,
@@ -98,6 +106,16 @@ class GuideColors extends ThemeExtension<GuideColors> {
   final Color bandExam;
   final Color bandFestival;
   final Color bandProgram;
+
+  // The calendar's automatic events (dots), and the bands of the two that are ranges.
+  final Color eventTarget;
+  final Color eventFollowUp;
+  final Color eventInteraction;
+  final Color eventMeeting;
+  final Color eventTrip;
+  final Color eventCompetition;
+  final Color bandTrip;
+  final Color bandCompetition;
 
   // Loading placeholders.
   final Color ghostFill;
@@ -204,6 +222,12 @@ class GuideColors extends ThemeExtension<GuideColors> {
         GuideEventType.festival => eventFestival,
         GuideEventType.program => eventProgram,
         GuideEventType.other => eventOther,
+        GuideEventType.target => eventTarget,
+        GuideEventType.followUp => eventFollowUp,
+        GuideEventType.interaction => eventInteraction,
+        GuideEventType.meeting => eventMeeting,
+        GuideEventType.trip => eventTrip,
+        GuideEventType.competition => eventCompetition,
       };
 
   /// The soft band behind a multi-day range, or null (mandatory / personal /
@@ -212,6 +236,8 @@ class GuideColors extends ThemeExtension<GuideColors> {
         GuideEventType.exam => bandExam,
         GuideEventType.festival => bandFestival,
         GuideEventType.program => bandProgram,
+        GuideEventType.trip => bandTrip,
+        GuideEventType.competition => bandCompetition,
         _ => null,
       };
 
@@ -259,6 +285,14 @@ class GuideColors extends ThemeExtension<GuideColors> {
     bandExam: Color(0x2BB23A3A), // .17
     bandFestival: Color(0x265B5FA8), // .15
     bandProgram: Color(0x332F7D5B), // .20
+    eventTarget: Color(0xFF1F7A8C),
+    eventFollowUp: Color(0xFFC2570C),
+    eventInteraction: Color(0xFF7A3E9D),
+    eventMeeting: Color(0xFF2563A8),
+    eventTrip: Color(0xFF8A5A2B),
+    eventCompetition: Color(0xFFB8336A),
+    bandTrip: Color(0x2E8A5A2B), // .18
+    bandCompetition: Color(0x2EB8336A), // .18
     ghostFill: Color(0x1314192B), // .075
     danger: Color(0xFFB23A3A),
     success: Color(0xFF2F7D5B),
@@ -313,6 +347,14 @@ class GuideColors extends ThemeExtension<GuideColors> {
     bandExam: Color(0x42E06B6B), // .26
     bandFestival: Color(0x428A8FD6),
     bandProgram: Color(0x424FB38A),
+    eventTarget: Color(0xFF5CC0D3),
+    eventFollowUp: Color(0xFFFF9A55),
+    eventInteraction: Color(0xFFC18AE0),
+    eventMeeting: Color(0xFF6FA6E8),
+    eventTrip: Color(0xFFD1A06A),
+    eventCompetition: Color(0xFFEA7BA6),
+    bandTrip: Color(0x42D1A06A),
+    bandCompetition: Color(0x42EA7BA6),
     ghostFill: Color(0x13FFFFFF), // .075
     danger: Color(0xFFE06B6B),
     success: Color(0xFF4FB38A),
@@ -346,7 +388,7 @@ enum GuideGroup { folk, hostel, localite }
 
 enum GuideColumnTone { folk, unassigned, plain }
 
-enum GuideEventType { mandatory, personal, exam, festival, program, other }
+enum GuideEventType { mandatory, personal, exam, festival, program, other, target, followUp, interaction, meeting, trip, competition }
 
 @immutable
 class GuideGroupColors {

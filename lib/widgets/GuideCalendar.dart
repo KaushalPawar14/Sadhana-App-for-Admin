@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../theme/GuideColors.dart';
 import '../theme/GuideTheme.dart';
+import '../utils/AutoCalendar.dart';
 import '../utils/CalendarQueries.dart';
 import '../theme/GuideTokens.dart';
 import 'GuideSurface.dart';
@@ -13,6 +14,21 @@ import 'GuideSurface.dart';
 /// programme by its `type`; any other event by its scope (a mandatory one is
 /// "Mandatory", a personal one "Personal").
 GuideEventType guideEventTypeOf(CalendarEvent e) {
+  switch (e.source) {
+    case kSourceTarget:
+    case kSourcePhase:
+      return GuideEventType.target;
+    case kSourceFollowUp:
+      return GuideEventType.followUp;
+    case kSourceInteraction:
+      return GuideEventType.interaction;
+    case kSourceMeeting:
+      return GuideEventType.meeting;
+    case kSourceTrip:
+      return GuideEventType.trip;
+    case kSourceCompetition:
+      return GuideEventType.competition;
+  }
   switch (e.type) {
     case kEventTypeExam:
       return GuideEventType.exam;
@@ -26,6 +42,7 @@ GuideEventType guideEventTypeOf(CalendarEvent e) {
 }
 
 String guideEventTypeLabel(CalendarEvent e) {
+  if (e.isAutomatic) return kAutoSourceLabels[e.source] ?? 'Automatic';
   switch (e.type) {
     case kEventTypeExam:
     case kEventTypeFestival:
@@ -81,7 +98,11 @@ class GuideDayCell extends StatelessWidget {
   final bool outside;
 
   static bool hasBand(GuideEventType t) =>
-      t == GuideEventType.exam || t == GuideEventType.festival || t == GuideEventType.program;
+      t == GuideEventType.exam ||
+      t == GuideEventType.festival ||
+      t == GuideEventType.program ||
+      t == GuideEventType.trip ||
+      t == GuideEventType.competition;
 
   @override
   Widget build(BuildContext context) {
@@ -353,6 +374,12 @@ class GuideCalendarLegend extends StatelessWidget {
         entry(band(g.bandExam), 'Exam'),
         entry(band(g.bandFestival), 'Festival'),
         entry(band(g.bandProgram), 'Program'),
+        entry(dot(g.eventTarget), 'Target'),
+        entry(dot(g.eventFollowUp), 'Follow-up'),
+        entry(dot(g.eventInteraction), 'Interaction'),
+        entry(dot(g.eventMeeting), 'Meeting'),
+        entry(band(g.bandTrip), 'Trip'),
+        entry(band(g.bandCompetition), 'Competition'),
       ],
     );
   }

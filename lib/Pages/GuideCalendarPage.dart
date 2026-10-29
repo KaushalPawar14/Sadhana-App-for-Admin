@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -6,6 +8,7 @@ import '../theme/GuideColors.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
+import '../utils/AutoCalendar.dart';
 import '../utils/CalendarData.dart';
 import '../utils/CalendarQueries.dart';
 import '../utils/SeenMarkers.dart';
@@ -53,8 +56,13 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
 
   bool _loading = true;
   bool _loadFailed = false;
-  List<CalendarEvent> _events = [];
+  List<CalendarEvent> _manual = [];
+  List<CalendarEvent> _auto = [];
+  StreamSubscription<List<CalendarEvent>>? _autoSub;
   List<CalendarTextBlock> _textBlocks = [];
+
+  /// The guide's own events plus the automatic ones (live from their sources).
+  List<CalendarEvent> get _events => [..._manual, ..._auto];
 
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
@@ -63,6 +71,9 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
   void initState() {
     super.initState();
     _selectedDay = DateTime.now();
+    _autoSub = CalendarData.instance.automaticEvents(widget.selectedGuide).listen((events) {
+      if (mounted) setState(() => _auto = events);
+    }, onError: (_) {});
     _loadAll();
     // Master Task 2026-09-10, Part 6 — opening this screen is "seen" for
     // mandatory calendar events.
@@ -79,7 +90,7 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
       final blocks = await CalendarData.instance.textBlocks(widget.selectedGuide);
       if (!mounted) return;
       setState(() {
-        _events = events;
+        _manual = events;
         _textBlocks = blocks;
         _loading = false;
       });
@@ -109,6 +120,19 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
           : (a.isMandatory ? -1 : 1));
   }
 
+
+  @override
+  void dispose() {
+    _autoSub?.cancel();
+    super.dispose();
+  }
+
+  /// An automatic event is read-only here: a tap opens the screen where that item is edited.
+  void _openSource(CalendarEvent e) {
+    final page = autoEventPage(e);
+    if (page == null) return;
+    Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+  }
 
   bool get _hasMandatoryBlock => _textBlocks.any((b) => b.isMandatory);
 
@@ -434,7 +458,7 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
                         selectedGuide: widget.selectedGuide,
                         isHod: _isHod,
                         textBlocks: _textBlocks,
-                        events: _events,
+                        events: _manual,
                         onChanged: _loadAll,
                         onEditRequested: (b) => _openTextEntryPage(editingBlock: b),
                       ),
@@ -607,7 +631,9 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
               index: i,
               child: GuideEventRow(
                 event: events[i],
-                onTap: _canMutate(events[i]) ? () => _openEditEventDialog(events[i]) : null,
+                onTap: events[i].isAutomatic
+                    ? (autoEventPage(events[i]) == null ? null : () => _openSource(events[i]))
+                    : (_canMutate(events[i]) ? () => _openEditEventDialog(events[i]) : null),
               ),
             ),
       ],

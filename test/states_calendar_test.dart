@@ -25,6 +25,8 @@ class ManualCalendarData implements CalendarData {
 
   @override
   Future<List<CalendarTextBlock>> textBlocks(String guideId) async => const [];
+  @override
+  Stream<List<CalendarEvent>> automaticEvents(String guideId) => Stream.value(const <CalendarEvent>[]);
 }
 
 CalendarEvent ev(String id, DateTime start, String title, {DateTime? end, String type = 'other'}) => CalendarEvent(

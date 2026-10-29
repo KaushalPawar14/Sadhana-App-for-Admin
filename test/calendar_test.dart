@@ -19,6 +19,8 @@ class FakeCalendarData implements CalendarData {
   Future<List<CalendarEvent>> events(String guideId) async => eventList;
   @override
   Future<List<CalendarTextBlock>> textBlocks(String guideId) async => blocks;
+  @override
+  Stream<List<CalendarEvent>> automaticEvents(String guideId) => Stream.value(const <CalendarEvent>[]);
 }
 
 CalendarEvent ev(String id, DateTime start, String title,
@@ -207,6 +209,8 @@ void main() {
     await tester.pump();
     await tester.pump();
     // personal -> tappable (opens the edit dialog)
+    await tester.ensureVisible(find.text('Guide review'));
+    await tester.pump();
     await tester.tap(find.text('Guide review'));
     await tester.pumpAndSettle();
     expect(find.text('Edit event'), findsOneWidget);

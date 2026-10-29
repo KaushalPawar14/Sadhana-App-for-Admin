@@ -18,6 +18,7 @@ import 'AgentDuplicates.dart';
 import 'AgentEnv.dart';
 import 'AgentTypes.dart';
 import 'NameMatch.dart';
+import '../utils/AutoCalendar.dart';
 
 /// The agent's look-ups — everything the model may be told about the guide's world.
 ///
@@ -725,12 +726,20 @@ Future<AgentResult> listSubmissions(Map<String, dynamic> a, AgentEnv env) async 
 Future<AgentResult> listCalendar(Map<String, dynamic> a, AgentEnv env) async {
   final from = a['fromDate'] == null ? DateTime(env.now.year, env.now.month, env.now.day) : agentDay(a['fromDate']);
   final to = a['toDate'] == null ? from.add(const Duration(days: 31)) : agentDay(a['toDate']).add(const Duration(days: 1));
-  final events = (await visibleEventsFor(env.me.id)).where((e) {
+  // The guide's own events AND the ones the app shows by itself (targets, follow-ups, meetings, trips, competitions, planned
+  // interactions): exactly what the calendar screen shows, from the same sources.
+  final manual = await visibleEventsFor(env.me.id);
+  final automatic = await AutoCalendarFeed(env.me, clock: () => env.now).load();
+  final events = [...manual, ...automatic].where((e) {
     final end = e.endDate ?? e.eventDate;
     return !end.isBefore(from) && e.eventDate.isBefore(to);
   }).toList()
     ..sort((x, y) => x.eventDate.compareTo(y.eventDate));
   final blocks = await visibleTextBlocksFor(env.me.id);
+  final perBlock = <String, int>{for (final e in manual) e.sourceTextBlockId: 0};
+  for (final e in manual) {
+    perBlock[e.sourceTextBlockId] = (perBlock[e.sourceTextBlockId] ?? 0) + 1;
+  }
   return AgentResult.ok(
     {
       'events': [
@@ -739,10 +748,26 @@ Future<AgentResult> listCalendar(Map<String, dynamic> a, AgentEnv env) async {
             'id': e.id,
             'date': agentDateOf(e.eventDate),
             if (e.endDate != null) 'lastDay': agentDateOf(e.endDate!),
-            'type': e.type,
             'title': e.title,
             if (e.note.isNotEmpty) 'note': e.note,
-            'forEveryone': e.scope == kScopeMandatory,
+            if (e.isAutomatic) ...{
+              // shown by the app from its own data: read-only for you; change it where it lives
+              'kind': kAutoSourceLabels[e.source] ?? e.source,
+              'readOnly': true,
+              'changeItIn': switch (e.source) {
+                kSourceTarget || kSourcePhase => 'Targets',
+                kSourceFollowUp || kSourceInteraction => "the student's Interactions",
+                kSourceMeeting => 'Meetings',
+                kSourceTrip => 'Expeditions',
+                kSourceCompetition => 'Chanting competitions',
+                _ => 'its own screen',
+              },
+            } else ...{
+              'type': e.type,
+              'forEveryone': e.scope == kScopeMandatory,
+              'blockId': e.sourceTextBlockId,
+              'eventsInItsBlock': perBlock[e.sourceTextBlockId] ?? 1,
+            },
           }
       ],
       'noteBlocks': [
@@ -751,7 +776,9 @@ Future<AgentResult> listCalendar(Map<String, dynamic> a, AgentEnv env) async {
       ],
     },
     entities: [
-      for (final e in events.take(60)) AgentEntity('event', e.id, e.title),
+      // only the guide's own events are things the assistant may edit or delete; the automatic ones are not entities at all
+      for (final e in events.take(60))
+        if (!e.isAutomatic) AgentEntity('event', e.id, e.title),
       for (final b in blocks.take(15)) AgentEntity('block', b.id, b.rawText.length > 40 ? '${b.rawText.substring(0, 40)}…' : b.rawText),
     ],
   );
