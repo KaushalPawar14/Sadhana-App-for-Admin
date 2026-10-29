@@ -75,9 +75,9 @@ void main() {
       switch (name) {
         case 'addAdmin':
         case 'updateAdmin':
-          return {'admin': {'id': 'new1', 'displayName': 'New Admin', 'role': args['role'] ?? 'GUIDE', 'teamGuide': ''}};
+          return {'admin': {'id': 'new1', 'displayName': 'New Admin', 'role': args['role'] ?? 'GUIDE', 'teamGuide': ''}, 'boardColumn': name == 'addAdmin' ? 'created' : 'updated'};
         case 'removeAdmin':
-          return {'studentCount': 3, 'teamlessEnablers': <String>[], 'removed': true};
+          return {'studentCount': 3, 'teamlessEnablers': <String>[], 'removed': true, 'boardColumn': 'removed', 'cardsMoved': 3};
         case 'deleteExpedition':
           return {'deleted': true, 'registrationsDeleted': 1};
         case 'checkMobileTaken':
@@ -332,11 +332,14 @@ void main() {
       final e = env();
       final added = await all['admin_add']!({'name': 'newguy', 'email': 'new@x.org', 'role': 'GUIDE'}, e);
       expect(added.ok, isTrue);
+      expect((added.data as Map)['done'], contains('column on the FOLK Boys board was created'), reason: 'the assistant says the board followed');
       expect(calls.any((c) => c['_call'] == 'addAdmin' && c['email'] == 'new@x.org'), isTrue);
-      await all['admin_update']!({'adminId': 'G', 'displayName': 'Gopal D'}, e);
+      final updated = await all['admin_update']!({'adminId': 'G', 'displayName': 'Gopal D'}, e);
+      expect((updated.data as Map)['done'], contains('column on the FOLK Boys board was updated'));
       expect(calls.any((c) => c['_call'] == 'updateAdmin' && c['id'] == 'G'), isTrue);
       final removed = await all['admin_remove']!({'adminId': 'M1'}, e);
       expect((removed.data as Map)['done'], contains('Madhava Das removed'));
+      expect((removed.data as Map)['done'], contains('column on the FOLK Boys board was removed (3 cards moved to Unassigned)'));
       await all['admin_set_team_guide']!({'adminId': 'M1', 'teamGuide': 'G'}, e);
       expect(calls.any((c) => c['_call'] == 'setTeamGuide'), isTrue);
     });

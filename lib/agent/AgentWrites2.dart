@@ -392,6 +392,27 @@ Future<AgentResult> boardCardRemove(Map<String, dynamic> a, AgentEnv env) async 
 // ---------------------------------------------------------------------------
 // Admins
 // ---------------------------------------------------------------------------
+/// The board's side of an admin change, in words, so the assistant can say whether the FOLK Boys board followed:
+/// "Their column on the FOLK Boys board was created." Empty when the server did not say.
+String boardColumnSentence(String? effect, {String who = 'Their', int cardsMoved = 0}) {
+  switch (effect) {
+    case 'created':
+      return ' $who column on the FOLK Boys board was created.';
+    case 'updated':
+      return ' $who column on the FOLK Boys board was updated.';
+    case 'removed':
+      return ' $who column on the FOLK Boys board was removed${cardsMoved > 0 ? ' ($cardsMoved card${cardsMoved == 1 ? '' : 's'} moved to Unassigned)' : ''}.';
+    case 'unchanged':
+      return ' The FOLK Boys board needed no change.';
+    case 'no-board':
+      return ' The FOLK Boys board has not been opened yet; the column appears when it is.';
+    case 'failed':
+      return " The FOLK Boys board column could not be updated just now; it will be corrected automatically, and opening the board repairs it.";
+    default:
+      return '';
+  }
+}
+
 Future<AgentResult> adminAdd(Map<String, dynamic> a, AgentEnv env) async {
   final added = await HierarchyApi.instance.addAdmin(
     name: _s(a['name']),
@@ -400,7 +421,7 @@ Future<AgentResult> adminAdd(Map<String, dynamic> a, AgentEnv env) async {
     displayName: a['displayName'] == null ? null : _s(a['displayName']),
     teamGuide: a['teamGuide'] == null ? null : _s(a['teamGuide']),
   );
-  return _done('${added.displayName} added as ${added.role.label}.', entities: [AgentEntity('admin', added.id, added.displayName, {'role': added.role.wire})]);
+  return _done('${added.displayName} added as ${added.role.label}.${boardColumnSentence(added.boardColumn)}', entities: [AgentEntity('admin', added.id, added.displayName, {'role': added.role.wire})]);
 }
 
 Future<AgentResult> adminUpdate(Map<String, dynamic> a, AgentEnv env) async {
@@ -411,14 +432,14 @@ Future<AgentResult> adminUpdate(Map<String, dynamic> a, AgentEnv env) async {
     role: a['role'] == null ? null : AdminRoleX.fromWire(_s(a['role'])),
     teamGuide: a['teamGuide'] == null ? null : _s(a['teamGuide']),
   );
-  return _done('${u.displayName} updated.');
+  return _done('${u.displayName} updated.${boardColumnSentence(u.boardColumn)}');
 }
 
 Future<AgentResult> adminRemove(Map<String, dynamic> a, AgentEnv env) async {
   final id = _s(a['adminId']);
   final name = env.adminName(id);
   final r = await HierarchyApi.instance.removeAdmin(id);
-  return _done('$name removed. ${r.studentCount} student${r.studentCount == 1 ? ' was' : 's were'} moved to unassigned first.');
+  return _done('$name removed. ${r.studentCount} student${r.studentCount == 1 ? ' was' : 's were'} moved to unassigned first.${boardColumnSentence(r.boardColumn, cardsMoved: r.cardsMoved)}');
 }
 
 Future<AgentResult> adminSetTeamGuide(Map<String, dynamic> a, AgentEnv env) async {

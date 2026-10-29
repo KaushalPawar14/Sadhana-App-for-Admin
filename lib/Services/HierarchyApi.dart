@@ -104,7 +104,7 @@ class HierarchyApi {
         'displayName': displayName.trim(),
       if (teamGuide != null) 'teamGuide': teamGuide,
     });
-    return AdminSummary.fromMap(Map<String, dynamic>.from(r['admin'] as Map));
+    return AdminSummary.fromMap({...Map<String, dynamic>.from(r['admin'] as Map), 'boardColumn': r['boardColumn']});
   }
 
   Future<AdminSummary> updateAdmin({
@@ -121,7 +121,7 @@ class HierarchyApi {
       if (role != null) 'role': role.wire,
       if (teamGuide != null) 'teamGuide': teamGuide,
     });
-    return AdminSummary.fromMap(Map<String, dynamic>.from(r['admin'] as Map));
+    return AdminSummary.fromMap({...Map<String, dynamic>.from(r['admin'] as Map), 'boardColumn': r['boardColumn']});
   }
 
   /// With [dryRun] nothing changes; the result says how many students would
@@ -134,6 +134,8 @@ class HierarchyApi {
       teamlessEnablers:
           [for (final x in (r['teamlessEnablers'] as List? ?? const [])) '$x'],
       removed: r['removed'] == true,
+      boardColumn: r['boardColumn']?.toString(),
+      cardsMoved: (r['cardsMoved'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -248,8 +250,16 @@ class RemoveAdminResult {
     required this.studentCount,
     required this.teamlessEnablers,
     required this.removed,
+    this.boardColumn,
+    this.cardsMoved = 0,
   });
   final int studentCount;
   final List<String> teamlessEnablers;
   final bool removed;
+
+  /// What the server did to the admin's column on the FOLK Boys board: `removed`, `unchanged` (they had none), `no-board`, `failed`.
+  final String? boardColumn;
+
+  /// How many cards filed in that column moved to the Unassigned column.
+  final int cardsMoved;
 }

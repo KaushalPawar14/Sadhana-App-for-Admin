@@ -63,6 +63,7 @@ class AdminSummary {
     required this.role,
     required this.teamGuide,
     this.email,
+    this.boardColumn,
   });
 
   final String id;
@@ -71,12 +72,17 @@ class AdminSummary {
   final String teamGuide;
   final String? email;
 
+  /// What the server did to this admin's column on the FOLK Boys board when it added or changed them: `created`, `updated`,
+  /// `unchanged`, `no-board` (no board exists yet) or `failed`. Null when the answer did not say.
+  final String? boardColumn;
+
   factory AdminSummary.fromMap(Map<String, dynamic> m) => AdminSummary(
         id: (m['id'] ?? '').toString(),
         displayName: (m['displayName'] ?? m['id'] ?? '').toString(),
         role: AdminRoleX.fromWire(m['role']?.toString()),
         teamGuide: (m['teamGuide'] ?? '').toString(),
         email: m['email']?.toString(),
+        boardColumn: m['boardColumn']?.toString(),
       );
 }
 
