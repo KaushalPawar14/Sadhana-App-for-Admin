@@ -41,8 +41,33 @@ const names = {
   's5': 'Gauri Devi',
 };
 
-Future<FakeFirebaseFirestore> open(WidgetTester tester, String who, {double scale = 1.0, bool dark = false, Future<void> Function(FakeFirebaseFirestore db)? seed}) async {
+/// What the server writes for a student who needs an interaction (`interactionNeeds/{uid}`): the reasons, with the scope stamps the guide's
+/// scoped read uses. By default every seeded student has one reason (three days under his chanting commitment).
+Future<void> needs(FakeFirebaseFirestore db, String uid, List<Map<String, dynamic>> list) async {
+  final u = (await db.collection('users').doc(uid).get()).data()!;
+  await db.collection('interactionNeeds').doc(uid).set({
+    'studentUid': uid,
+    'studentName': u['name'],
+    'guideId': u['guideId'],
+    'scopeGuide': u['guideId'],
+    'scopeTeam': u['teamGuide'],
+    'scopeGender': u['gender'],
+    'needs': list,
+    'updatedAt': Timestamp.now(),
+    'changedAt': Timestamp.now(),
+  });
+}
+
+Map<String, dynamic> need(String source, String key, String text) => {'key': key, 'source': source, 'topic': key, 'text': text, 'urgency': 'today', 'since': 1};
+
+Future<FakeFirebaseFirestore> open(WidgetTester tester, String who,
+    {double scale = 1.0, bool dark = false, Future<void> Function(FakeFirebaseFirestore db)? seed, bool defaultNeeds = true}) async {
   final db = await prepareApp(tester);
+  if (defaultNeeds) {
+    for (final uid in ['s1', 's2', 's3', 's4', 's5', 's6']) {
+      await needs(db, uid, [need('sadhana', 'sadhana_slip', 'Not fulfilling his commitments for 3 days: chanting under 16 rounds on 3 days')]);
+    }
+  }
   if (seed != null) await seed(db);
   AdminProfileProvider.instance.debugSet(profileOf(who));
   await pumpScreen(tester, const PriorityStudentsPage(), scale: scale, dark: dark);
@@ -102,12 +127,12 @@ void main() {
   group('selecting', () {
     testWidgets('long-press starts selection; tap adds and removes; the cross cancels', (tester) async {
       await open(tester, 'H');
-      expect(find.text('Priority Students'), findsOneWidget);
+      expect(find.text('Interactions needed'), findsOneWidget);
       expect(find.text('Press and hold a student to select, then remove from your list.'), findsOneWidget);
       await hold(tester, 's2');
       expect(find.text('1 selected'), findsOneWidget);
       expect(find.byKey(const ValueKey('remove-from-priority')), findsOneWidget);
-      expect(find.text('Remove from priority list'), findsOneWidget);
+      expect(find.text('Remove from my list'), findsOneWidget);
       expect(find.text('Open profile'), findsNothing, reason: 'while selecting, a card is for selecting');
       await tapCard(tester, 's3');
       expect(find.text('2 selected'), findsOneWidget);
@@ -115,7 +140,7 @@ void main() {
       expect(find.text('1 selected'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('cancel-selection')));
       await letDataArrive(tester);
-      expect(find.text('Priority Students'), findsOneWidget);
+      expect(find.text('Interactions needed'), findsOneWidget);
       expect(find.byKey(const ValueKey('remove-from-priority')), findsNothing);
     });
 
@@ -124,7 +149,7 @@ void main() {
       await hold(tester, 's2');
       await tapCard(tester, 's2');
       expect(find.byKey(const ValueKey('remove-from-priority')), findsNothing, reason: 'nothing selected: the bar is gone');
-      expect(find.text('Priority Students'), findsOneWidget);
+      expect(find.text('Interactions needed'), findsOneWidget);
     });
   });
 
@@ -135,7 +160,7 @@ void main() {
       await tapCard(tester, 's3');
       await tester.tap(find.byKey(const ValueKey('remove-from-priority')));
       await letDataArrive(tester);
-      expect(find.text('Remove 2 students from your priority list?'), findsOneWidget);
+      expect(find.text('Remove 2 students from your Interactions needed list?'), findsOneWidget);
       expect(find.textContaining('NOT deleted or changed'), findsOneWidget);
       await tester.tap(find.text('Cancel'));
       await letDataArrive(tester);
@@ -148,7 +173,7 @@ void main() {
       await hold(tester, 's2');
       await tester.tap(find.byKey(const ValueKey('remove-from-priority')));
       await letDataArrive(tester);
-      expect(find.text('Remove 1 student from your priority list?'), findsOneWidget);
+      expect(find.text('Remove 1 student from your Interactions needed list?'), findsOneWidget);
     });
 
     testWidgets('Remove writes exactly one small record per student and NOTHING else changes', (tester) async {
@@ -178,7 +203,7 @@ void main() {
       expect(find.text('Arjun Kumar'), findsOneWidget);
       await top(tester);
       expect(find.text('2 removed by you.'), findsOneWidget);
-      expect(find.text('2 students removed from your priority list'), findsOneWidget);
+      expect(find.text('2 students removed from your Interactions needed list'), findsOneWidget);
       await tester.pump(const Duration(seconds: 5));
     });
 
@@ -204,20 +229,18 @@ void main() {
       expect((await db.collection('users').get()).docs.length, 6);
     });
 
-    testWidgets('a student returns when a NEW kind of concern appears; stays away while nothing new', (tester) async {
+    testWidgets('a student returns when a NEW reason appears; stays away while nothing new', (tester) async {
       await open(tester, 'H', seed: (db) async {
-        // s4 was removed when their only concern was "never logged"; s5 was removed with a different concern.
-        // `no_report` is in s4's list because the seeded roster files no reports at all, so every student now
-        // carries that automatic reason — s4 must still count as "nothing NEW since I removed them".
-        await db.collection('priorityDismissals').doc('H__s4').set({'adminId': 'H', 'studentUid': 's4', 'kinds': ['never_logged', 'stale_contact', 'missing_report', 'no_report'], 'dismissedAt': Timestamp.now()});
-        await db.collection('priorityDismissals').doc('H__s5').set({'adminId': 'H', 'studentUid': 's5', 'kinds': ['missing_report'], 'dismissedAt': Timestamp.now()});
+        // s4 was removed when his only reason was the sadhana slip; s5 was removed with a different reason (a doubt)
+        await db.collection('priorityDismissals').doc('H__s4').set({'adminId': 'H', 'studentUid': 's4', 'kinds': ['sadhana_slip'], 'dismissedAt': Timestamp.now()});
+        await db.collection('priorityDismissals').doc('H__s5').set({'adminId': 'H', 'studentUid': 's5', 'kinds': ['doubt_d1'], 'dismissedAt': Timestamp.now()});
       });
       expect(find.text('1 removed by you.'), findsOneWidget);
-      expect(find.text('6 need attention'), findsNothing);
-      expect(find.text('5 need attention'), findsOneWidget, reason: 'six flagged, one stays removed');
-      expect(find.byKey(const ValueKey('priority-s4')), findsNothing, reason: 'same kind of concern as when removed');
+      expect(find.text('6 need an interaction'), findsNothing);
+      expect(find.text('5 need an interaction'), findsOneWidget, reason: 'six need one, one stays removed');
+      expect(find.byKey(const ValueKey('priority-s4')), findsNothing, reason: 'same reason as when removed');
       await tester.scrollUntilVisible(find.text('Gauri Devi'), 300, scrollable: find.byType(Scrollable).first);
-      expect(find.text('Gauri Devi'), findsOneWidget, reason: 'a kind of concern they did not have then');
+      expect(find.text('Gauri Devi'), findsOneWidget, reason: 'a reason they did not have then');
     });
 
     testWidgets("one admin's removal never hides the student from another admin", (tester) async {
@@ -254,20 +277,20 @@ void main() {
 
     testWidgets('who is on each list is unchanged (scope): Guide sees his team and the unassigned boy, never the girl', (tester) async {
       await open(tester, 'G');
-      expect(find.text('5 need attention'), findsOneWidget, reason: 'Arjun, Bhima, Chaitanya, the long-named student and the unassigned boy Dhruva');
+      expect(find.text('5 need an interaction'), findsOneWidget, reason: 'Arjun, Bhima, Chaitanya, the long-named student and the unassigned boy Dhruva');
       expect(find.text('out of 5 students'), findsOneWidget);
       expect(find.text('Gauri Devi'), findsNothing);
     });
 
     testWidgets('Female Enabler sees only her girl', (tester) async {
       await open(tester, 'F1');
-      expect(find.text('1 need attention'), findsOneWidget);
+      expect(find.text('1 need an interaction'), findsOneWidget);
       expect(listed(), ['Gauri Devi']);
     });
 
     testWidgets('Male Enabler sees his own student (and the unassigned boy), not the girl', (tester) async {
       await open(tester, 'M1');
-      expect(find.text('2 need attention'), findsOneWidget);
+      expect(find.text('2 need an interaction'), findsOneWidget);
       expect(listed(), containsAll(['Chaitanya Das', 'Dhruva Nair']));
       expect(find.text('Gauri Devi'), findsNothing);
       expect(find.text('Arjun Kumar'), findsNothing);
@@ -285,7 +308,7 @@ void main() {
         expectNoOverflow(tester, reason: 'selecting');
         await tester.tap(find.byKey(const ValueKey('remove-from-priority')));
         await letDataArrive(tester);
-        expect(find.text('Remove 2 students from your priority list?'), findsOneWidget);
+        expect(find.text('Remove 2 students from your Interactions needed list?'), findsOneWidget);
         expectNoOverflow(tester, reason: 'the confirmation');
       });
     }

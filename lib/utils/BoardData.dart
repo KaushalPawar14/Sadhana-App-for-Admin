@@ -12,6 +12,7 @@ import 'UnseenFeatureBadge.dart';
 import 'AdminProfile.dart';
 import 'GuideDb.dart';
 import 'StudentHistory.dart';
+import 'SurrenderData.dart';
 
 /// Everything the FOLK Boys board reads or writes, behind one interface. The app
 /// always uses [FirestoreBoardData] (a thin pass-through to the functions in
@@ -64,6 +65,9 @@ abstract class BoardData {
 
   /// One student's history lines, newest first (`studentHistory/{uid}`).
   Stream<List<HistoryLine>> history(String studentUid);
+
+  /// One student's Surrender % (`studentSurrender/{uid}`; guides and HODs only), null until it has been worked out.
+  Stream<SurrenderInfo?> surrender(String studentUid);
 
   /// Wraps a card's Comments icon with its per-student unseen dot.
   Widget commentsBadge({required String studentUid, required Widget child});
@@ -149,6 +153,9 @@ class FirestoreBoardData implements BoardData {
 
   @override
   Stream<List<HistoryLine>> history(String studentUid) => studentHistoryStream(studentUid);
+
+  @override
+  Stream<SurrenderInfo?> surrender(String studentUid) => studentSurrenderStream(studentUid);
 
   @override
   Widget commentsBadge({required String studentUid, required Widget child}) =>

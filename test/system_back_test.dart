@@ -11,7 +11,6 @@ import 'package:folk_guide_app/Pages/MusicCurriculumPage.dart';
 import 'package:folk_guide_app/Pages/StudentDoubtsPage.dart';
 import 'package:folk_guide_app/Pages/StudentMusicPage.dart';
 import 'package:folk_guide_app/Pages/StudentNotificationSettings.dart';
-import 'package:folk_guide_app/Pages/StudentProfilePage.dart';
 import 'package:folk_guide_app/Pages/WeeklyPlanning.dart';
 import 'package:folk_guide_app/theme/GuideTheme.dart';
 import 'package:folk_guide_app/theme/ThemeModeController.dart';
@@ -235,38 +234,6 @@ void main() {
           await tester.pump(const Duration(seconds: 3));
         });
       }
-    }
-  }
-
-  // ----------------------------------------------------------------------------- the interactions bug itself
-  for (final dark in [false, true]) {
-    for (final scale in kScales) {
-      testWidgets('interactions: open "New", type, phone back mid-note, then leave · ${dark ? 'dark' : 'light'} · ×$scale', (tester) async {
-        await prepareApp(tester);
-        await pumpHost(tester, screens['interaction_logger']!, scale: scale, dark: dark);
-        await openIt(tester);
-        await tester.tap(find.text('New'));
-        await tester.pump();
-        await letDataArrive(tester, frames: 10);
-        await tester.enterText(find.byType(TextField).first, 'Half a note');
-        await tester.pump();
-        await keyboardUp(tester);
-        // the phone's back button, with the keyboard up and the field still holding text
-        await systemBack(tester, keyboardUp: true);
-        expect(tester.takeException(), isNull, reason: 'sheet closed with the phone back button');
-        expect(find.text('Half a note'), findsNothing);
-        // and again, with the sheet swiped by the predictive gesture
-        await tester.tap(find.text('New'));
-        await tester.pump();
-        await letDataArrive(tester, frames: 10);
-        await predictiveBack(tester);
-        expect(tester.takeException(), isNull, reason: 'sheet closed with the predictive gesture');
-        await systemBack(tester);
-        expect(tester.takeException(), isNull, reason: 'left the screen');
-        expect(find.byKey(_openKey), findsOneWidget);
-        await tester.pumpWidget(const SizedBox());
-        await tester.pump(const Duration(seconds: 3));
-      });
     }
   }
 }

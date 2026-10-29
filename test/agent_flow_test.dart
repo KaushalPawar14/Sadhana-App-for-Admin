@@ -477,10 +477,14 @@ void main() {
       expect(d['readingCommitmentMinutes'], 30, reason: 'unchanged');
     });
 
-    test('priority: removal remembers the concerns shown, restore deletes only this admin\'s record', () async {
+    test('priority: removal remembers the reasons shown, restore deletes only this admin\'s record', () async {
       final env = envFor('G');
+      await db.collection('interactionNeeds').doc('u_arjun').set({
+        'studentUid': 'u_arjun', 'scopeGuide': 'G', 'scopeTeam': 'G', 'scopeGender': 'male',
+        'needs': [{'key': 'sadhana_slip', 'source': 'sadhana', 'text': 'Not fulfilling his commitments for 3 days'}],
+      });
       final list = await env.priority();
-      expect(list.students.any((s) => s.uid == 'u_arjun'), isTrue, reason: 'never logged in the window: a concern exists');
+      expect(list.students.any((s) => s.uid == 'u_arjun'), isTrue, reason: 'he has a reason for an interaction');
       await kAgentWritesA['priority_remove']!({'studentUids': ['u_arjun']}, env);
       final d = (await db.collection('priorityDismissals').doc('G__u_arjun').get()).data()!;
       expect(d['adminId'], 'G');

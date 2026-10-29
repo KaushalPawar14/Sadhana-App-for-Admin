@@ -7,12 +7,14 @@ import 'GuideDb.dart';
 ///
 /// Kinds: [kAdvice] (the plan's advice for him), [kInteraction], [kDealing] (books, meetings, trips), [kNote] (what the guide told the
 /// assistant) and [kSadhana] (a significant change: the weekly chanting average moving by 2+ rounds, 3+ missed days, a new best week, a
-/// changed commitment, a changed residence). Students never see it.
+/// changed commitment, a changed residence) and [kSurrender] (a 10% threshold of his Surrender % crossed, and what an interaction changed).
+/// Students never see it.
 const String kHistoryAdvice = 'advice';
 const String kHistoryInteraction = 'interaction';
 const String kHistoryDealing = 'dealing';
 const String kHistoryNote = 'note';
 const String kHistorySadhana = 'sadhana';
+const String kHistorySurrender = 'surrender';
 
 /// How many lines are kept (the server trims to this).
 const int kHistoryMax = 30;

@@ -123,11 +123,11 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => GuideDialog(
-        title: Text(n == 1 ? "Remove 1 student from your priority list?" : "Remove $n students from your priority list?"),
+        title: Text(n == 1 ? "Remove 1 student from your Interactions needed list?" : "Remove $n students from your Interactions needed list?"),
         content: const Text(
-          "This only takes them off your priority list. The students themselves and "
+          "This only takes them off your Interactions needed list. The students themselves and "
           "everything about them (reports, chats, meetings, assessments) are NOT deleted or changed. "
-          "A student comes back to the list if a new kind of concern appears.",
+          "A student comes back to the list if a new reason appears.",
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text("Cancel")),
@@ -149,7 +149,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(n == 1 ? "1 student removed from your priority list" : "$n students removed from your priority list"),
+        content: Text(n == 1 ? "1 student removed from your Interactions needed list" : "$n students removed from your Interactions needed list"),
       ));
     } catch (_) {
       if (!mounted) return;
@@ -197,7 +197,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
                     onPressed: () => setState(_selected.clear),
                   )
                 : null,
-            title: Text(_selecting ? "${_selected.length} selected" : "Priority Students"),
+            title: Text(_selecting ? "${_selected.length} selected" : "Interactions needed"),
             actions: [
               if (!_selecting)
                 IconButton(
@@ -226,7 +226,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
                               _messageCard(
                                 _inScope == 0
                                     ? "No students in scope yet"
-                                    : "No concerns flagged right now",
+                                    : "No interaction is needed right now",
                               )
                             else ...[
                               if (!_selecting)
@@ -254,7 +254,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
     return GuideSummaryBanner(
       tone: count == 0 ? GuideTone.good : GuideTone.warn,
       icon: count == 0 ? Icons.check_circle_outline : Icons.flag_outlined,
-      title: count == 0 ? "Nobody flagged" : "$count need attention",
+      title: count == 0 ? "Nobody needs an interaction" : "$count need an interaction",
       lines: [
         if (_inScope > 0) "out of $_inScope students",
         _isHod
@@ -298,7 +298,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
           ),
           onPressed: _removeSelected,
           icon: Icon(Icons.playlist_remove, color: g.onPrimary),
-          label: Text("Remove from priority list", style: TextStyle(color: g.onPrimary)),
+          label: Text("Remove from my list", style: TextStyle(color: g.onPrimary)),
         ),
       ),
     );
@@ -360,8 +360,8 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
               // the substance; this is only how the list was ordered.
               Text(
                 item.flags.length == 1
-                    ? "1 concern"
-                    : "${item.flags.length} concerns",
+                    ? "1 reason"
+                    : "${item.flags.length} reasons",
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,

@@ -280,7 +280,7 @@ void main() {
     await tester.pump();
     expect(find.text('Analysis'), findsOneWidget);
     expect(find.text('Folk analysis'), findsOneWidget);
-    for (final label in ['ABCDE', 'Priority students', 'Leaderboard']) {
+    for (final label in ['ABCDE', 'Interactions needed', 'Leaderboard']) {
       expect(find.text(label), findsOneWidget, reason: label);
     }
     expect(find.text('Week planning'), findsNothing);

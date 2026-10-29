@@ -122,15 +122,13 @@ class UnseenAggregates {
     return StudentDoubts.anyUnseen(guide, isHod);
   }
 
-  /// Priority reasons: a NEW reason the nightly check found and told this
-  /// admin about (`functions/priorityCheck.js` stamps `notifiedAt` only when
-  /// it actually notified). Clears when the admin opens Priority students,
-  /// the same way every other dot here clears — not because a push was
-  /// dismissed. Nothing shows until the server has run at least once.
+  /// Interactions needed: a NEW reason a student needs an interaction (`functions/guidePlans.js` stamps `changedAt` on his
+  /// `interactionNeeds` document when the set of reasons changes). Clears when the admin opens Interactions needed, the same way
+  /// every other dot here clears. Nothing shows until the server has run at least once.
   static Stream<bool> priorityReasonsUnseen(String guide, bool isHod) {
     if (debugDisable) return Stream.value(false);
     return SeenMarkers.unseenFrom(
-      _maxTimestamp(_scope.historyStream('priorityReasons'), 'notifiedAt'),
+      _maxTimestamp(_scope.historyStream('interactionNeeds'), 'changedAt'),
       SeenMarkers.seenAt(guide, 'priorityReasons'),
     );
   }

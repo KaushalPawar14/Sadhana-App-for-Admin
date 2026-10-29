@@ -69,6 +69,11 @@ Future<void> notifyInteractionLogged(String studentUid) async {
 ///
 /// Only the first write can throw. Whoever should know that an interaction was logged is
 /// told after it (the fact only).
+///
+/// When the guide REPORTED BACK on a planned interaction (through the assistant, the only way an interaction is recorded now), the same
+/// document also carries what he answered per topic ([topicAnswers]: topic key, questions asked, answer, conclusion), the guide's reading
+/// of his [willingness] (very_willing | willing | neutral | hesitant | unwilling) and whether it covered what was planned ([addressed]).
+/// The server saves all of it in his history, ticks the plan item, takes the reasons off Interactions needed and adjusts his Surrender %.
 Future<SavedInteraction> saveInteraction({
   required String guideId,
   required String studentUid,
@@ -77,6 +82,9 @@ Future<SavedInteraction> saveInteraction({
   String interactionType = '',
   required DateTime interactionDate,
   DateTime? followUpDate,
+  List<Map<String, dynamic>> topicAnswers = const [],
+  String? willingness,
+  bool addressed = true,
 }) async {
   final initialSummary = {
     'interactionType': interactionType,
@@ -105,6 +113,9 @@ Future<SavedInteraction> saveInteraction({
     'approvedSummary': initialSummary,
     'extractedDraft': null,
     'status': 'approved',
+    if (topicAnswers.isNotEmpty) 'topicAnswers': topicAnswers,
+    if (willingness != null && willingness.isNotEmpty) 'willingness': willingness,
+    'addressed': addressed,
     // the server's background analysis picks it up from here
     'analysis': 'queued',
     'createdAt': FieldValue.serverTimestamp(),

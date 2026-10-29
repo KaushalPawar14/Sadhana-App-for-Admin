@@ -106,7 +106,7 @@ void main() {
 
   test('the table covers every executor (nothing is left untested by omission)', () {
     // the names exercised below, plus the ones whose callables the test phone cannot reach
-    expect(all.length, 93 + 0, reason: 'a change was added or removed: update this file');
+    expect(all.length, 94 + 0, reason: 'a change was added or removed: update this file');
   });
 
   group('students', () {
@@ -147,6 +147,41 @@ void main() {
       expect(d.single.data()['analysis'], 'queued');
       expect(calls.any((c) => c['_call'] == 'sendStudentNotification' && c['kind'] == 'interaction_logged'), isTrue);
       expect(calls.any((c) => '${c['_call']}'.contains('gemini')), isFalse);
+    });
+    test('interaction_add: the REPORT-BACK carries what he answered per topic, his willingness and whether it covered the plan', () async {
+      final r = await all['interaction_add']!({
+        'studentUid': 'u1',
+        'notes': 'Met Ravi after the program',
+        'interactionType': 'Live (in-person)',
+        'date': '2026-10-22',
+        'topicAnswers': [
+          {'topic': 'target_chanting_t1', 'questionsAsked': 'would he like to go to 14', 'answer': 'He wants 14 from Monday', 'conclusion': 'Fixed 14 rounds'},
+          {'topic': 'doubt_d1', 'answer': '', 'conclusion': ''},
+          {'topic': 'surrender_thr_1', 'answer': 'Keen to serve at the festival'},
+        ],
+        'willingness': 'very_willing',
+        'addressed': true,
+      }, env());
+      expect(r.ok, isTrue);
+      final d = (await db.collection('interactionLogs').where('rawDictation', isEqualTo: 'Met Ravi after the program').get()).docs.single.data();
+      final answers = d['topicAnswers'] as List;
+      expect(answers.length, 2, reason: 'a topic with nothing said is not saved');
+      expect(answers.first, {'topic': 'target_chanting_t1', 'questionsAsked': 'would he like to go to 14', 'answer': 'He wants 14 from Monday', 'conclusion': 'Fixed 14 rounds'});
+      expect(d['willingness'], 'very_willing');
+      expect(d['addressed'], true);
+      expect(d['status'], 'approved', reason: 'the same interaction record as before: nothing lost');
+      // "not addressed": the interaction is kept, the reasons stay
+      await all['interaction_add']!({'studentUid': 'u1', 'notes': 'Chatted briefly', 'interactionType': 'Call', 'date': '2026-10-23', 'addressed': false}, env());
+      final d2 = (await db.collection('interactionLogs').where('rawDictation', isEqualTo: 'Chatted briefly').get()).docs.single.data();
+      expect(d2['addressed'], false);
+      expect(d2.containsKey('topicAnswers'), isFalse);
+      expect(d2.containsKey('willingness'), isFalse);
+    });
+    test('interaction_plan_remove: goes through the server, with the guide\'s reason; nothing is deleted on the phone', () async {
+      final r = await all['interaction_plan_remove']!({'studentUid': 'u1', 'reason': 'he is away for a month'}, env());
+      expect(r.ok, isTrue);
+      final c = calls.singleWhere((c) => c['_call'] == 'studentGuideNote');
+      expect([c['studentUid'], c['kind'], c['text']], ['u1', 'interactions_remove', 'he is away for a month']);
     });
     test('interaction_reextract asks the server to analyse the notes again', () async {
       await all['interaction_reextract']!({'interactionId': 'i1'}, env());

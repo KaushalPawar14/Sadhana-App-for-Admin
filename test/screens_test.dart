@@ -196,13 +196,13 @@ void main() {
       await tester.pumpWidget(guideHost(Scaffold(body: CompetitionPage())));
       await settle(tester);
       final titles = tester.widgetList<GuideNavCard>(find.byType(GuideNavCard)).map((c) => c.title).toList();
-      expect(titles, ['ABCDE', 'Priority students', 'Leaderboard']);
+      expect(titles, ['ABCDE', 'Interactions needed', 'Leaderboard']);
       expect(find.text('FOLK and Hostel & Localite rankings'), findsOneWidget);
       expect(find.text('Five limbs of practice'), findsOneWidget);
       expect(find.text('Plan the week ahead'), findsNothing);
-      expect(find.text('Who needs attention'), findsOneWidget);
+      expect(find.text('Who needs an interaction'), findsOneWidget);
       expect(find.text('Group targets and phases'), findsNothing);
-      final style = tester.widget<Text>(find.text('Priority students')).style!;
+      final style = tester.widget<Text>(find.text('Interactions needed')).style!;
       expect(style.fontFamily, 'Fraunces');
       expect(find.byIcon(Icons.chevron_right_rounded), findsNWidgets(3));
       expect(find.text('INSIGHTS'), findsOneWidget);

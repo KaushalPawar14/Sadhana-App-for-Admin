@@ -313,89 +313,8 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
   // Guide-initiated meeting
   // ---------------------------------------------------------------------------
 
-  /// "Add interaction" — the guide's own notes about a student, which used
-  /// to be a separate feature reached from the Student profile.
-  ///
-  /// Interactions are GUIDE-APP ONLY and keep their own collection
-  /// (`interactionLogs`) and document shape, untouched: nothing is migrated,
-  /// nothing is written into `associations`, and the Student app — which never
-  /// read `interactionLogs` and still does not — is unaffected. Only the way
-  /// in moved, so every existing reader (This Week's follow-ups, the calendar,
-  /// Priority students, the weekly digests, the AI extraction) keeps working
-  /// on exactly the data it always read.
-  ///
-  /// This screen is roster-wide, so it asks WHICH student first — the same
-  /// scoped list `_openCreateMeetingSheet` uses — then opens the unchanged
-  /// `InteractionLoggerPage`, which owns the form, the save and its own
-  /// "Interaction saved" confirmation.
-  Future<void> _openAddInteractionSheet(String guide) async {
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> students;
-    try {
-      final snap = await StudentScope.current().studentsGet();
-      students = snap.docs.toList()
-        ..sort((a, b) => (a.data()['name'] ?? '')
-            .toString()
-            .toLowerCase()
-            .compareTo((b.data()['name'] ?? '').toString().toLowerCase()));
-    } catch (_) {
-      if (mounted) {
-        showSnackbar(context, "Could not load students", Colors.red, Icons.error);
-      }
-      return;
-    }
-    if (!mounted) return;
-    if (students.isEmpty) {
-      showSnackbar(context, "No students to log an interaction for",
-          Colors.orange, Icons.info_outline);
-      return;
-    }
-
-    final chosen = await showDialog<QueryDocumentSnapshot<Map<String, dynamic>>>(
-      context: context,
-      builder: (dialogContext) => GuideDialog(
-        title: const Text("Add interaction"),
-        // A scrolling COLUMN, not a shrink-wrapped ListView: the dialog
-        // measures its content's intrinsic height, and a shrink-wrapping
-        // viewport cannot report one (it would have to build every child).
-        content: SizedBox(
-          width: double.maxFinite,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final d in students)
-                  ListTile(
-                    dense: true,
-                    title: Text((d.data()['name'] ?? '').toString()),
-                    onTap: () => Navigator.pop(dialogContext, d),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text("Cancel"),
-          ),
-        ],
-      ),
-    );
-
-    if (chosen == null || !mounted) return;
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => InteractionLoggerPage(
-          studentUid: chosen.id,
-          studentName: (chosen.data()['name'] ?? '').toString(),
-        ),
-      ),
-    );
-    // Coming back, the history list below is a live stream, so a newly saved
-    // interaction is already there; this only refreshes the rest of the screen.
-    if (mounted) setState(() {});
-  }
+  // There is no add-interaction button here any more: interactions are recorded only by telling the assistant what happened (typed or dictated
+  // in the chat), which saves the same `interactionLogs` record with a confirmation. The history below, and deleting an interaction, stay.
 
   Future<void> _openCreateMeetingSheet(String guide) async {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> students;
@@ -1373,38 +1292,18 @@ class _AssociationManagerPageState extends State<AssociationManagerPage>
                     _buildUpcomingAndHistory(guide),
                   ],
                 ),
-          // Creating a MEETING still only belongs on the pending tab; adding an
-          // INTERACTION is relevant on both, so it sits above it on either.
-          floatingActionButton: guide == null
+          // Creating a MEETING only belongs on the pending tab. (Interactions are recorded through the assistant: no button here.)
+          floatingActionButton: guide == null || _tabController.index != 0
               ? null
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    FloatingActionButton.extended(
-                      heroTag: 'addInteraction',
-                      backgroundColor: context.g.surface,
-                      onPressed: () => _openAddInteractionSheet(guide),
-                      icon: Icon(Icons.record_voice_over, color: context.g.brass),
-                      label: Text(
-                        "Add interaction",
-                        style: TextStyle(color: context.g.brass),
-                      ),
-                    ),
-                    if (_tabController.index == 0) ...[
-                      const SizedBox(height: 10),
-                      FloatingActionButton.extended(
-                        heroTag: 'newMeeting',
-                        backgroundColor: context.g.brass,
-                        onPressed: () => _openCreateMeetingSheet(guide),
-                        icon: Icon(Icons.add, color: context.g.onPrimary),
-                        label: Text(
-                          "New Meeting",
-                          style: TextStyle(color: context.g.onPrimary),
-                        ),
-                      ),
-                    ],
-                  ],
+              : FloatingActionButton.extended(
+                  heroTag: 'newMeeting',
+                  backgroundColor: context.g.brass,
+                  onPressed: () => _openCreateMeetingSheet(guide),
+                  icon: Icon(Icons.add, color: context.g.onPrimary),
+                  label: Text(
+                    "New Meeting",
+                    style: TextStyle(color: context.g.onPrimary),
+                  ),
                 ),
         );
       },

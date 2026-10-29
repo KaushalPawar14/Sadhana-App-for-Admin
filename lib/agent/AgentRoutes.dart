@@ -100,7 +100,7 @@ String agentLinkLabel(AgentLink link) {
     'home': 'Home', 'analysis': 'Analysis', 'tasks': 'Tasks', 'student_profile': 'profile', 'student_reports': 'sadhana reports',
     'student_music': 'music progress', 'associations': 'Meetings', 'interactions': 'interactions', 'overdue_associations': 'Overdue meetings',
     'abcde': 'ABCDE', 'book_links': 'Book links', 'competitions': 'Chanting competitions', 'service_bank': 'Devotional service',
-    'trips': 'Expeditions', 'priority': 'Priority students', 'doubts': "Students' doubts", 'flagged': 'Flagged messages',
+    'trips': 'Expeditions', 'priority': 'Interactions needed', 'doubts': "Students' doubts", 'flagged': 'Flagged messages',
     'week_planning': 'Week planning', 'targets': 'Targets', 'leaderboard': 'Leaderboard', 'guide_calendar': 'Your calendar', 'plan': 'Your plan',
     'submissions': 'Submissions', 'notifications': 'Notifications', 'admins': 'Admins', 'music': 'Music curriculum',
   };

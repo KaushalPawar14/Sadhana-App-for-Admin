@@ -489,7 +489,7 @@ void main() {
       await pumpScreen(tester, const PriorityHubPage());
       await settleLoad(tester);
       expect(find.text("Students' doubts"), findsOneWidget);
-      expect(find.text('Priority students'), findsWidgets);
+      expect(find.text('Interactions needed'), findsWidgets);
       expect(find.text('Flagged messages'), findsOneWidget);
       expect(find.descendant(of: find.byKey(const ValueKey('doubts-hub-dot')), matching: find.byType(UnseenDot)), findsOneWidget);
       await tester.tap(find.text("Students' doubts"));

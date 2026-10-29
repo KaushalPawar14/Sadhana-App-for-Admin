@@ -12,7 +12,6 @@ import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/BoardData.dart';
 import '../utils/BoardQueries.dart';
-import '../utils/BookProgressData.dart';
 import '../utils/SeenMarkers.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentDeletion.dart';
@@ -30,6 +29,7 @@ import '../widgets/GuideSurface.dart';
 import 'Calendar.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/StudentHistoryList.dart';
+import '../widgets/SurrenderBar.dart';
 
 /// FOLK Boys board workspace — the board CANVAS reached by tapping the one
 /// tile on `FolkBoysEntry.dart` (the middle "FOLK Boys" tab's own top-level
@@ -477,10 +477,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   /// Which student cards are expanded.
   final Set<String> _expandedUids = {};
 
-  /// Which of a card's three level sub-dropdowns are expanded, keyed
-  /// `"${uid}_$level"` (Phase 2, Part 3).
-  final Set<String> _expandedLevels = {};
-
   String get _guide => widget.selectedGuide;
 
   /// Whether the signed-in admin is a HOD — read from the loaded admin
@@ -494,21 +490,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   StreamSubscription<Map<String, Set<String>>>? _commitmentSub;
 
 
-  /// Books already sent to be marked seen (so a rebuild never writes twice).
-  final Set<String> _sentSeen = {};
-  final Map<String, Timer> _seenTimers = {};
-
-  /// How long an unseen book stays marked after its row is on screen: long enough to notice.
-  static const Duration _seenDelay = Duration(milliseconds: 1500);
-
-  /// The book is seen now (tapped, or its row has been on screen for a moment).
-  void _markBookSeen(_Boy boy, String bookDocId) {
-    if (!(_commitmentUnseen.value[boy.uid]?.contains(bookDocId) ?? false)) return;
-    if (!_sentSeen.add(bookDocId)) return;
-    _seenTimers.remove(bookDocId)?.cancel();
-    BoardData.instance.markBooksSeen(_guide, boy.uid, [bookDocId]);
-  }
-
   @override
   void initState() {
     super.initState();
@@ -521,9 +502,6 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   @override
   void dispose() {
     _commitmentSub?.cancel();
-    for (final t in _seenTimers.values) {
-      t.cancel();
-    }
     _commitmentUnseen.dispose();
     _hController.dispose();
     super.dispose();
@@ -3270,7 +3248,13 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
   /// The card's drop-down: the student's ONE-LINE HISTORY (newest first, the last 30): AI advice, interactions, dealings, the guide's notes
   /// to the assistant and significant sadhana changes. A tap on a line opens the full details. (The books live on the student page, in
   /// its Books tab.)
-  Widget _expandedDetail({required _Boy boy}) => StudentHistoryList(studentUid: boy.uid);
+  Widget _expandedDetail({required _Boy boy}) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SurrenderBar(studentUid: boy.uid, studentName: boy.name),
+          StudentHistoryList(studentUid: boy.uid),
+        ],
+      );
 
   Widget _manualEntryBadge() {
     final g = context.g;

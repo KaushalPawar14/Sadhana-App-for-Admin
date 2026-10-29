@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/Pages/AssociationManager.dart';
-import 'package:folk_guide_app/Pages/InteractionLogger.dart';
 import 'package:folk_guide_app/Services/HierarchyApi.dart';
 import 'package:folk_guide_app/Services/VoiceRecorder.dart';
 import 'package:folk_guide_app/utils/VoiceNote.dart';
@@ -615,57 +614,6 @@ void main() {
   // -------------------------------------------------------------------------
   // in the two fields
   // -------------------------------------------------------------------------
-  testWidgets('Associations → add interaction: the mic fills the interaction text, editable',
-      (tester) async {
-    await prepareApp(tester);
-    mic = FakeRecorder();
-    VoiceRecorder.useForTests(mic);
-    addTearDown(() => VoiceRecorder.useForTests(null));
-    final sent = <Map<String, dynamic>>[];
-    HierarchyApi.useForTests((name, args) async {
-      if (args['warm'] == true) return {'text': '', 'warmed': true};
-      sent.add({'name': name, 'args': args});
-      if (name == 'voiceToEnglishText') {
-        return {'text': 'Ravi said he will chant 12 rounds from Monday.'};
-      }
-      return <String, dynamic>{};
-    });
-
-    await pumpScreen(tester,
-        const InteractionLoggerPage(studentUid: 's1', studentName: 'Arjun Kumar'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('New'));
-    await tester.pumpAndSettle();
-
-    final field = find.byType(TextField).last;
-    await tester.enterText(field, 'Met after the evening program.');
-    await tester.pump();
-
-    await tester.ensureVisible(find.byKey(const ValueKey('voice-speak')));
-    await tester.tap(find.byKey(const ValueKey('voice-speak')));
-    await tester.pump(const Duration(seconds: 4));
-    await tester.tap(find.byKey(const ValueKey('voice-done')));
-    await tester.pumpAndSettle();
-
-    final text = tester.widget<TextField>(field).controller!.text;
-    expect(text,
-        'Met after the evening program.\n\nRavi said he will chant 12 rounds from Monday.',
-        reason: 'appended after what was there, not replacing it');
-
-    // It went to the server with this student's name and the existing text for context,
-    // and it is NOT saved: the guide has not pressed Save.
-    final voice = sent.singleWhere((c) => c['name'] == 'voiceToEnglishText');
-    expect(voice['args']['studentName'], 'Arjun Kumar');
-    expect(voice['args']['existingText'], 'Met after the evening program.');
-    expect(voice['args']['purpose'], 'interaction');
-    expect(sent.where((c) => c['name'] != 'voiceToEnglishText'), isEmpty,
-        reason: 'speaking a note saves nothing and notifies nobody');
-
-    // still editable
-    await tester.enterText(field, '$text Edited by hand.');
-    expect(tester.widget<TextField>(field).controller!.text, endsWith('Edited by hand.'));
-  });
-
   testWidgets('Associations → complete a meeting: the mic fills the notes', (tester) async {
     final db = await prepareApp(tester);
     mic = FakeRecorder();

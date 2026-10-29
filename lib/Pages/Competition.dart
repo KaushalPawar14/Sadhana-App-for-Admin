@@ -140,8 +140,8 @@ class _CompetitionPageState extends State<CompetitionPage> {
                 index: 1,
                 pastel: GuidePastel.clay,
                 icon: Icons.flag_outlined,
-                title: 'Priority students',
-                subtitle: 'Who needs attention',
+                title: 'Interactions needed',
+                subtitle: 'Who needs an interaction',
                 // A small hub over the three "who needs attention" screens.
                 onTap: () => _open(const PriorityHubPage()),
                 unseen: _priorityStudentsUnseen,

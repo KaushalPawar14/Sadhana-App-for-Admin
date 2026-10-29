@@ -28,6 +28,7 @@ IconData historyIcon(String kind) => switch (kind) {
       kHistoryInteraction => Icons.chat_bubble_outline_rounded,
       kHistoryNote => Icons.sticky_note_2_outlined,
       kHistorySadhana => Icons.show_chart_rounded,
+      kHistorySurrender => Icons.flag_circle_outlined,
       _ => Icons.handshake_outlined,
     };
 
@@ -36,6 +37,7 @@ String historyKindLabel(String kind) => switch (kind) {
       kHistoryInteraction => 'Interaction',
       kHistoryNote => 'Note',
       kHistorySadhana => 'Sadhana',
+      kHistorySurrender => 'Surrender',
       _ => 'Dealing',
     };
 

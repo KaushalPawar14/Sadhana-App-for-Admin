@@ -1,134 +1,79 @@
-import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'priority_remove_test.dart' show open, settleLoad;
+import 'priority_remove_test.dart' show need, needs, open, settleLoad;
 import 'support/guide_test_support.dart';
 
-/// The automatic sadhana reasons, on the real Priority students screen: one
-/// card per student listing every reason that is currently true, clearing by
-/// itself when a reason stops being true.
-
-/// `dd-MM-yyyy` for `n` days before yesterday — the window's most recent days.
-String dayId(int n) {
-  final now = DateTime.now();
-  final d = DateTime(now.year, now.month, now.day - 1 - n);
-  String p(int x) => x.toString().padLeft(2, '0');
-  return '${p(d.day)}-${p(d.month)}-${d.year}';
-}
-
-Map<String, dynamic> report({
-  num rounds = 16,
-  num reading = 30,
-  String temple = '05:35',
-  String sleep = '22:00',
-}) =>
-    {
-      'chantRounds': rounds,
-      'bookReading': reading,
-      'templeEntry': temple,
-      'sleepTiming': sleep,
-      'finishTiming': '10:00',
-    };
-
-/// Files `days` for a FOLK student, most recent first.
-Future<void> file(FakeFirebaseFirestore db, String name,
-    List<Map<String, dynamic>?> days) async {
-  for (var i = 0; i < days.length; i++) {
-    final r = days[i];
-    if (r == null) continue;
-    await db
-        .collection('sadhana-reports')
-        .doc(name)
-        .collection('dates')
-        .doc(dayId(i))
-        .set(r);
-  }
-}
+/// INTERACTIONS NEEDED (it was "Priority students"), on the real screen: one card per student listing every reason, from the FOUR sources
+/// only — the guide's targets, three days of sadhana, a doubt or a worry in his AI chat, a surrender step. The server writes the list
+/// (`interactionNeeds/{uid}`, from the same data the plans use); a student with no reasons is simply not there.
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(loadGuideFonts);
 
-  testWidgets('three days under the commitment shows the reason on the card',
-      (tester) async {
-    await open(tester, 'H', seed: (db) async {
-      // everyone else files properly, so only Arjun carries a value reason
-      for (final n in ['Bhima Sen', 'Chaitanya Das', 'Dhruva Nair',
-        'Gauri Devi']) {
-        await file(db, n, [report(), report(), report()]);
-      }
-      await file(db, 'Arjun Kumar',
-          [report(rounds: 4), report(rounds: 4), report(rounds: 4)]);
+  testWidgets('each source shows its reason on the student\'s card; all on the SAME card', (tester) async {
+    await open(tester, 'H', defaultNeeds: false, seed: (db) async {
+      await needs(db, 's1', [
+        need('concern', 'concern_m1', 'Sounded discouraged or worried in his AI chat'),
+        need('doubt', 'doubt_d1', 'Unanswered doubt in Bhagavad Gita'),
+        need('sadhana', 'sadhana_slip', 'Not fulfilling his commitments for 3 days: chanting under 16 rounds on 3 days'),
+        need('target', 'target_chanting_t1', 'Chanting target: at 12 rounds, the phase asks for 14'),
+        need('surrender', 'surrender_thr_1', 'Surrender crossed 40% (up)'),
+      ]);
     });
-
-    expect(find.text('Chanting under 16 rounds on 3 days'), findsOneWidget);
+    for (final t in [
+      'Sounded discouraged or worried in his AI chat',
+      'Unanswered doubt in Bhagavad Gita',
+      'Not fulfilling his commitments for 3 days: chanting under 16 rounds on 3 days',
+      'Chanting target: at 12 rounds, the phase asks for 14',
+      'Surrender crossed 40% (up)',
+    ]) {
+      await tester.scrollUntilVisible(find.text(t), 100, scrollable: find.byType(Scrollable).first);
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    expect(find.text('5 reasons'), findsOneWidget);
+    expect(find.text('1 need an interaction'), findsOneWidget);
   });
 
-  testWidgets('every current reason is listed on the SAME card',
-      (tester) async {
-    await open(tester, 'H', seed: (db) async {
-      final bad = report(rounds: 2, temple: '08:00', sleep: '23:59');
-      await file(db, 'Arjun Kumar', [bad, bad, bad]);
+  testWidgets('nothing else puts a student here: no need, no card (not stale contact, a missing report, an overdue meeting, a low LIT axis)', (tester) async {
+    await open(tester, 'H', defaultNeeds: false, seed: (db) async {
+      // the seeded world has no interactions, an overdue request, no reports: none of it is a reason
+      await needs(db, 's2', [need('surrender', 'surrender_thr_2', 'Surrender crossed 30% (down)')]);
     });
-
-    expect(find.text('Chanting under 16 rounds on 3 days'), findsOneWidget);
-    expect(find.text('Reaching the temple late on 3 days'), findsOneWidget);
-    expect(find.text('Sleeping late on 3 days'), findsOneWidget);
+    expect(find.text('Bhima Sen'), findsOneWidget);
+    expect(find.text('Arjun Kumar'), findsNothing);
+    expect(find.text('Never logged an interaction'), findsNothing);
+    expect(find.text('1 need an interaction'), findsOneWidget);
   });
 
-  testWidgets('a reason that is no longer true is simply not there',
-      (tester) async {
-    await open(tester, 'H', seed: (db) async {
-      // the most recent day is good again, so the run is broken
-      await file(db, 'Arjun Kumar',
-          [report(), report(rounds: 4), report(rounds: 4), report(rounds: 4)]);
-    });
-
-    expect(find.text('Chanting under 16 rounds on 3 days'), findsNothing);
-  });
-
-  testWidgets('two days is not yet a reason', (tester) async {
-    await open(tester, 'H', seed: (db) async {
-      await file(db, 'Arjun Kumar',
-          [report(rounds: 4), report(rounds: 4), report()]);
-    });
-    expect(find.text('Chanting under 16 rounds on 3 days'), findsNothing);
-  });
-
-  testWidgets('a Hostel student is judged on wake-up, not temple entry',
-      (tester) async {
-    await open(tester, 'H', seed: (db) async {
-      // Bhima Sen is 'Stay at Hostel' in the seeded world
-      final late = {
-        'chantRounds': 16, 'bookReading': 30,
-        'wakeUpTime': '06:31', 'sleepTiming': '22:30', 'finishTiming': '10:00',
-      };
-      for (var i = 0; i < 3; i++) {
-        await db.collection('hostel-sadhana').doc('Bhima Sen')
-            .collection('dates').doc(dayId(i)).set(late);
-      }
-    });
-    expect(find.text('Waking up late on 3 days'), findsOneWidget);
-    expect(find.text('Reaching the temple late on 3 days'), findsNothing);
-  });
-
-  testWidgets('a guide sees reasons only for students in their own scope',
-      (tester) async {
-    await open(tester, 'F1', seed: (db) async {
-      // a boy on G's team — a Female Enabler must not see his reasons
-      await file(db, 'Arjun Kumar',
-          [report(rounds: 2), report(rounds: 2), report(rounds: 2)]);
+  testWidgets('a student whose needs are all dealt with is simply not there; an empty list says so', (tester) async {
+    await open(tester, 'H', defaultNeeds: false, seed: (db) async {
+      await needs(db, 's1', []);
     });
     expect(find.text('Arjun Kumar'), findsNothing);
+    expect(find.text('Nobody needs an interaction'), findsOneWidget);
+    expect(find.text('No interaction is needed right now'), findsOneWidget);
+  });
+
+  testWidgets('a guide sees reasons only for students in their own scope', (tester) async {
+    await open(tester, 'F1', defaultNeeds: false, seed: (db) async {
+      await needs(db, 's1', [need('sadhana', 'sadhana_slip', 'Not fulfilling his commitments for 3 days')]);
+      await needs(db, 's5', [need('doubt', 'doubt_d9', 'Unanswered doubt in Gita')]);
+    });
+    expect(find.text('Arjun Kumar'), findsNothing, reason: 'a boy on G\'s team: a Female Enabler must not see his reasons');
+    expect(find.text('Gauri Devi'), findsOneWidget);
   });
 
   for (final dark in [false, true]) {
     for (final scale in kScales) {
-      testWidgets('the reasons fit at text $scale, ${dark ? 'dark' : 'light'}',
-          (tester) async {
-        await open(tester, 'H', scale: scale, dark: dark, seed: (db) async {
-          final bad = report(rounds: 2, temple: '08:00', sleep: '23:59');
-          await file(db, 'Arjun Kumar', [bad, bad, bad]);
+      testWidgets('the reasons fit at text $scale, ${dark ? 'dark' : 'light'}', (tester) async {
+        await open(tester, 'H', scale: scale, dark: dark, defaultNeeds: false, seed: (db) async {
+          await needs(db, 's1', [
+            need('concern', 'concern_m1', 'Sounded discouraged or worried in his AI chat'),
+            need('sadhana', 'sadhana_slip', 'Not fulfilling his commitments for 3 days: chanting under 16 rounds on 3 days'),
+            need('surrender', 'surrender_thr_1', 'Surrender crossed 40% and 3 days in a row fulfilling all his commitments (up)'),
+          ]);
         });
         await settleLoad(tester);
         expect(tester.takeException(), isNull);

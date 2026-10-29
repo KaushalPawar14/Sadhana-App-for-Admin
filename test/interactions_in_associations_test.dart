@@ -51,46 +51,28 @@ void main() {
   // -------------------------------------------------------------------------
   // the new way in
   // -------------------------------------------------------------------------
-  testWidgets('Associations offers "Add interaction" on both tabs',
+  testWidgets('Associations has NO "Add interaction" / "New interaction" button on either tab: interactions are recorded through the assistant',
       (tester) async {
     await prepareApp(tester);
     await openAssociations(tester);
-    expect(find.text('Add interaction'), findsOneWidget);
+    expect(find.text('Add interaction'), findsNothing);
+    expect(find.text('New interaction'), findsNothing);
+    expect(find.byTooltip('Add interaction'), findsNothing);
     // creating a MEETING still belongs only on the pending tab
     expect(find.text('New Meeting'), findsOneWidget);
 
     await openHistoryTab(tester);
-    expect(find.text('Add interaction'), findsOneWidget);
+    expect(find.text('Add interaction'), findsNothing);
     expect(find.text('New Meeting'), findsNothing);
   });
 
-  testWidgets('"Add interaction" asks which student, then opens the form',
-      (tester) async {
+  testWidgets('a student\'s Interactions page has no "New" button either; it says how to record one', (tester) async {
     await prepareApp(tester);
-    await openAssociations(tester);
-
-    await tester.tap(find.text('Add interaction'));
+    await pumpScreen(tester, const InteractionLoggerPage(studentUid: 's4', studentName: 'Dhruva Nair'));
     await tester.pumpAndSettle();
-
-    // the scoped roster, by name
-    expect(find.text('Add interaction'), findsWidgets);
-    expect(find.text('Arjun Kumar'), findsWidgets);
-
-    await tester.tap(find.text('Arjun Kumar').last);
-    await tester.pumpAndSettle();
-
-    expect(find.byType(InteractionLoggerPage), findsOneWidget);
-  });
-
-  testWidgets('cancelling the student picker opens nothing', (tester) async {
-    await prepareApp(tester);
-    await openAssociations(tester);
-    await tester.tap(find.text('Add interaction'));
-    await tester.pumpAndSettle();
-    // the picker's own Cancel is the last one in the tree
-    await tester.tap(find.text('Cancel').last);
-    await tester.pumpAndSettle();
-    expect(find.byType(InteractionLoggerPage), findsNothing);
+    expect(find.text('New'), findsNothing);
+    expect(find.byType(FloatingActionButton), findsNothing);
+    expect(find.textContaining('Tell the assistant about your next conversation'), findsOneWidget);
   });
 
   // -------------------------------------------------------------------------
@@ -313,7 +295,7 @@ void main() {
         await openAssociations(tester, scale: scale, dark: dark);
         await openHistoryTab(tester);
         expect(tester.takeException(), isNull);
-        expect(find.text('Add interaction'), findsOneWidget);
+        expect(find.text('Add interaction'), findsNothing);
       });
     }
   }

@@ -7,6 +7,41 @@ import 'GuideDb.dart';
 /// The Today / This week plans, as the server wrote them (`guidePlans/{adminId}`, worked out by `functions/guidePlans.js`; the app only
 /// reads it). Read-only everywhere: a plan changes only through the assistant, or when its data changes.
 
+/// One topic of an interaction: the reason it was triggered, and the questions to ask and suggestions to make around it (written by the
+/// AI, or the plain version when it could not be reached).
+class PlanTopic {
+  const PlanTopic({required this.key, required this.label, required this.reason, required this.questions, required this.suggestions, this.conclusions = const [], this.meaning = ''});
+
+  final String key;
+  final String label;
+  final String reason;
+  final List<String> questions;
+  final List<String> suggestions;
+  final List<String> conclusions;
+  final String meaning;
+
+  static List<String> _strings(Object? v) => [
+        if (v is List)
+          for (final e in v)
+            if (e.toString().trim().isNotEmpty) e.toString().trim(),
+      ];
+
+  static PlanTopic? fromMap(Object? raw) {
+    if (raw is! Map) return null;
+    final questions = _strings(raw['questions']);
+    if (questions.isEmpty) return null;
+    return PlanTopic(
+      key: (raw['key'] ?? '').toString(),
+      label: (raw['label'] ?? 'Topic').toString(),
+      reason: (raw['reason'] ?? '').toString(),
+      questions: questions,
+      suggestions: _strings(raw['suggestions']),
+      conclusions: _strings(raw['conclusions']),
+      meaning: (raw['meaning'] ?? '').toString(),
+    );
+  }
+}
+
 class PlanItem {
   const PlanItem({
     required this.id,
@@ -17,6 +52,11 @@ class PlanItem {
     this.forYou = false,
     this.checkWithHim = false,
     this.scheduledFor = '',
+    this.done = false,
+    this.topics = const [],
+    this.percent,
+    this.level = '',
+    this.briefSource = '',
   });
 
   final String id;
@@ -34,6 +74,21 @@ class PlanItem {
   /// `yyyy-MM-dd` the week plan set it for, or ''.
   final String scheduledFor;
 
+  /// An interaction the guide has reported back: ticked (it stays in Today for the rest of the day).
+  final bool done;
+
+  /// An interaction's topics, each with its questions and suggestions (empty for every other kind of item).
+  final List<PlanTopic> topics;
+
+  /// The student's Surrender % and stage, when this is an interaction (the guide's eyes only; the plan is readable by that guide and a HOD).
+  final int? percent;
+  final String level;
+
+  /// 'ai' (the questions were written by the AI) or 'fallback' (the plain version).
+  final String briefSource;
+
+  bool get isInteraction => kind == 'interaction';
+
   static PlanItem fromMap(Map<String, dynamic> m) => PlanItem(
         id: (m['id'] ?? '').toString(),
         kind: (m['kind'] ?? '').toString(),
@@ -43,6 +98,15 @@ class PlanItem {
         forYou: m['forYou'] == true,
         checkWithHim: m['checkWithHim'] == true,
         scheduledFor: (m['scheduledFor'] ?? '').toString(),
+        done: m['done'] == true,
+        topics: [
+          if (m['topics'] is List)
+            for (final e in (m['topics'] as List))
+              if (PlanTopic.fromMap(e) case final t?) t,
+        ],
+        percent: m['percent'] is num ? (m['percent'] as num).round() : null,
+        level: (m['level'] ?? '').toString(),
+        briefSource: (m['briefSource'] ?? '').toString(),
       );
 }
 

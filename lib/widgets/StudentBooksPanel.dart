@@ -8,18 +8,14 @@ import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/BoardData.dart';
-import '../utils/BoardQueries.dart';
 import '../utils/BookProgressData.dart';
 import '../utils/GuideDb.dart';
 import '../utils/Snackbar.dart';
 import '../utils/StudentScope.dart';
 import '../utils/UnseenDot.dart';
 import 'GuideDialog.dart';
-import 'GuideSurface.dart';
 import 'GuideTiles.dart';
 import 'GuideWait.dart';
-import 'GuideStates.dart';
-import 'GuideSurface.dart';
 
 /// The BOOKS tab of the student page: where the student is in each book, level by level, with the guide's own actions - tap a book to
 /// assign it (with a commitment date), tap its circle to mark it finished (or put it back). It was the book dropdown of the board card;

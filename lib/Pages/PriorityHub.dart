@@ -68,7 +68,7 @@ class _PriorityHubPageState extends State<PriorityHubPage> {
     return GuideScaffold(
       body: Column(
         children: [
-          const GuideTopBar(title: "Priority students"),
+          const GuideTopBar(title: "Interactions needed"),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(
@@ -76,8 +76,8 @@ class _PriorityHubPageState extends State<PriorityHubPage> {
               children: [
                 GuideEntry(
                   child: Text(
-                    "Three ways of seeing who needs you — from their activity, "
-                    "from what they have written, and from the doubts they ask.",
+                    "Who needs you for an interaction — from your targets, three days of "
+                    "sadhana, their doubts and worries, and their surrender steps.",
                     style: t.body.copyWith(height: 1.55, color: context.g.mutedText),
                   ),
                 ),
@@ -88,8 +88,8 @@ class _PriorityHubPageState extends State<PriorityHubPage> {
                   child: GuidePastelRow(
                     pastel: GuidePastel.slate,
                     icon: Icons.flag_outlined,
-                    title: "Priority students",
-                    description: "Stale contact, missing reports, overdue meetings",
+                    title: "Interactions needed",
+                    description: "Targets, sadhana, doubts and worries, surrender steps",
                     onTap: () => _open(context, const PriorityStudentsPage()),
                   ),
                 ),

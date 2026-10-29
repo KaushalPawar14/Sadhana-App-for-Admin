@@ -10,8 +10,6 @@ import '../utils/AdminProfile.dart';
 import '../utils/ColorProvider.dart';
 import '../utils/SelectableDelete.dart';
 import '../utils/Snackbar.dart';
-import '../utils/VoiceNote.dart';
-import '../widgets/VoiceNoteButton.dart';
 import '../utils/StudentScope.dart';
 import '../theme/GuideTheme.dart';
 import '../utils/AiMarkdown.dart';
@@ -21,7 +19,6 @@ import '../utils/GuideDb.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
-import '../widgets/GuideSheet.dart';
 
 /// Phase 5, item 1 — interaction logging.
 ///
@@ -62,9 +59,6 @@ class InteractionLoggerPage extends StatefulWidget {
 
 class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
   final FirebaseFirestore _firestore = GuideDb.instance;
-
-  /// The signed-in admin's id (stamped on a new log as `guideId`).
-  String get _selectedGuide => AdminProfileProvider.require().id;
 
   bool _selectionMode = false;
   final Set<String> _selectedIds = {};
@@ -188,30 +182,8 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // New interaction — single step
-  // ---------------------------------------------------------------------------
-
-  Future<void> _openEntrySheet() async {
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _EntrySheet(
-        guideId: _selectedGuide,
-        studentUid: widget.studentUid,
-        studentName: widget.studentName,
-      ),
-    );
-    if (saved == true && mounted) {
-      showSnackbar(
-        context,
-        "Interaction saved",
-        Colors.green,
-        Icons.check_circle,
-      );
-    }
-  }
+  // There is no new-interaction button here any more: interactions are recorded by telling the assistant what happened (typed or dictated in the chat). This
+  // page lists them (newest first), opens one to view / edit, and deletes.
 
   Future<void> _openDetail(String docId) async {
     if (!mounted) return;
@@ -243,15 +215,6 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                   onDelete: _selectedIds.isEmpty ? null : _deleteSelected,
                 )
               : GuideAppBar(title: Text("Interactions")),
-          floatingActionButton: FloatingActionButton.extended(
-            backgroundColor: context.g.brass,
-            onPressed: _openEntrySheet,
-            icon: Icon(Icons.add, color: context.g.onPrimary),
-            label: Text(
-              "New",
-              style: TextStyle(color: context.g.onPrimary),
-            ),
-          ),
           body: _studentRef == null && !_studentRefFailed
               ? const GuideWait()
               : StreamBuilder<QuerySnapshot>(
@@ -280,7 +243,7 @@ class _InteractionLoggerPageState extends State<InteractionLoggerPage> {
                           padding: const EdgeInsets.all(32),
                           child: Text(
                             "No interactions logged yet.\n"
-                            "Tap New to record one.",
+                            "Tell the assistant about your next conversation and it will be saved here.",
                             textAlign: TextAlign.center,
                             style: TextStyle(color: context.g.mutedText),
                           ),
@@ -484,258 +447,6 @@ DateTime? _dateFrom(Object? value) {
   final text = (value ?? '').toString().trim();
   if (text.isEmpty) return null;
   return DateTime.tryParse(text);
-}
-
-// -----------------------------------------------------------------------------
-// New interaction — the sheet
-// -----------------------------------------------------------------------------
-
-/// The guide types or speaks what was discussed and taps Save. Nothing else is shown or asked:
-/// the server analyses the note in the background and makes new suggestions for the student.
-///
-/// Its own widget, so the text controller lives exactly as long as the sheet's route does. (A
-/// controller disposed by the screen that opened the sheet — the moment the sheet's future
-/// completes — is disposed while the sheet is still sliding away and still painting the field,
-/// which is a red "used after being disposed" error on the phone's back button.)
-class _EntrySheet extends StatefulWidget {
-  const _EntrySheet({
-    required this.guideId,
-    required this.studentUid,
-    required this.studentName,
-  });
-
-  final String guideId;
-  final String studentUid;
-  final String studentName;
-
-  @override
-  State<_EntrySheet> createState() => _EntrySheetState();
-}
-
-class _EntrySheetState extends State<_EntrySheet> {
-  final TextEditingController _controller = TextEditingController();
-  DateTime _interactionDate = DateTime.now();
-  String? _interactionType;
-  DateTime? _followUpDate;
-  bool _busy = false;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    final raw = _controller.text.trim();
-    if (raw.isEmpty) {
-      showSnackbar(
-        context,
-        "Type what was discussed first",
-        Colors.orange,
-        Icons.info,
-      );
-      return;
-    }
-    setState(() => _busy = true);
-    try {
-      await saveInteraction(
-        guideId: widget.guideId,
-        studentUid: widget.studentUid,
-        studentName: widget.studentName,
-        raw: raw,
-        interactionType: _interactionType ?? '',
-        interactionDate: _interactionDate,
-        followUpDate: _followUpDate,
-      );
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _busy = false);
-      showSnackbar(
-        context,
-        "Could not save the interaction",
-        Colors.red,
-        Icons.error,
-      );
-      return;
-    }
-    if (!mounted) return;
-    Navigator.pop(context, true);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
-      child: Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.9,
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-        decoration: BoxDecoration(
-          color: context.g.surface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // The form scrolls; Save stays pinned below it, so it is always on screen (at a large text size
-            // or with the keyboard up it used to sit below the fold of the sheet).
-            Flexible(
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    GuideSheetHeader(
-                        title: "Log interaction — ${widget.studentName}"),
-                    const SizedBox(height: 14),
-                    Material(
-                      color: Colors.transparent,
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.event, color: context.g.brass),
-                        title: const Text("Interaction date"),
-                        subtitle: Text(
-                          DateFormat('dd MMM yyyy').format(_interactionDate),
-                        ),
-                        trailing: const Icon(Icons.edit, size: 18),
-                        onTap: _busy
-                            ? null
-                            : () async {
-                                final now = DateTime.now();
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate: _interactionDate,
-                                  firstDate:
-                                      now.subtract(const Duration(days: 365)),
-                                  lastDate: now,
-                                );
-                                if (picked != null && mounted) {
-                                  setState(() => _interactionDate = picked);
-                                }
-                              },
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      initialValue: _interactionType,
-                      decoration: const InputDecoration(
-                        labelText: "How did you connect? (optional)",
-                      ),
-                      items: kInteractionTypes
-                          .map(
-                              (t) => DropdownMenuItem(value: t, child: Text(t)))
-                          .toList(),
-                      onChanged: _busy
-                          ? null
-                          : (v) => setState(() => _interactionType = v),
-                    ),
-                    const SizedBox(height: 8),
-                    Material(
-                      color: Colors.transparent,
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading:
-                            Icon(Icons.event_available, color: context.g.brass),
-                        title: const Text("Follow-up date (optional)"),
-                        subtitle: Text(
-                          _followUpDate == null
-                              ? "Not set"
-                              : DateFormat('dd MMM yyyy')
-                                  .format(_followUpDate!),
-                        ),
-                        trailing: _followUpDate == null
-                            ? const Icon(Icons.edit, size: 18)
-                            : IconButton(
-                                icon: const Icon(Icons.close, size: 18),
-                                onPressed: _busy
-                                    ? null
-                                    : () =>
-                                        setState(() => _followUpDate = null),
-                              ),
-                        onTap: _busy
-                            ? null
-                            : () async {
-                                final now = DateTime.now();
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate: _followUpDate ?? now,
-                                  firstDate: now,
-                                  lastDate: now.add(const Duration(days: 365)),
-                                );
-                                if (picked != null && mounted) {
-                                  setState(() => _followUpDate = picked);
-                                }
-                              },
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _controller,
-                      enabled: !_busy,
-                      maxLines: 9,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: const InputDecoration(
-                        hintText:
-                            "e.g. Met Ravi after the evening program. He is "
-                            "struggling to chant during exam week...",
-                      ),
-                    ),
-                    // Speak it instead: English, Hindi, Gujarati or a mix, turned into clean
-                    // English and added below whatever is already here. It lands in the box
-                    // above, editable, before anything is saved.
-                    VoiceNoteButton(
-                      purpose: VoicePurpose.interaction,
-                      studentName: widget.studentName,
-                      enabled: !_busy,
-                      existingText: () => _controller.text,
-                      onText: (clean) => revealAppend(_controller, clean,
-                          animate: !(MediaQuery.maybeDisableAnimationsOf(context) ?? false),
-                          done: () {
-                            if (mounted) setState(() {});
-                          }),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (_busy)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  children: [
-                    SizedBox(width: 18, height: 18, child: GuideBusyDot()),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Text("Saving…", style: TextStyle(fontSize: 13)),
-                    ),
-                  ],
-                ),
-              )
-            else
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _save,
-                  icon: const Icon(Icons.check_circle_outline, size: 18),
-                  label: const Text("Save"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: context.g.brass,
-                    foregroundColor: context.g.onPrimary,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // -----------------------------------------------------------------------------

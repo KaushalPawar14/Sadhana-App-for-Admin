@@ -9,6 +9,7 @@ import 'package:folk_guide_app/Services/HierarchyApi.dart';
 import 'package:folk_guide_app/utils/AdminProfile.dart';
 import 'package:folk_guide_app/utils/BoardData.dart';
 import 'package:folk_guide_app/utils/StudentHistory.dart';
+import 'package:folk_guide_app/utils/SurrenderData.dart';
 import 'package:folk_guide_app/utils/BoardQueries.dart';
 import 'package:folk_guide_app/utils/BookProgressData.dart';
 import 'package:folk_guide_app/utils/SeenMarkers.dart';
@@ -151,6 +152,18 @@ class FakeBoardData implements BoardData {
     yield histories[studentUid] ?? manyHistoryLines();
     await for (final _ in historyC.stream) {
       yield histories[studentUid] ?? manyHistoryLines();
+    }
+  }
+
+  /// The Surrender % of a student (set by a test; none by default: "not enough data yet").
+  final Map<String, SurrenderInfo?> surrenders = {};
+  final StreamController<void> surrenderC = StreamController<void>.broadcast();
+
+  @override
+  Stream<SurrenderInfo?> surrender(String studentUid) async* {
+    yield surrenders[studentUid];
+    await for (final _ in surrenderC.stream) {
+      yield surrenders[studentUid];
     }
   }
 

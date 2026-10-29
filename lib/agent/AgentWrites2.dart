@@ -210,6 +210,19 @@ Future<AgentResult> studentNoteAdd(Map<String, dynamic> a, AgentEnv env) async {
   return _done('$message (${_s(s['name'])}: "${_s(a['text'])}")');
 }
 
+/// "Remove the interactions for Amit": the plan entries and the reasons in Interactions needed go, it is noted in his history, and nothing
+/// returns until something NEW happens (the server does it: `studentGuideNote`, kind interactions_remove).
+Future<AgentResult> interactionPlanRemove(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _s(a['studentUid']);
+  final s = await env.student(uid);
+  final message = await HierarchyApi.instance.studentGuideNote(
+    studentUid: uid,
+    kind: 'interactions_remove',
+    text: a['reason'] == null ? null : _s(a['reason']),
+  );
+  return _done('$message (${_s(s['name'])})');
+}
+
 Future<AgentResult> studentFolkInterestSet(Map<String, dynamic> a, AgentEnv env) async {
   final uid = _s(a['studentUid']);
   final s = await env.student(uid);
@@ -574,6 +587,7 @@ final Map<String, AgentRun> kAgentWritesB = {
   'target_check_advance': targetCheckAdvance,
   'student_note_add': studentNoteAdd,
   'student_folk_interest_set': studentFolkInterestSet,
+  'interaction_plan_remove': interactionPlanRemove,
   'plan_item_skip': planItemSkip,
   'plan_item_change': planItemChange,
   'calendar_add_notes': calendarAddNotes,

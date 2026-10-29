@@ -6,7 +6,6 @@ import 'package:folk_guide_app/Pages/BoysDetails.dart';
 import 'package:folk_guide_app/Pages/ChantingChallengeManager.dart';
 import 'package:folk_guide_app/Pages/ExpeditionManager.dart';
 import 'package:folk_guide_app/Pages/GuideCalendarPage.dart';
-import 'package:folk_guide_app/Pages/InteractionLogger.dart';
 import 'package:folk_guide_app/Pages/StudentProfilePage.dart';
 import 'package:folk_guide_app/widgets/GuideAppearanceSheet.dart';
 import 'package:folk_guide_app/widgets/GuideDialog.dart';
@@ -32,7 +31,6 @@ final cases = <_Case>[
   _Case('new_meeting_sheet', () => const AssociationManagerPage(), 'New Meeting', expectDialog: false),
   _Case('new_challenge', () => const ChantingChallengeManagerPage(), 'New Challenge', expectDialog: false),
   _Case('new_trip', () => const ExpeditionManagerPage(), 'New Trip', expectDialog: false),
-  _Case('new_interaction_sheet', () => const InteractionLoggerPage(studentUid: 's1', studentName: 'Arjun Kumar'), 'New', expectDialog: false),
   _Case('add_event_text', () => const GuideCalendarPage(selectedGuide: 'G'), 'Add text', expectDialog: false),
   _Case('residence_sheet', () => const StudentProfilePage(studentUid: 's1'), null, expectDialog: false, byIcon: Icons.edit_outlined),
   _Case('appearance_sheet', () => Builder(builder: (c) => Scaffold(body: Center(child: TextButton(onPressed: () => showGuideAppearanceSheet(c), child: const Text('Open appearance'))))), 'Open appearance', expectDialog: false),

@@ -143,8 +143,20 @@ Future<AgentResult> interactionAdd(Map<String, dynamic> a, AgentEnv env) async {
     interactionType: _s(a['interactionType']),
     interactionDate: when,
     followUpDate: a['followUpDate'] == null ? null : agentDay(a['followUpDate']),
+    topicAnswers: [
+      for (final t in (a['topicAnswers'] as List? ?? const []))
+        if (t is Map && _s(t['topic']).isNotEmpty && (_s(t['answer']).isNotEmpty || _s(t['conclusion']).isNotEmpty))
+          {
+            'topic': _s(t['topic']),
+            if (_s(t['questionsAsked']).isNotEmpty) 'questionsAsked': _s(t['questionsAsked']),
+            'answer': _s(t['answer']),
+            if (_s(t['conclusion']).isNotEmpty) 'conclusion': _s(t['conclusion']),
+          },
+    ],
+    willingness: a['willingness'] == null ? null : _s(a['willingness']),
+    addressed: a['addressed'] == null ? true : a['addressed'] == true,
   );
-  return _done('Interaction with ${_s(s['name'])} logged for ${_when.format(when)}. The AI analyses it in the background; what it shows is folded into the plans.',
+  return _done('Interaction with ${_s(s['name'])} recorded for ${_when.format(when)}. It is saved in his history, the plan item is ticked and his reasons are cleared from Interactions needed.',
       entities: [AgentEntity('interaction', saved.id, 'Interaction with ${_s(s['name'])} on ${_day.format(when)}')]);
 }
 

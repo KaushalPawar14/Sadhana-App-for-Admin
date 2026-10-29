@@ -8,7 +8,6 @@ import '../Pages/FlaggedMessages.dart';
 import '../Pages/PriorityStudents.dart';
 import '../Pages/StudentDoubtsPage.dart';
 import '../Pages/PlanPage.dart';
-import '../Pages/StudentProfilePage.dart';
 import '../Pages/CompoundGoalRoadmapPage.dart';
 import '../Pages/SubmissionStatus.dart';
 import '../Pages/GuideCalendarPage.dart';

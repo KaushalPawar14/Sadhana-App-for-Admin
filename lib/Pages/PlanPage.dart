@@ -66,6 +66,9 @@ String planStatusText(PlanDoc plan, DateTime now) {
 }
 
 class _PlanPageState extends State<PlanPage> {
+  /// Interaction cards whose questions are open.
+  final Set<String> _open = {};
+
   bool _week = false;
   PlanDoc? _plan;
   bool _loaded = false;
@@ -265,7 +268,16 @@ class _PlanPageState extends State<PlanPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(it.title, style: t.cardTitleSmall),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (it.done) ...[
+                  Icon(Icons.check_circle, key: ValueKey('plan-done-${it.id}'), size: 18, color: g.success),
+                  const SizedBox(width: 6),
+                ],
+                Expanded(child: Text(it.title, style: t.cardTitleSmall)),
+              ],
+            ),
             if (when != null) ...[
               const SizedBox(height: 2),
               Text(DateFormat('EEE d MMM').format(when), style: t.caption.copyWith(color: g.agent)),
@@ -274,20 +286,68 @@ class _PlanPageState extends State<PlanPage> {
               const SizedBox(height: 4),
               Text(it.detail, style: t.small.copyWith(height: 1.4)),
             ],
-            if (it.checkWithHim || it.forYou) ...[
+            if (it.checkWithHim || it.forYou || it.done || it.percent != null) ...[
               const SizedBox(height: 6),
               Wrap(
                 spacing: 6,
                 runSpacing: 4,
                 children: [
+                  if (it.done) _tag(context, 'Done'),
                   if (it.checkWithHim) _tag(context, 'Check with him first'),
-                  if (it.forYou) _tag(context, 'For you to do'),
+                  if (it.forYou && !it.done) _tag(context, 'For you to do'),
+                  if (it.percent != null) _tag(context, 'Surrender ${it.percent}%'),
                 ],
               ),
             ],
+            if (it.topics.isNotEmpty) _topics(context, it),
           ],
         ),
       ),
+    );
+  }
+
+  /// An interaction's topics: a section of questions and suggestions for EACH reason, opened with a tap (read-only: to record what happened,
+  /// tell the assistant).
+  Widget _topics(BuildContext context, PlanItem it) {
+    final g = context.g;
+    final t = context.gText;
+    final open = _open.contains(it.id);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          key: ValueKey('plan-topics-toggle-${it.id}'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => open ? _open.remove(it.id) : _open.add(it.id)),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
+            child: Row(
+              children: [
+                Expanded(child: Text(open ? 'Hide the questions' : 'Questions and suggestions (${it.topics.length} topic${it.topics.length == 1 ? '' : 's'})', style: t.bodyStrong.copyWith(color: g.brass))),
+                Icon(open ? Icons.expand_less : Icons.expand_more, color: g.brass),
+              ],
+            ),
+          ),
+        ),
+        if (open)
+          Column(
+            key: ValueKey('plan-topics-${it.id}'),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (it.briefSource == 'fallback') Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('A plain version: the AI had not written these yet.', style: t.caption)),
+              for (final topic in it.topics) ...[
+                const SizedBox(height: 6),
+                Text(topic.label, style: t.bodyStrong),
+                Text(topic.reason, style: t.caption),
+                if (topic.meaning.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(topic.meaning, style: t.small.copyWith(height: 1.4))),
+                const SizedBox(height: 4),
+                for (var i = 0; i < topic.questions.length; i++) Padding(padding: const EdgeInsets.only(bottom: 3), child: Text('${i + 1}. ${topic.questions[i]}', style: t.small.copyWith(height: 1.35))),
+                for (final s in topic.suggestions) Padding(padding: const EdgeInsets.only(top: 2), child: Text('Suggestion: $s', style: t.small.copyWith(height: 1.35, color: g.mutedText))),
+                for (final c in topic.conclusions) Padding(padding: const EdgeInsets.only(top: 2), child: Text('To share: $c', style: t.small.copyWith(height: 1.35, color: g.mutedText))),
+              ],
+            ],
+          ),
+      ],
     );
   }
 
