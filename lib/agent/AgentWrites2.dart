@@ -223,6 +223,19 @@ Future<AgentResult> interactionPlanRemove(Map<String, dynamic> a, AgentEnv env) 
   return _done('$message (${_s(s['name'])})');
 }
 
+/// The advice for a student: stop / resume suggesting more chanting or reading, or discuss the daily report / timings again (the server keeps the
+/// constraint and a line in his history: `studentGuideNote`, kind = the setting).
+Future<AgentResult> studentAdviceSet(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _s(a['studentUid']);
+  final s = await env.student(uid);
+  final message = await HierarchyApi.instance.studentGuideNote(
+    studentUid: uid,
+    kind: _s(a['setting']),
+    text: a['reason'] == null ? null : _s(a['reason']),
+  );
+  return _done('$message (${_s(s['name'])})');
+}
+
 Future<AgentResult> studentFolkInterestSet(Map<String, dynamic> a, AgentEnv env) async {
   final uid = _s(a['studentUid']);
   final s = await env.student(uid);
@@ -587,6 +600,7 @@ final Map<String, AgentRun> kAgentWritesB = {
   'target_check_advance': targetCheckAdvance,
   'student_note_add': studentNoteAdd,
   'student_folk_interest_set': studentFolkInterestSet,
+  'student_advice_set': studentAdviceSet,
   'interaction_plan_remove': interactionPlanRemove,
   'plan_item_skip': planItemSkip,
   'plan_item_change': planItemChange,

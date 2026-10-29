@@ -162,7 +162,7 @@ void main() {
     for (var i = 1; i <= 4; i++) {
       await report(db, kFolkReports, today.subtract(Duration(days: i)), {'chantRounds': 20, 'bookReading': 10});
     }
-    Widget card(String role) => AbcdeActivityCard(studentUid: 's1', studentName: 'Asha', role: role, lifetimeRounds: 0);
+    Widget card(String role) => AbcdeActivityCard(studentUid: 's1', studentName: 'Asha', role: role);
     await pumpScreen(tester, Scaffold(body: SingleChildScrollView(child: card('Stay at FOLK'))));
     await letDataArrive(tester, frames: 25);
     expect(tester.takeException(), isNull);

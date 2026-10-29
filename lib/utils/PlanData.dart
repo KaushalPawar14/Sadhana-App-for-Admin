@@ -62,6 +62,7 @@ class PlanItem {
     this.encourage = const [],
     this.reportBack = '',
     this.carriedOver = false,
+    this.gender = '',
     this.reasonSources = const [],
     this.batchPosition,
     this.batchRound,
@@ -103,6 +104,9 @@ class PlanItem {
   final List<String> encourage;
   final String reportBack;
   final bool carriedOver;
+
+  /// The student's gender ("male" / "female", or "" when not recorded): the words about him or her use the right pronouns.
+  final String gender;
 
   /// An interaction's reasons by source (`target`, `sadhana`, `doubts`, `concern`, `surrender` ...): what decides its group on Home.
   final List<String> reasonSources;
@@ -147,6 +151,7 @@ class PlanItem {
         encourage: PlanTopic._strings(m['encourage']),
         reportBack: (m['reportBack'] ?? '').toString(),
         carriedOver: m['carriedOver'] == true,
+        gender: (m['gender'] ?? '').toString(),
         reasonSources: [
           if (m['reasons'] is List)
             for (final r in (m['reasons'] as List))

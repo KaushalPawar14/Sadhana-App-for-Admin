@@ -54,7 +54,7 @@ PlanDoc _plan({
       sections: sections ??
           const [
             PlanSection(id: 'approach', title: 'Students who need you', items: [
-              PlanItem(id: 'invite:u3:2026-10-26', kind: 'invite', title: 'Call Kishan', detail: 'Call him. Check with him first: he may not be able to come.', checkWithHim: true, forYou: true),
+              PlanItem(id: 'invite:u3:2026-10-26', kind: 'invite', title: 'Call Kishan', detail: 'Call him. Check with him first: he may not be able to come.', checkWithHim: true, forYou: true, gender: 'male'),
               PlanItem(id: 'approach:u4:2026-10-26', kind: 'approach', title: 'Spend time with Kishor', detail: 'Spend personal time with him.', forYou: true),
             ]),
             PlanSection(id: 'build', title: 'Interactions to build this week', items: [

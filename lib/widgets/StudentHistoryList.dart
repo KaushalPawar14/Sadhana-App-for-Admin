@@ -65,7 +65,7 @@ class _StudentHistoryListState extends State<StudentHistoryList> {
           return Padding(
             key: const ValueKey('history-empty'),
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text('Nothing yet. Advice, interactions, dealings and notes about him appear here.', style: t.caption),
+            child: Text('Nothing yet. Advice, interactions, dealings and notes about this student appear here.', style: t.caption),
           );
         }
         final shown = _all ? lines : lines.take(widget.firstShown).toList();

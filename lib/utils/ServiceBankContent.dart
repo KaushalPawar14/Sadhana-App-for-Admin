@@ -96,7 +96,7 @@ const List<ServiceBankEntry> kServiceBank = [
       "Training juniors.",
     ],
     nuance: "Crucial nuance: watch carefully for performance ego, celebrity mentality and musical domination.",
-    assessmentQuestion: "Does his kīrtana make other people want to chant?",
+    assessmentQuestion: "Does this student's kīrtana make other people want to chant?",
   ),
   ServiceBankEntry(
     number: 2,
@@ -124,7 +124,7 @@ const List<ServiceBankEntry> kServiceBank = [
       "Teaching others book distribution.",
     ],
     nuance: "Nuance: numbers are important, but never cultivate manipulation, guilt or dishonesty merely to increase numbers.",
-    assessmentQuestion: "Can he independently go out, engage people and place Prabhupāda's books with dignity?",
+    assessmentQuestion: "Can this student independently go out, engage people and place Prabhupāda's books with dignity?",
     context: "Book distribution remains an explicitly identified ISKCON ministry, and historical accounts repeatedly show Prabhupāda integrating morning spiritual practice, preaching and book distribution rather than treating book distribution as peripheral.",
   ),
   ServiceBankEntry(
@@ -155,7 +155,7 @@ const List<ServiceBankEntry> kServiceBank = [
       "Moderating discussions.",
       "Facilitating small groups.",
     ],
-    assessmentQuestion: "Can he make Kṛṣṇa consciousness understandable and attractive without diluting it?",
+    assessmentQuestion: "Can this student make Kṛṣṇa consciousness understandable and attractive without diluting it?",
   ),
   ServiceBankEntry(
     number: 4,
@@ -180,7 +180,7 @@ const List<ServiceBankEntry> kServiceBank = [
       "Training a student to become the local campus leader.",
       "Succession before seniors graduate.",
     ],
-    assessmentQuestion: "Can this student eventually establish and sustain a preaching group in his own college?",
+    assessmentQuestion: "Can this student eventually establish and sustain a preaching group in this student's own college?",
   ),
   ServiceBankEntry(
     number: 5,
@@ -200,7 +200,7 @@ const List<ServiceBankEntry> kServiceBank = [
       "Maintaining contact records responsibly.",
       "Knowing when someone needs encouragement and when they need space.",
     ],
-    assessmentQuestion: "Do newcomers feel cared for around him?",
+    assessmentQuestion: "Do newcomers feel cared for around this student?",
   ),
   ServiceBankEntry(
     number: 6,
@@ -222,7 +222,7 @@ const List<ServiceBankEntry> kServiceBank = [
       "Reconnecting people without shaming them.",
       "Training a mentee eventually to care for another person.",
     ],
-    assessmentQuestion: "Are people spiritually stronger after being under his care?",
+    assessmentQuestion: "Are people spiritually stronger after being under this student's care?",
     context: "Modern ISKCON leadership training explicitly treats devotee care, teamwork, empowerment, strategic planning and leadership as serious organizational competencies rather than optional extras.",
   ),
   ServiceBankEntry(
@@ -256,7 +256,7 @@ const List<ServiceBankEntry> kServiceBank = [
       "Offering procedures according to local standards.",
       "Kitchen cleanup after service.",
     ],
-    assessmentQuestion: "Could I safely give him responsibility for prasādam for a student program?",
+    assessmentQuestion: "Could I safely give this student responsibility for prasādam for a student program?",
     context: "Prabhupāda personally trained disciples in cooking, including standards of purity and cleanliness; his teaching also repeatedly treats cooking and offering food as genuine devotional engagement.",
   ),
   ServiceBankEntry(
@@ -305,7 +305,7 @@ const List<ServiceBankEntry> kServiceBank = [
       "Backup arrangements when a sevak is absent.",
     ],
     nuance: "Nuance: higher arcana responsibilities should be competency-based and supervised, not given merely because someone is enthusiastic.",
-    assessmentQuestion: "Can he be trusted with a service where lateness or carelessness directly affects temple standards?",
+    assessmentQuestion: "Can this student be trusted with a service where lateness or carelessness directly affects temple standards?",
     context: "Scriptural and ISKCON sources treat arcana as a structured devotional discipline with cleanliness, preparation and prescribed standards; Prabhupāda simultaneously emphasized that Deity worship should support, not displace, the movement's preaching mission.",
   ),
   ServiceBankEntry(
@@ -362,7 +362,7 @@ const List<ServiceBankEntry> kServiceBank = [
       "Financial closure.",
       "Post-event follow-up.",
     ],
-    assessmentQuestion: "Can he take an idea and convert it into an executed program without a senior chasing him continuously?",
+    assessmentQuestion: "Can this student take an idea and convert it into an executed program without a senior chasing this student continuously?",
   ),
   ServiceBankEntry(
     number: 12,
@@ -386,7 +386,7 @@ const List<ServiceBankEntry> kServiceBank = [
       "Communicating instructions.",
       "Maintaining spiritual atmosphere during travel.",
     ],
-    assessmentQuestion: "Can he care for people, logistics and spiritual atmosphere simultaneously?",
+    assessmentQuestion: "Can this student care for people, logistics and spiritual atmosphere simultaneously?",
   ),
   ServiceBankEntry(
     number: 13,
@@ -439,7 +439,7 @@ const List<ServiceBankEntry> kServiceBank = [
       "Confidential handling of personal information.",
     ],
     nuance: "Nuance: administration is not \u201cmaterial work.\u201d Good systems protect preaching energy from chaos.",
-    assessmentQuestion: "Can the system continue functioning when he is absent?",
+    assessmentQuestion: "Can the system continue functioning when this student is absent?",
     context: "Historical accounts explicitly describe Prabhupāda training disciples in both accounts and management, while the GBC structure places concrete responsibility for carrying out ISKCON's mission on local management.",
   ),
   ServiceBankEntry(
@@ -494,7 +494,7 @@ const List<ServiceBankEntry> kServiceBank = [
       "Working with peers.",
       "Leading juniors without becoming controlling.",
     ],
-    assessmentQuestion: "Does responsibility grow around him, or does everything become dependent upon him?",
+    assessmentQuestion: "Does responsibility grow around this student, or does everything become dependent upon this student?",
   ),
   ServiceBankEntry(
     number: 17,
@@ -542,7 +542,7 @@ const List<ServiceBankEntry> kServiceBank = [
       "Finishing what one starts.",
       "Balancing study and service responsibly.",
     ],
-    assessmentQuestion: "When conditions become inconvenient, does his service collapse?",
+    assessmentQuestion: "When conditions become inconvenient, does this student's service collapse?",
   ),
   ServiceBankEntry(
     number: 19,
@@ -562,6 +562,6 @@ const List<ServiceBankEntry> kServiceBank = [
       "Creating successors.",
       "Eventually opening or strengthening a preaching center under appropriate leadership.",
     ],
-    assessmentQuestion: "Can we give him a territory or responsibility and expect the mission there to grow?",
+    assessmentQuestion: "Can we give this student a territory or responsibility and expect the mission there to grow?",
   ),
 ];

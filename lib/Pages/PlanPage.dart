@@ -8,6 +8,7 @@ import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/PlanData.dart';
+import '../utils/Pronouns.dart';
 import '../utils/SeenMarkers.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideButtons.dart';
@@ -532,7 +533,7 @@ class _PlanPageState extends State<PlanPage> {
                   if (it.done) _tag(context, 'Done'),
                   if (it.carriedOver) _tag(context, 'Carried over', key: ValueKey('plan-carried-${it.id}')),
                   if (it.inToday) _tag(context, "In today's batch"),
-                  if (it.checkWithHim) _tag(context, 'Check with him first'),
+                  if (it.checkWithHim) _tag(context, pronouned('Check with him first', it.gender, name: it.studentName)),
                   if (it.forYou && !it.done) _tag(context, 'For you to do'),
                   if (it.percent != null) _tag(context, 'Surrender ${it.percent}%'),
                 ],

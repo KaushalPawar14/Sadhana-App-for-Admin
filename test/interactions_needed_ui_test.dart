@@ -10,6 +10,7 @@ import 'package:folk_guide_app/utils/PlanData.dart';
 import 'package:folk_guide_app/utils/SeenMarkers.dart';
 import 'package:folk_guide_app/utils/StudentHistory.dart';
 import 'package:folk_guide_app/utils/SurrenderData.dart';
+import 'package:folk_guide_app/widgets/SurrenderBar.dart' show surrenderPoints;
 import 'package:folk_guide_app/widgets/StudentHistoryList.dart';
 
 import 'board_test.dart' show FakeBoardData, openBoard, roster;
@@ -104,12 +105,13 @@ SurrenderInfo _info({int percent = 42, int? trend = 6, String? cap, bool complet
       cap: cap,
       complete: complete,
       residence: 'hostel',
+      gender: 'male',
       parts: const [
-        SurrenderPart(key: 'commitment', label: 'Commitment', weight: 20, score: 0.6, reason: 'Committed to 12 rounds and 30 min of reading a day.'),
-        SurrenderPart(key: 'sadhana', label: 'Sadhana actually done', weight: 40, score: 0.5, reason: 'Last 30 days: rounds 70% of 16.'),
-        SurrenderPart(key: 'association', label: 'Association with his guide', weight: 15, score: 0.8, reason: '2 interactions in the last 30 days.'),
-        SurrenderPart(key: 'attitude', label: 'Attitude and willingness', weight: 15, score: null, reason: 'No guide\'s observation of his willingness yet (not enough data).'),
-        SurrenderPart(key: 'lit', label: 'LIT', weight: 10, score: null, reason: 'No complete LIT assessment yet (not enough data).'),
+        SurrenderPart(key: 'commitment', label: 'Commitment', weight: 10, score: 0.6, points: 6, reason: 'Committed to 12 rounds and 30 min of reading a day.'),
+        SurrenderPart(key: 'sadhana', label: 'Sadhana actually done', weight: 40, score: 0.5, points: 20, reason: 'Last 30 days: rounds 70% of 16.'),
+        SurrenderPart(key: 'association', label: 'Association with his guide', weight: 20, score: 0.8, points: 16, reason: '2 interactions in the last 30 days.'),
+        SurrenderPart(key: 'attitude', label: 'Attitude and willingness', weight: 10, score: 0, points: 0, missing: true, reason: 'No attitude observed yet → 0 of 10'),
+        SurrenderPart(key: 'lit', label: 'LIT', weight: 20, score: 0, points: 0, missing: true, reason: 'No LIT yet → 0 of 20'),
       ],
     );
 
@@ -181,9 +183,12 @@ void main() {
         expect(find.byKey(ValueKey('surrender-part-$k')), findsOneWidget, reason: k);
       }
       expect(find.text('Committed to 12 rounds and 30 min of reading a day.'), findsOneWidget, reason: 'a reason each');
-      expect(find.text('60%'), findsOneWidget);
-      expect(find.text('not enough data'), findsNWidgets(2), reason: 'a missing part is not a failure');
-      expect(find.text('20% of the total'), findsOneWidget);
+      // every part: its points earned of the points possible (they add up to the 42%: 6 + 20 + 16 + 0 + 0)
+      for (final e in {'commitment': '6 of 10', 'sadhana': '20 of 40', 'association': '16 of 20', 'attitude': '0 of 10', 'lit': '0 of 20'}.entries) {
+        expect(find.descendant(of: find.byKey(ValueKey('surrender-part-${e.key}')), matching: find.text(e.value)), findsOneWidget, reason: e.key);
+      }
+      expect(find.text('No LIT yet → 0 of 20'), findsOneWidget);
+      expect(find.textContaining('not enough data'), findsNothing, reason: 'that label is gone');
       expect(find.textContaining('the student never sees this'), findsOneWidget);
       await tester.tap(find.text('Close'));
       await tester.pumpAndSettle();
@@ -207,44 +212,37 @@ void main() {
       expect(find.text('Surrender %: not worked out yet (it is calculated every night).'), findsOneWidget);
     });
 
-    testWidgets('truly no reports and no commitment: "not enough data yet" with a tap for why (each missing part has its reason); parts left out are scaled up', (tester) async {
-      const noData = SurrenderInfo(
-        percent: 0, trend: null, cap: null, complete: false, residence: 'hostel', noData: true,
-        parts: [
-          SurrenderPart(key: 'commitment', label: 'Commitment', weight: 20, score: null, reason: 'No commitment recorded yet — this part is left out, the others count a little more.'),
-          SurrenderPart(key: 'sadhana', label: 'Sadhana actually done', weight: 40, score: null, reason: 'No sadhana reports in the last 30 days — this part is left out, the others count a little more.'),
-          SurrenderPart(key: 'association', label: 'Association with his guide', weight: 15, score: null, reason: 'No interactions yet — this part is left out, the others count a little more.'),
-          SurrenderPart(key: 'attitude', label: 'Attitude and willingness', weight: 15, score: null, reason: 'No guide\'s report of his willingness yet, and no services or trips.'),
-          SurrenderPart(key: 'lit', label: 'LIT', weight: 10, score: null, reason: 'No LIT yet — this part is left out, the others count a little more.'),
-        ],
-      );
-      final data = FakeBoardData(users: roster)..surrenders['sg1'] = noData;
+    testWidgets('NOTHING SHOWN YET: a real number (never "not enough data"), every part "0 of N" with its reason, and a note that nothing is scaled up', (tester) async {
+      final data = FakeBoardData(users: roster)
+        ..surrenders['sg1'] = const SurrenderInfo(percent: 10, trend: null, cap: null, complete: false, residence: 'hostel', parts: [
+          SurrenderPart(key: 'commitment', label: 'Commitment', weight: 10, score: 1, points: 10, reason: 'Committed to 16 rounds and 60 min of reading a day (16 rounds and 60 min is full).'),
+          SurrenderPart(key: 'sadhana', label: 'Sadhana actually done', weight: 40, score: 0, points: 0, missing: true, reason: 'No reports in the last 30 days → 0 of 40'),
+          SurrenderPart(key: 'association', label: 'Association with his guide', weight: 20, score: 0, points: 0, missing: true, reason: 'No interactions or meetings with his guide yet → 0 of 20'),
+          SurrenderPart(key: 'attitude', label: 'Attitude and willingness', weight: 10, score: 0, points: 0, missing: true, reason: 'No attitude observed yet → 0 of 10'),
+          SurrenderPart(key: 'lit', label: 'LIT', weight: 20, score: 0, points: 0, missing: true, reason: 'No LIT yet → 0 of 20'),
+        ]);
       await openBoard(tester, data: data);
       await tester.tap(find.text('Arjun Kumar'));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('surrender-percent')), findsNothing, reason: 'no made-up 0%');
-      expect(find.byKey(const ValueKey('surrender-nodata')), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('surrender-nodata')));
-      await tester.pumpAndSettle();
-      expect(find.text('Arjun: not enough data yet'), findsOneWidget);
-      expect(find.textContaining('No LIT yet'), findsOneWidget);
-      expect(find.textContaining('No interactions yet'), findsOneWidget);
-      expect(find.byKey(const ValueKey('surrender-leftout')), findsOneWidget);
-      // a percent worked out from whatever exists: the parts with data count for more, and the page says so
-      data.surrenders['sg1'] = const SurrenderInfo(percent: 66, trend: null, cap: null, complete: false, residence: 'hostel', parts: [
-        SurrenderPart(key: 'commitment', label: 'Commitment', weight: 20, score: 0.6, reason: 'Committed.', effectiveWeight: 33.3),
-        SurrenderPart(key: 'sadhana', label: 'Sadhana actually done', weight: 40, score: 0.7, reason: 'Last 30 days.', effectiveWeight: 66.7),
-        SurrenderPart(key: 'lit', label: 'LIT', weight: 10, score: null, reason: 'No LIT yet — this part is left out, the others count a little more.'),
-      ]);
-      await tester.tap(find.text('Close'));
-      await tester.pumpAndSettle();
-      data.surrenderC.add(null);
-      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('surrender-nodata')), findsNothing);
+      expect(tester.widget<Text>(find.byKey(const ValueKey('surrender-percent'))).data, '10%');
       await tester.tap(find.byKey(const ValueKey('surrender-bar')));
       await tester.pumpAndSettle();
-      expect(find.text('counts 33.3% (20% when every part is known)'), findsOneWidget);
-      expect(find.text('counts 66.7% (40% when every part is known)'), findsOneWidget);
+      expect(find.text('Arjun: Surrender 10%'), findsOneWidget);
+      expect(find.text('No reports in the last 30 days → 0 of 40'), findsOneWidget);
+      expect(find.text('No LIT yet → 0 of 20'), findsOneWidget);
+      expect(find.descendant(of: find.byKey(const ValueKey('surrender-part-commitment')), matching: find.text('10 of 10')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(const ValueKey('surrender-part-sadhana')), matching: find.text('0 of 40')), findsOneWidget);
       expect(find.byKey(const ValueKey('surrender-leftout')), findsOneWidget);
+      expect(find.textContaining('not enough data'), findsNothing);
+      expect(find.textContaining('counts '), findsNothing, reason: 'no scaled-up weights any more');
+    });
+
+    testWidgets('points show one decimal only when they have one', (tester) async {
+      expect(surrenderPoints(31.5), '31.5');
+      expect(surrenderPoints(40), '40');
+      expect(surrenderPoints(2.04), '2');
+      expect(surrenderPoints(0), '0');
     });
 
     testWidgets('the residence cap is explained in the breakdown (not in FOLK: at most 90%)', (tester) async {

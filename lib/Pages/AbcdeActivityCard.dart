@@ -38,10 +38,11 @@ import '../widgets/GuideWait.dart';
 ///      Master Task 2026-09-11: a residence switch never moves a student's
 ///      past reports, so both collections are read and merged rather than
 ///      picking one by current residence (`utils/SadhanaReportSource.dart`).
-///   C  users/{uid}.lifetimeRounds  — passed in, already streamed by the page
-///   D  serviceAssignments where studentUid == (Service Bank task, replaces
-///      the old `studentServices/{uid}` count) + scorecard/{name} (unrelated,
-///      unchanged — see that task's Part 1 for why these two are separate)
+///   C  the sadhana FORM only (the same reports as B). The in-app japa counter (`users/{uid}.lifetimeRounds`) is NOT used: ALL SADHANA
+///      NUMBERS COME FROM THE SADHANA FORM ONLY (chanting rounds, reading minutes, services, timings), never from a timer or a counter.
+///   D  the FOLK form's daily-services answers (`dailyServices`, last 30 days) + competition.monthly.pts_service (worked out from the same
+///      form). The hostel / localite form has NO services question, so for them D shows only the Service Bank assignments (`serviceAssignments`
+///      where studentUid ==), labelled "not from the form". Assignments are records a guide made, never something the student reported.
 ///   E  expeditionRegistrations     where studentUid ==
 ///      expeditionExperiences       where studentUid ==  (what they wrote after a trip)
 class AbcdeActivityCard extends StatefulWidget {
@@ -55,16 +56,11 @@ class AbcdeActivityCard extends StatefulWidget {
   /// out of the collection they were actually filed in.
   final String role;
 
-  /// From the `users/{uid}` document the profile page already streams, so the
-  /// honest lifetime figure costs no extra read.
-  final int lifetimeRounds;
-
   const AbcdeActivityCard({
     super.key,
     required this.studentUid,
     required this.studentName,
     required this.role,
-    required this.lifetimeRounds,
   });
 
   @override
@@ -133,7 +129,10 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
   DateTime? _nextMeeting;
   final Map<String, int> _statusCounts90d = {};
 
-  // D
+  // D (the FOLK form's daily-services answers over the last 30 days; the hostel / localite form has none)
+  int _formServicesFully = 0;
+  int _formServicesPartly = 0;
+  int _formServiceDaysReported = 0;
   int _assignedActiveServices = 0;
   int _completedServices = 0;
   int _competentServices = 0;
@@ -253,11 +252,13 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
 
     final chantByDoc = <String, int>{};
     final readingByDoc = <String, int>{};
+    final serviceByDoc = <String, int>{};
 
     for (final entry in merged.entries) {
       final data = entry.value;
       chantByDoc[entry.key] = _asInt(data['chantRounds']);
       readingByDoc[entry.key] = _asInt(data['bookReading']);
+      serviceByDoc[entry.key] = _asInt(data['dailyServices']);
     }
 
     final now = DateTime.now();
@@ -283,6 +284,23 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
 
     final avg = averagePerDay(chantSeries);
 
+    // D, from the FORM: the daily-services answer (2 = fully, 1 = partly) on the reported days of the last 30
+    var fully = 0;
+    var partly = 0;
+    var serviceDays = 0;
+    for (final e in serviceByDoc.entries) {
+      final keyDate = parseSadhanaDateKey(e.key);
+      if (keyDate == null) continue;
+      final actual = sadhanaDateKey(keyDate.subtract(const Duration(days: 1)));
+      if (!windowDays.contains(actual)) continue;
+      serviceDays++;
+      if (e.value >= 2) {
+        fully++;
+      } else if (e.value == 1) {
+        partly++;
+      }
+    }
+
     if (!mounted) return;
     setState(() {
       _chantSeries = chantSeries;
@@ -293,6 +311,9 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
       _readingTrend = trendFromSeries(readingSeries);
       _hasAnyReports = hasAnyReports(chantByDoc);
       _reportDaysInWindow = inWindow;
+      _formServicesFully = fully;
+      _formServicesPartly = partly;
+      _formServiceDaysReported = serviceDays;
     });
   }
 
@@ -654,18 +675,10 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
   // --- C ---------------------------------------------------------------------
 
   List<Widget> _chantingLines() {
-    // The honest raw number always shows, even with no reports at all.
-    //
-    // ⚠️ Labelled "in the japa counter", NOT "lifetime", on purpose. Verified
-    // against real data on 2026-08-13: a student with 16 rounds/day in their
-    // sadhana reports had `lifetimeRounds == 0`, because that field is only
-    // incremented by the in-app bead counter (`ChantingScreen`) and is
-    // untouched by the sadhana form. Printing it as "0 rounds lifetime" beside
-    // "F4 · 6.9 rounds/day" reads as a contradiction and would cost the guide
-    // their trust in the whole card. Both numbers are true; they count
-    // different things, so they are named differently.
+    // ALL SADHANA NUMBERS COME FROM THE SADHANA FORM ONLY. The in-app japa counter (`lifetimeRounds`) is never shown here: it is the student's
+    // personal tool, not sadhana data. The total below is the form's rounds over the last 30 days.
     final lines = <Widget>[
-      _value("${widget.lifetimeRounds} rounds banked in the in-app counter"),
+      _value("${_chantSeries.fold<int>(0, (a, b) => a + b)} rounds in the sadhana form, last 30 days"),
     ];
 
     if (!_hasAnyReports) {
@@ -711,14 +724,6 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
         ),
       ],
     ));
-
-    // The two figures count different things, so say so when they visibly
-    // disagree rather than leaving the guide to reconcile them.
-    if (widget.lifetimeRounds == 0 && _chantAvg > 0) {
-      lines.add(const SizedBox(height: 3));
-      lines.add(_muted("The counter reads 0 because these rounds came from "
-          "sadhana reports, not the in-app bead counter."));
-    }
 
     lines.add(const SizedBox(height: 5));
     lines.add(_trendChip(_chantTrend, "rounds"));
@@ -838,13 +843,23 @@ class _AbcdeActivityCardState extends State<AbcdeActivityCard> {
   /// card's own standing "never aggregate" rule: two different D-relevant
   /// numbers, shown side by side, not summed into one).
   List<Widget> _serviceLines() {
+    final folkForm = hasDailyServices(widget.role);
     return [
-      _value(_assignedActiveServices == 0
-          ? "No services assigned"
-          : "$_assignedActiveServices service${_assignedActiveServices == 1 ? '' : 's'} assigned "
+      if (folkForm)
+        // FROM THE FORM: the daily-services answers of the FOLK sadhana form
+        _value(_formServiceDaysReported == 0
+            ? "No sadhana reports in the last 30 days, so no services from the form"
+            : "From the sadhana form, last 30 days: services done fully on $_formServicesFully day${_formServicesFully == 1 ? '' : 's'}, partly on $_formServicesPartly (of $_formServiceDaysReported reported)")
+      else
+        // the hostel / localite form has no services question: nothing is invented
+        _value("The hostel / localite sadhana form has no services question, so nothing here is from the form"),
+      if (folkForm)
+        _muted("${_monthServicePoints == _monthServicePoints.roundToDouble() ? _monthServicePoints.toInt() : _monthServicePoints.toStringAsFixed(1)} service points this month (from the form)"),
+      // the Service Bank is a record the GUIDE keeps: never something the student reported on the form
+      _muted(_assignedActiveServices == 0
+          ? "Service Bank (assigned by guides, not from the form): none assigned"
+          : "Service Bank (assigned by guides, not from the form): $_assignedActiveServices service${_assignedActiveServices == 1 ? '' : 's'} assigned "
               "($_completedServices completed, $_competentServices assessed competent)"),
-      if (hasDailyServices(widget.role))
-        _muted("${_monthServicePoints == _monthServicePoints.roundToDouble() ? _monthServicePoints.toInt() : _monthServicePoints.toStringAsFixed(1)} service points this month"),
     ];
   }
 

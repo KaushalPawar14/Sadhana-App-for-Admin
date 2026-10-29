@@ -462,7 +462,7 @@ void main() {
         Scaffold(
           body: SingleChildScrollView(
             child: AbcdeActivityCard(
-                studentUid: uid, studentName: name, role: 'Stay at FOLK', lifetimeRounds: 800),
+                studentUid: uid, studentName: name, role: 'Stay at FOLK'),
           ),
         ),
       ).then((_) => tester.pumpAndSettle());

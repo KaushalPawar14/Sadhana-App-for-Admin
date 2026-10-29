@@ -424,7 +424,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
             "category, and only that category's reports are shown and "
             "counted (calendar, graphs, points, 'left to submit'). Reports "
             "filed under the old category stay saved and come back if you "
-            "switch him back. Continue?",
+            "switch the student back. Continue?",
           ),
           actions: [
             TextButton(
@@ -638,8 +638,6 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                             studentUid: widget.studentUid,
                             studentName: name,
                             role: role,
-                            lifetimeRounds:
-                                _asInt(data['lifetimeRounds']),
                           ),
 
                           const SizedBox(height: 25),

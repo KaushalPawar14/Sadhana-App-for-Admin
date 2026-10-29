@@ -169,13 +169,13 @@ void main() {
       }
       expect(find.byKey(const ValueKey('priority-list-pane')), findsOneWidget);
       expect(find.byKey(const ValueKey('priority-detail-pane')), findsOneWidget);
-      expect(find.text('Choose a student to see his profile here.'), findsOneWidget);
+      expect(find.text('Choose a student to see the profile here.'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('priority-s1')));
       for (var i = 0; i < 6; i++) {
         await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 80)));
         await tester.pump(const Duration(milliseconds: 60));
       }
-      expect(find.text('Choose a student to see his profile here.'), findsNothing);
+      expect(find.text('Choose a student to see the profile here.'), findsNothing);
       expect(find.text('Arjun Kumar'), findsWidgets, reason: 'his profile beside the list');
       expect(find.byKey(const ValueKey('priority-s2')), findsOneWidget, reason: 'the list is still there');
     });

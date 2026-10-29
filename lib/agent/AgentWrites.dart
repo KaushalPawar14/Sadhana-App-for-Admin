@@ -1,3 +1,4 @@
+import '../utils/Pronouns.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart' show TimeOfDay;
 import 'package:intl/intl.dart';
@@ -156,7 +157,7 @@ Future<AgentResult> interactionAdd(Map<String, dynamic> a, AgentEnv env) async {
     willingness: a['willingness'] == null ? null : _s(a['willingness']),
     addressed: a['addressed'] == null ? true : a['addressed'] == true,
   );
-  return _done('Interaction with ${_s(s['name'])} recorded for ${_when.format(when)}. It is saved in his history, the plan item is ticked and his reasons are cleared from Interactions needed.',
+  return _done('Interaction with ${_s(s['name'])} recorded for ${_when.format(when)}. ${pronouned('It is saved in his history, the plan item is ticked and his reasons are cleared from Interactions needed.', _s(s['gender']), name: _s(s['name']))}',
       entities: [AgentEntity('interaction', saved.id, 'Interaction with ${_s(s['name'])} on ${_day.format(when)}')]);
 }
 

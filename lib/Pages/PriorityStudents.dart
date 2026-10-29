@@ -270,7 +270,7 @@ class _PriorityStudentsPageState extends State<PriorityStudentsPage> {
         Expanded(
           key: const ValueKey('priority-detail-pane'),
           child: _detailUid == null
-              ? Center(child: Text('Choose a student to see his profile here.', style: context.gText.small))
+              ? Center(child: Text('Choose a student to see the profile here.', style: context.gText.small))
               : ClipRect(child: StudentProfilePage(key: ValueKey('detail-$_detailUid'), studentUid: _detailUid!)),
         ),
       ],

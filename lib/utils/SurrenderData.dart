@@ -1,24 +1,32 @@
 import 'GuideDb.dart';
 
 /// A student's SURRENDER % — for guides and HODs only; students never see it. Worked out daily by the server (`functions/surrender.js`,
-/// weights in one config there) from his commitment (20%), the sadhana he actually did (40%), association with his guide (15%), his
-/// attitude and willingness (15%) and his LIT (10%); a student not living in FOLK is held at 90%; a part with nothing to judge is
-/// "not enough data" and never counts as failure. The board card shows the bar; a tap shows each part, with its reason.
+/// weights in one config there) from his commitment (10%), the sadhana he actually did (40%), association with his guide (20%), his
+/// attitude and willingness (10%) and his LIT (20%); a student not living in FOLK is held at 90%. NO FREE MARKS: a part with nothing to
+/// show yet scores 0 and the others are not scaled up. The board card shows the bar; a tap shows each part, its points earned of the
+/// points possible, and its reason.
 class SurrenderPart {
-  const SurrenderPart({required this.key, required this.label, required this.weight, required this.score, required this.reason, this.effectiveWeight});
+  const SurrenderPart({required this.key, required this.label, required this.weight, required this.score, required this.reason, this.effectiveWeight, this.points, this.missing = false});
 
   final String key;
   final String label;
 
-  /// The part's weight in the percent (20 / 40 / 15 / 15 / 10).
+  /// The part's weight in the percent = the points possible (10 / 40 / 20 / 10 / 20).
   final int weight;
 
-  /// 0..1, or null: not enough data (the part is left out, never counted as a failure).
+  /// 0..1 (a part with nothing to show yet is 0). Null only in a record written before the new weights.
   final double? score;
   final String reason;
 
-  /// What the part counts for once the parts without data are left out and the others scaled up (null for a part that is left out).
+  /// Kept for old records (the weight a part counted for once the others were scaled up); the server no longer scales.
   final double? effectiveWeight;
+
+  /// The points earned (0..[weight]); [missing]: nothing to show yet, so it earned 0.
+  final double? points;
+  final bool missing;
+
+  /// The points earned: the server's own figure, else the score times the weight.
+  double get earned => points ?? ((score ?? 0) * weight);
 
   static SurrenderPart? fromMap(Object? raw) {
     if (raw is! Map) return null;
@@ -33,12 +41,18 @@ class SurrenderPart {
       score: s is num ? s.toDouble().clamp(0.0, 1.0) : null,
       reason: (raw['reason'] ?? '').toString(),
       effectiveWeight: raw['effectiveWeight'] is num ? (raw['effectiveWeight'] as num).toDouble() : null,
+      points: raw['points'] is num ? (raw['points'] as num).toDouble() : null,
+      missing: raw['missing'] == true,
     );
   }
 }
 
 class SurrenderInfo {
-  const SurrenderInfo({required this.percent, required this.trend, required this.parts, required this.cap, required this.complete, required this.residence, this.noData = false});
+  const SurrenderInfo({required this.percent, required this.trend, required this.parts, required this.cap, required this.complete, required this.residence, this.noData = false, this.gender = '', this.name = ''});
+
+  /// The student's gender and name, so the notes about him or her say the right words (the server writes them with the record).
+  final String gender;
+  final String name;
 
   /// 0..100.
   final int percent;
@@ -52,7 +66,7 @@ class SurrenderInfo {
   final bool complete;
   final String residence;
 
-  /// Truly no sadhana reports and no commitment: there is no percent yet (the breakdown still says why each part is missing).
+  /// Only an old record (before the new weights) can say "no percent yet"; the server now always gives a number.
   final bool noData;
 
   /// The stage he is in (each 10% step has its own focus).
@@ -66,6 +80,8 @@ class SurrenderInfo {
     final t = d['trend'];
     return SurrenderInfo(
       noData: noData,
+      gender: (d['studentGender'] ?? '').toString(),
+      name: (d['studentName'] ?? '').toString(),
       percent: p is num ? p.round().clamp(0, 100) : 0,
       trend: t is num ? t.round() : null,
       parts: [

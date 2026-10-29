@@ -106,7 +106,7 @@ void main() {
 
   test('the table covers every executor (nothing is left untested by omission)', () {
     // the names exercised below, plus the ones whose callables the test phone cannot reach
-    expect(all.length, 94 + 0, reason: 'a change was added or removed: update this file');
+    expect(all.length, 95 + 0, reason: 'a change was added or removed: update this file');
   });
 
   group('students', () {
@@ -222,6 +222,18 @@ void main() {
       expect(calls.last['kind'], 'folk_open');
       expect(calls.last.containsKey('text'), isFalse);
     });
+    test('student_advice_set: stop / resume more chanting or reading, discuss the daily report again - the setting goes to the server as given', () async {
+      final e = env();
+      for (final setting in ['stop_chanting_push', 'resume_chanting_push', 'stop_reading_push', 'resume_reading_push', 'discuss_reporting_again', 'discuss_discipline_again']) {
+        final r = await all['student_advice_set']!({'studentUid': 'u1', 'setting': setting, 'reason': 'he is overwhelmed'}, e);
+        expect(r.ok, isTrue, reason: setting);
+        expect(calls.last['kind'], setting);
+        expect(calls.last['studentUid'], 'u1');
+        expect(calls.last['text'], 'he is overwhelmed');
+      }
+      await all['student_advice_set']!({'studentUid': 'u1', 'setting': 'stop_chanting_push'}, e);
+      expect(calls.last.containsKey('text'), isFalse);
+    });
     test('a student outside the scope is not found: nothing is sent', () async {
       await db.collection('users').doc('u_far').set({'name': 'Far', 'gender': 'female', 'guideId': 'F9', 'teamGuide': '', 'role': 'Stay at Hostel'});
       AdminProfileProvider.instance.debugSet(AdminProfile.fromMap({
@@ -232,6 +244,7 @@ void main() {
       final e = AgentEnv(profile: AdminProfileProvider.current!, db: db, clock: () => DateTime(2026, 10, 23, 12));
       await expectLater(all['student_note_add']!({'studentUid': 'u_far', 'text': 'x'}, e), throwsA(anything));
       await expectLater(all['student_folk_interest_set']!({'studentUid': 'u_far', 'interest': 'not_interested'}, e), throwsA(anything));
+      await expectLater(all['student_advice_set']!({'studentUid': 'u_far', 'setting': 'stop_chanting_push'}, e), throwsA(anything));
       expect(calls.length, before);
     });
   });

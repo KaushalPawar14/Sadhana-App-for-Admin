@@ -3,13 +3,15 @@ import 'package:flutter/material.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../utils/BoardData.dart';
+import '../utils/Pronouns.dart';
 import '../utils/SurrenderData.dart';
 import 'GuideDialog.dart';
 import 'GuideTiles.dart';
 
 /// The board card's "Surrender %": a progress bar with the number and the change since last week (↑ / ↓). A tap opens the breakdown: each
 /// part with its reason. GUIDES AND HODs ONLY — the number is never shown to a student (this app is the guides'; the student app never
-/// reads it). A part with nothing to judge says "not enough data"; it is never counted as a failure.
+/// reads it). A part with nothing to show yet scores 0 (never scaled up from the others); the breakdown gives every part its points
+/// earned of the points possible, and why.
 class SurrenderBar extends StatefulWidget {
   const SurrenderBar({super.key, required this.studentUid, required this.studentName});
 
@@ -36,21 +38,6 @@ class _SurrenderBarState extends State<SurrenderBar> {
             key: const ValueKey('surrender-none'),
             padding: const EdgeInsets.only(bottom: 10),
             child: Text('Surrender %: not worked out yet (it is calculated every night).', style: t.caption),
-          );
-        }
-        if (info.noData) {
-          // truly no reports and no commitment: no number, but the guide can still see why
-          return GestureDetector(
-            key: const ValueKey('surrender-nodata'),
-            behavior: HitTestBehavior.opaque,
-            onTap: () => showSurrenderBreakdown(context, widget.studentName, info),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Align(alignment: Alignment.centerLeft, child: Text('Surrender %: not enough data yet — no reports and no commitment. Tap for why.', style: t.caption)),
-              ),
-            ),
           );
         }
         return GestureDetector(
@@ -95,20 +82,26 @@ class _SurrenderBarState extends State<SurrenderBar> {
   }
 }
 
-/// The breakdown: each part (its weight, how it scored) with the reason, the trend, and the residence / data limits.
+/// "31.5" / "40": the points of a part, one decimal only when it has one.
+String surrenderPoints(double v) {
+  final r = (v * 10).round() / 10;
+  return r == r.roundToDouble() ? r.round().toString() : r.toStringAsFixed(1);
+}
+
+/// The breakdown: each part (its points earned of the points possible) with the reason, the trend, and the residence limit.
 Future<void> showSurrenderBreakdown(BuildContext context, String name, SurrenderInfo info) => showDialog<void>(
       context: context,
       builder: (dialogContext) {
         final g = dialogContext.g;
         final t = dialogContext.gText;
         return GuideDialog(
-          title: Text(info.noData ? '${name.split(' ').first}: not enough data yet' : '${name.split(' ').first}: Surrender ${info.percent}%', key: const ValueKey('surrender-dialog-title')),
+          title: Text('${name.split(' ').first}: Surrender ${info.percent}%', key: const ValueKey('surrender-dialog-title')),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (!info.noData) Text(
+                Text(
                   '${info.stage}${info.trend == null ? '' : info.trend == 0 ? ' · the same as last week' : ' · ${info.trend! > 0 ? '↑ up' : '↓ down'} ${info.trend!.abs()} since last week'}',
                   style: t.caption,
                 ),
@@ -124,23 +117,22 @@ Future<void> showSurrenderBreakdown(BuildContext context, String name, Surrender
                           spacing: 8,
                           children: [
                             Text(p.label, style: t.bodyStrong),
-                            Text(p.score == null ? 'not enough data' : '${(p.score! * 100).round()}%', style: t.bodyStrong.copyWith(color: p.score == null ? g.mutedText : g.brass)),
-                            Text(p.effectiveWeight != null && (p.effectiveWeight! - p.weight).abs() >= 0.5 ? 'counts ${p.effectiveWeight!.toStringAsFixed(p.effectiveWeight! % 1 == 0 ? 0 : 1)}% (${p.weight}% when every part is known)' : '${p.weight}% of the total', style: t.caption),
+                            Text('${surrenderPoints(p.earned)} of ${p.weight}', key: ValueKey('surrender-points-${p.key}'), style: t.bodyStrong.copyWith(color: p.earned == 0 ? g.mutedText : g.brass)),
                           ],
                         ),
-                        if (p.score != null) ...[
+                        if ((p.score ?? 0) > 0) ...[
                           const SizedBox(height: 4),
-                          GuideProgressBar(value: p.score!, height: 5),
+                          GuideProgressBar(value: (p.score ?? 0).clamp(0.0, 1.0), height: 5),
                         ],
                         const SizedBox(height: 4),
                         Text(p.reason, style: t.body.copyWith(fontSize: 13, height: 1.35)),
                       ],
                     ),
                   ),
-                if (info.parts.any((p) => p.score == null))
-                  Text(info.noData ? 'Nothing can be judged yet: no sadhana reports in the last 30 days and no commitment.' : 'A part with nothing to judge is left out (never counted as a failure); the others count a little more.', key: const ValueKey('surrender-leftout'), style: t.caption),
+                if (info.parts.any((p) => p.missing || p.score == null))
+                  Text('A part with nothing to show yet scores 0, and the other parts are not scaled up: only what has actually been shown counts.', key: const ValueKey('surrender-leftout'), style: t.caption),
                 if (info.cap == 'residence')
-                  Text('He does not live in FOLK, so the most he can show is 90%. Staying in FOLK, with everything else strong, allows 95% and more.', key: const ValueKey('surrender-cap'), style: t.caption),
+                  Text(pronouned('He does not live in FOLK, so the most he can show is 90%. Staying in FOLK, with everything else strong, allows 95% and more.', info.gender, name: info.name.isEmpty ? name : info.name), key: const ValueKey('surrender-cap'), style: t.caption),
                 if (info.cap == 'incomplete')
                   Text('Not everything is known yet, so the most it can show is 95% until every part has something to judge.', key: const ValueKey('surrender-cap'), style: t.caption),
                 const SizedBox(height: 8),

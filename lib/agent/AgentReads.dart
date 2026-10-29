@@ -38,7 +38,13 @@ import '../utils/AutoCalendar.dart';
 typedef AgentRun = Future<AgentResult> Function(Map<String, dynamic> args, AgentEnv env);
 
 AgentEntity _student(String uid, Map<String, dynamic> d) =>
-    AgentEntity('student', uid, (d['name'] ?? '').toString(), {'residence': (d['role'] ?? '').toString()});
+    AgentEntity('student', uid, (d['name'] ?? '').toString(), {'residence': (d['role'] ?? '').toString(), 'gender': _genderOf(d)});
+
+/// The student's gender as the model reads it: male / female, or 'missing' (it never guesses: it uses the name).
+String _genderOf(Map<String, dynamic> d) {
+  final g = (d['gender'] ?? '').toString().trim().toLowerCase();
+  return g == 'male' || g == 'female' ? g : 'missing';
+}
 
 String _s(Object? v) => (v ?? '').toString();
 
@@ -62,6 +68,7 @@ String _guideOf(Map<String, dynamic> d, AgentEnv env) {
 Map<String, Object?> _studentRow(String uid, Map<String, dynamic> d, AgentEnv env) => {
       'name': _s(d['name']),
       'residence': _s(d['role']),
+      'gender': _genderOf(d),
       'guide': _guideOf(d, env),
       if (d['commitmentRounds'] is num) 'chantingCommitmentRounds': (d['commitmentRounds'] as num).toInt(),
       if (d['readingCommitmentMinutes'] is num) 'readingCommitmentMinutes': (d['readingCommitmentMinutes'] as num).toInt(),
@@ -115,7 +122,7 @@ Future<AgentResult> findStudents(Map<String, dynamic> a, AgentEnv env) async {
         'noExactMatch': true,
         'didYouMean': [
           for (final m in (clear ? close.take(1) : close))
-            {'name': _s(m.item.value['name']), 'residence': _s(m.item.value['role']), 'guide': _guideOf(m.item.value, env)},
+            {'name': _s(m.item.value['name']), 'residence': _s(m.item.value['role']), 'gender': _genderOf(m.item.value), 'guide': _guideOf(m.item.value, env)},
         ],
         'note': clear
             ? 'No student is named exactly that, but ONE name is close. Ask the guide once with ask_user: "Did you mean <name>?" with two choices, Yes and No. '
