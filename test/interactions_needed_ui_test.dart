@@ -205,7 +205,47 @@ void main() {
       data.surrenderC.add(null);
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('surrender-none')), findsOneWidget);
-      expect(find.text('Surrender %: not enough data yet.'), findsOneWidget);
+      expect(find.text('Surrender %: not worked out yet (it is calculated every night).'), findsOneWidget);
+    });
+
+    testWidgets('truly no reports and no commitment: "not enough data yet" with a tap for why (each missing part has its reason); parts left out are scaled up', (tester) async {
+      const noData = SurrenderInfo(
+        percent: 0, trend: null, cap: null, complete: false, residence: 'hostel', noData: true,
+        parts: [
+          SurrenderPart(key: 'commitment', label: 'Commitment', weight: 20, score: null, reason: 'No commitment recorded yet — this part is left out, the others count a little more.'),
+          SurrenderPart(key: 'sadhana', label: 'Sadhana actually done', weight: 40, score: null, reason: 'No sadhana reports in the last 30 days — this part is left out, the others count a little more.'),
+          SurrenderPart(key: 'association', label: 'Association with his guide', weight: 15, score: null, reason: 'No interactions yet — this part is left out, the others count a little more.'),
+          SurrenderPart(key: 'attitude', label: 'Attitude and willingness', weight: 15, score: null, reason: 'No guide\'s report of his willingness yet, and no services or trips.'),
+          SurrenderPart(key: 'lit', label: 'LIT', weight: 10, score: null, reason: 'No LIT yet — this part is left out, the others count a little more.'),
+        ],
+      );
+      final data = FakeBoardData(users: roster)..surrenders['sg1'] = noData;
+      await openBoard(tester, data: data);
+      await tester.tap(find.text('Arjun Kumar'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('surrender-percent')), findsNothing, reason: 'no made-up 0%');
+      expect(find.byKey(const ValueKey('surrender-nodata')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('surrender-nodata')));
+      await tester.pumpAndSettle();
+      expect(find.text('Arjun: not enough data yet'), findsOneWidget);
+      expect(find.textContaining('No LIT yet'), findsOneWidget);
+      expect(find.textContaining('No interactions yet'), findsOneWidget);
+      expect(find.byKey(const ValueKey('surrender-leftout')), findsOneWidget);
+      // a percent worked out from whatever exists: the parts with data count for more, and the page says so
+      data.surrenders['sg1'] = const SurrenderInfo(percent: 66, trend: null, cap: null, complete: false, residence: 'hostel', parts: [
+        SurrenderPart(key: 'commitment', label: 'Commitment', weight: 20, score: 0.6, reason: 'Committed.', effectiveWeight: 33.3),
+        SurrenderPart(key: 'sadhana', label: 'Sadhana actually done', weight: 40, score: 0.7, reason: 'Last 30 days.', effectiveWeight: 66.7),
+        SurrenderPart(key: 'lit', label: 'LIT', weight: 10, score: null, reason: 'No LIT yet — this part is left out, the others count a little more.'),
+      ]);
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      data.surrenderC.add(null);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('surrender-bar')));
+      await tester.pumpAndSettle();
+      expect(find.text('counts 33.3% (20% when every part is known)'), findsOneWidget);
+      expect(find.text('counts 66.7% (40% when every part is known)'), findsOneWidget);
+      expect(find.byKey(const ValueKey('surrender-leftout')), findsOneWidget);
     });
 
     testWidgets('the residence cap is explained in the breakdown (not in FOLK: at most 90%)', (tester) async {

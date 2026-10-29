@@ -58,6 +58,7 @@ class GuideColors extends ThemeExtension<GuideColors> {
     required this.agentBottom,
     required this.onAgent,
     required this.agentSoft,
+    required this.agentWash,
     required this.scrim,
   });
 
@@ -128,17 +129,19 @@ class GuideColors extends ThemeExtension<GuideColors> {
   // The small dot that says there is something new (unseen content).
   final Color attention;
 
-  /// The AI assistant's own colour, a rich SAFFRON (the app's warm family), for its floating button, its page, cards and chips. [agent] is the deep (light theme) or light (dark theme) saffron used for TEXT, icons and
-  /// borders on the page surface (contrast at least 4.5:1 with it). [agentTop] / [agentMid] / [agentBottom] are the rich
-  /// gradient for FILLS (the floating button, the guide's bubbles, primary buttons), warm saffron at the top to deep saffron at
-  /// the bottom; [onAgent] is the text and icon colour ON those fills (at least 4.5:1 with every stop); [agentSoft] is a tint
-  /// of it for quiet backgrounds.
+  /// The AI assistant's own colour, a soft SKY BLUE (fresh, light, clearly "AI"), for its floating button, its page, cards and chips. [agent] is
+  /// the deep (light theme) or light (dark theme) sky blue used for TEXT, icons and borders on the page surface (contrast at least 4.5:1 with
+  /// it). [agentTop] / [agentMid] / [agentBottom] are the gradient for FILLS (the floating button, the guide's bubbles, primary buttons), a
+  /// pale sky at the top to a clear sky blue at the bottom (never dark); [onAgent] is the text and icon colour ON those fills (at least 4.5:1
+  /// with every stop); [agentSoft] is a tint of it for quiet backgrounds; [agentWash] is the slightly lighter blue inside the assistant's page
+  /// (its answer bubbles and suggestion chips), still clearly visible against the page.
   final Color agent;
   final Color agentTop;
   final Color agentMid;
   final Color agentBottom;
   final Color onAgent;
   final Color agentSoft;
+  final Color agentWash;
 
   // Behind modal sheets and dialogs.
   final Color scrim;
@@ -298,12 +301,13 @@ class GuideColors extends ThemeExtension<GuideColors> {
     success: Color(0xFF2F7D5B),
     warning: Color(0xFFA9812F),
     attention: Color(0xFFF57C00),
-    agent: Color(0xFF9A4A00),
-    agentTop: Color(0xFFFFC857),
-    agentMid: Color(0xFFFF9F1C),
-    agentBottom: Color(0xFFE8590C),
-    onAgent: Color(0xFF2B1500),
-    agentSoft: Color(0x1FFF9F1C),
+    agent: Color(0xFF0B5C99),
+    agentTop: Color(0xFFBDE8FF),
+    agentMid: Color(0xFF74C8FF),
+    agentBottom: Color(0xFF3DA9F2),
+    onAgent: Color(0xFF062B4A),
+    agentSoft: Color(0x336EC6FF),
+    agentWash: Color(0xFFF0F8FF),
     scrim: Color(0x8014192B),
   );
 
@@ -360,12 +364,13 @@ class GuideColors extends ThemeExtension<GuideColors> {
     success: Color(0xFF4FB38A),
     warning: Color(0xFFC9A24A),
     attention: Color(0xFFFFA43D),
-    agent: Color(0xFFFFB347),
-    agentTop: Color(0xFFFFC857),
-    agentMid: Color(0xFFFF9F1C),
-    agentBottom: Color(0xFFE8590C),
-    onAgent: Color(0xFF2B1500),
-    agentSoft: Color(0x29FF9F1C),
+    agent: Color(0xFF8FD3FF),
+    agentTop: Color(0xFFBDE8FF),
+    agentMid: Color(0xFF74C8FF),
+    agentBottom: Color(0xFF3DA9F2),
+    onAgent: Color(0xFF062B4A),
+    agentSoft: Color(0x386EC6FF),
+    agentWash: Color(0xFF14293C),
     scrim: Color(0xB3000000),
   );
 

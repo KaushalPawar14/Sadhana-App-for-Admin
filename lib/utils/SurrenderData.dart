@@ -5,7 +5,7 @@ import 'GuideDb.dart';
 /// attitude and willingness (15%) and his LIT (10%); a student not living in FOLK is held at 90%; a part with nothing to judge is
 /// "not enough data" and never counts as failure. The board card shows the bar; a tap shows each part, with its reason.
 class SurrenderPart {
-  const SurrenderPart({required this.key, required this.label, required this.weight, required this.score, required this.reason});
+  const SurrenderPart({required this.key, required this.label, required this.weight, required this.score, required this.reason, this.effectiveWeight});
 
   final String key;
   final String label;
@@ -16,6 +16,9 @@ class SurrenderPart {
   /// 0..1, or null: not enough data (the part is left out, never counted as a failure).
   final double? score;
   final String reason;
+
+  /// What the part counts for once the parts without data are left out and the others scaled up (null for a part that is left out).
+  final double? effectiveWeight;
 
   static SurrenderPart? fromMap(Object? raw) {
     if (raw is! Map) return null;
@@ -29,12 +32,13 @@ class SurrenderPart {
       weight: w is num ? w.round() : 0,
       score: s is num ? s.toDouble().clamp(0.0, 1.0) : null,
       reason: (raw['reason'] ?? '').toString(),
+      effectiveWeight: raw['effectiveWeight'] is num ? (raw['effectiveWeight'] as num).toDouble() : null,
     );
   }
 }
 
 class SurrenderInfo {
-  const SurrenderInfo({required this.percent, required this.trend, required this.parts, required this.cap, required this.complete, required this.residence});
+  const SurrenderInfo({required this.percent, required this.trend, required this.parts, required this.cap, required this.complete, required this.residence, this.noData = false});
 
   /// 0..100.
   final int percent;
@@ -48,16 +52,21 @@ class SurrenderInfo {
   final bool complete;
   final String residence;
 
+  /// Truly no sadhana reports and no commitment: there is no percent yet (the breakdown still says why each part is missing).
+  final bool noData;
+
   /// The stage he is in (each 10% step has its own focus).
   String get stage => surrenderStageOf(percent);
 
   static SurrenderInfo? fromDoc(Map<String, dynamic>? d) {
     if (d == null) return null;
     final p = d['percent'];
-    if (p is! num) return null;
+    final noData = d['noData'] == true && p is! num;
+    if (p is! num && !noData) return null;
     final t = d['trend'];
     return SurrenderInfo(
-      percent: p.round().clamp(0, 100),
+      noData: noData,
+      percent: p is num ? p.round().clamp(0, 100) : 0,
       trend: t is num ? t.round() : null,
       parts: [
         for (final e in (d['parts'] as List? ?? const []))

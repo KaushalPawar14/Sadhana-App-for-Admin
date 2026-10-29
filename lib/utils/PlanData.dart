@@ -57,6 +57,14 @@ class PlanItem {
     this.percent,
     this.level = '',
     this.briefSource = '',
+    this.how = '',
+    this.encourage = const [],
+    this.reportBack = '',
+    this.carriedOver = false,
+    this.batchPosition,
+    this.batchRound,
+    this.inToday = false,
+    this.topicLabels = const [],
   });
 
   final String id;
@@ -87,6 +95,19 @@ class PlanItem {
   /// 'ai' (the questions were written by the AI) or 'fallback' (the plain version).
   final String briefSource;
 
+  /// An interaction in today's batch: where and how to meet him, what to encourage, the report-back line, whether it was carried over from an
+  /// earlier day, and its place (1, 2 ...) and round in the day's batch.
+  final String how;
+  final List<String> encourage;
+  final String reportBack;
+  final bool carriedOver;
+  final int? batchPosition;
+  final int? batchRound;
+
+  /// In the week's list: this student is in today's batch. [topicLabels] are his topics' names (the questions are in Today).
+  final bool inToday;
+  final List<String> topicLabels;
+
   bool get isInteraction => kind == 'interaction';
 
   static PlanItem fromMap(Map<String, dynamic> m) => PlanItem(
@@ -107,7 +128,74 @@ class PlanItem {
         percent: m['percent'] is num ? (m['percent'] as num).round() : null,
         level: (m['level'] ?? '').toString(),
         briefSource: (m['briefSource'] ?? '').toString(),
+        how: (m['how'] ?? '').toString(),
+        encourage: PlanTopic._strings(m['encourage']),
+        reportBack: (m['reportBack'] ?? '').toString(),
+        carriedOver: m['carriedOver'] == true,
+        batchPosition: m['batch'] is Map && (m['batch'] as Map)['position'] is num ? ((m['batch'] as Map)['position'] as num).round() : null,
+        batchRound: m['batch'] is Map && (m['batch'] as Map)['round'] is num ? ((m['batch'] as Map)['round'] as num).round() : null,
+        inToday: m['inToday'] == true,
+        topicLabels: PlanTopic._strings(m['topicLabels']),
       );
+}
+
+/// Today's batch of students: the guide's number a day, which round of the day it is, how many are done and left. [nextReady]: a refill just
+/// added the next batch ("Next 4 ready").
+class PlanBatch {
+  const PlanBatch({required this.size, required this.round, required this.members, required this.carried, required this.nextReady, required this.done, required this.left});
+
+  final int size;
+  final int round;
+  final int members;
+  final int carried;
+  final bool nextReady;
+  final int done;
+  final int left;
+
+  static int _n(Object? v) => v is num ? v.round() : 0;
+
+  static PlanBatch? fromMap(Object? raw) {
+    if (raw is! Map) return null;
+    return PlanBatch(size: _n(raw['size']) == 0 ? 4 : _n(raw['size']), round: _n(raw['round']) == 0 ? 1 : _n(raw['round']), members: _n(raw['members']), carried: _n(raw['carried']), nextReady: raw['nextReady'] == true, done: _n(raw['done']), left: _n(raw['left']));
+  }
+}
+
+/// One source of interactions in the week's picture (targets, sadhana, doubts and concerns, surrender steps).
+class PlanSourceProgress {
+  const PlanSourceProgress({required this.id, required this.label, required this.needed, required this.done, required this.left});
+  final String id;
+  final String label;
+  final int needed;
+  final int done;
+  final int left;
+}
+
+/// "Interactions needed: 20 · done 4 · left 16", with the same per source.
+class PlanProgress {
+  const PlanProgress({required this.needed, required this.done, required this.left, required this.summary, required this.bySource});
+
+  final int needed;
+  final int done;
+  final int left;
+  final String summary;
+  final List<PlanSourceProgress> bySource;
+
+  static int _n(Object? v) => v is num ? v.round() : 0;
+
+  static PlanProgress? fromMap(Object? raw) {
+    if (raw is! Map) return null;
+    return PlanProgress(
+      needed: _n(raw['needed']),
+      done: _n(raw['done']),
+      left: _n(raw['left']),
+      summary: (raw['summary'] ?? '').toString(),
+      bySource: [
+        if (raw['bySource'] is List)
+          for (final s in raw['bySource'] as List)
+            if (s is Map) PlanSourceProgress(id: (s['id'] ?? '').toString(), label: (s['label'] ?? '').toString(), needed: _n(s['needed']), done: _n(s['done']), left: _n(s['left'])),
+      ],
+    );
+  }
 }
 
 class PlanSection {
@@ -129,6 +217,8 @@ class PlanDoc {
     required this.status,
     required this.pendingRunAt,
     required this.changedAt,
+    this.batch,
+    this.progress,
   });
 
   final String todayDate;
@@ -140,6 +230,10 @@ class PlanDoc {
   final String status;
   final DateTime? pendingRunAt;
   final DateTime? changedAt;
+
+  /// Today's batch (null for a HOD's plan, which has none) and the week's progress.
+  final PlanBatch? batch;
+  final PlanProgress? progress;
 
   static DateTime? _ts(Object? v) => v is Timestamp ? v.toDate() : null;
 
@@ -166,6 +260,8 @@ class PlanDoc {
       status: (d['status'] ?? 'upToDate').toString(),
       pendingRunAt: _ts(d['pendingRunAt']),
       changedAt: _ts(d['changedAt']),
+      batch: PlanBatch.fromMap(today['batch']),
+      progress: PlanProgress.fromMap(week['progress']),
     );
   }
 }

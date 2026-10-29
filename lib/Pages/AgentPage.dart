@@ -225,7 +225,7 @@ class _AgentPageState extends State<AgentPage> {
           children: [
             for (final i in ideas)
               Material(
-                color: g.surface,
+                color: g.agentWash,
                 shape: StadiumBorder(side: BorderSide(color: g.agent.withValues(alpha: .5))),
                 child: InkWell(
                   customBorder: const StadiumBorder(),
@@ -293,7 +293,7 @@ class _AgentPageState extends State<AgentPage> {
             child: Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: g.surface,
+                color: g.agentWash,
                 borderRadius: const BorderRadius.only(topLeft: Radius.circular(5), topRight: Radius.circular(18), bottomLeft: Radius.circular(18), bottomRight: Radius.circular(18)),
                 border: Border.all(color: g.agent.withValues(alpha: .28)),
                 boxShadow: g.cardShadow,
@@ -828,7 +828,7 @@ class _TypingBubble extends StatelessWidget {
   }
 }
 
-/// The send button: a saffron disc with the arrow on it (greyed when nothing can be sent).
+/// The send button: a sky-blue disc with the arrow on it (greyed when nothing can be sent).
 class _SendButton extends StatelessWidget {
   const _SendButton({super.key, required this.onPressed});
 

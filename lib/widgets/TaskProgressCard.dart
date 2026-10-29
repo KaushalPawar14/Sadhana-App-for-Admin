@@ -184,7 +184,7 @@ String _firstSentence(String reason) {
   return s.length > 140 ? '${s.substring(0, 139)}…' : s;
 }
 
-/// The bar: a saffron gradient fill over a soft track. The fill's width is the percentage itself (it is already smooth), so
+/// The bar: a sky-blue gradient fill over a soft track. The fill's width is the percentage itself (it is already smooth), so
 /// there is no second animation on top of it.
 class _Bar extends StatelessWidget {
   const _Bar({required this.percent, required this.accent, required this.active});
@@ -244,7 +244,7 @@ class _BarPainter extends CustomPainter {
   bool shouldRepaint(_BarPainter old) => old.track != track || old.colours != colours || old.edge != edge;
 }
 
-/// The five steps with the current one marked: done ones ticked, the current one in saffron, the rest quiet.
+/// The five steps with the current one marked: done ones ticked, the current one in sky blue, the rest quiet.
 class _Steps extends StatelessWidget {
   const _Steps({required this.current});
 

@@ -195,6 +195,9 @@ class HierarchyApi {
   }) =>
       _call('saveNotificationPrefs', {'groups': groups, 'types': types});
 
+  /// The guide's number of students in a day's batch (1 to 12); the server works the plan out again at once.
+  Future<void> savePlanSettings({required int dailyBatch}) => _call('savePlanSettings', {'dailyBatch': dailyBatch});
+
   /// Is this mobile number already on any user document? (Replaces the app's
   /// own `users where mobileNumber ==` query, which strict rules forbid.)
   /// `name` is the existing student's name when taken.

@@ -80,7 +80,7 @@ class AgentSession {
 ///
 /// Position: draggable, saved as a FRACTION of the screen (so it survives rotation and another phone),
 /// clear of the floating navigation by default, never off-screen. A colour of its own — the assistant's
-/// saffron, drawn as a glossy 3D button with a light shine that sweeps across it every few seconds.
+/// sky blue, drawn as a glossy 3D button with a light shine that sweeps across it every few seconds.
 class AgentOverlay extends StatelessWidget {
   const AgentOverlay({super.key, required this.child, this.signedIn, this.onOpen});
 

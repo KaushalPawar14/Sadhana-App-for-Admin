@@ -519,10 +519,10 @@ void main() {
       final dark = GuideTheme.dark.extension<GuideColors>()!;
       expect(g.agent, isNot(dark.agent), reason: 'tuned for each theme');
       for (final c in [g.agent, dark.agent, g.agentTop, g.agentMid, g.agentBottom]) {
-        // the assistant is SAFFRON (red high, green middling, blue low); the Student app's is violet-to-teal and never fuchsia
-        expect((c.r * 255).round(), greaterThan(140));
-        expect((c.g * 255).round(), allOf(greaterThan(60), lessThan(215)));
-        expect((c.b * 255).round(), lessThan(110));
+        // the assistant is SKY BLUE (blue the strongest channel, red the weakest); the Student app's is violet-to-teal and never fuchsia
+        expect((c.b * 255).round(), greaterThan((c.g * 255).round()));
+        expect((c.g * 255).round(), greaterThan((c.r * 255).round()));
+        expect((c.b * 255).round(), greaterThan(140));
       }
     });
 

@@ -23,7 +23,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'support/app_harness.dart';
 import 'support/guide_test_support.dart';
 
-/// The assistant's SAFFRON look: the colours and their contrast, the glossy 3D floating button and its shine (which pauses when it
+/// The assistant's SKY-BLUE look: the colours and their contrast, the glossy 3D floating button and its shine (which pauses when it
 /// should, and is static with reduce-motion), the typing indicator, and the cards that ease in. Text size 1.0 / 1.3 / 1.6, light
 /// and dark.
 
@@ -36,37 +36,57 @@ void main() {
 
   // ------------------------------------------------------------------------------------------ the colours
   group('the colours', () {
-    test('the assistant is SAFFRON in both themes: a warm gradient from saffron to deep saffron, never fuchsia or pink', () {
+    test('the assistant is SKY BLUE in both themes: a light gradient from pale sky to a clear sky blue, never dark, never saffron, pink or purple', () {
       for (final g in [light, dark]) {
         for (final c in [g.agentTop, g.agentMid, g.agentBottom]) {
-          expect((c.r * 255).round(), greaterThan(200), reason: 'a rich warm red');
-          expect((c.g * 255).round(), allOf(greaterThan(70), lessThan(215)), reason: 'amber, not red-pink');
-          expect((c.b * 255).round(), lessThan(100), reason: 'no blue, so no pink or purple');
+          expect((c.b * 255).round(), greaterThan(235), reason: 'blue is the strongest channel');
+          expect((c.g * 255).round(), allOf(greaterThan(150), lessThan((c.b * 255).round())), reason: 'sky, not cyan-green');
+          expect((c.r * 255).round(), lessThan((c.g * 255).round() - 20), reason: 'cool, so no pink or purple');
+          expect(c.computeLuminance(), greaterThan(.3), reason: 'light, not dark');
         }
-        // the gradient runs from the lighter warm saffron to the deeper one
+        // the gradient runs from the palest sky at the top to the clearest blue at the bottom
         expect(g.agentTop.computeLuminance(), greaterThan(g.agentMid.computeLuminance()));
         expect(g.agentMid.computeLuminance(), greaterThan(g.agentBottom.computeLuminance()));
         for (final c in [g.agent]) {
-          expect((c.r * 255).round(), greaterThan((c.b * 255).round() + 60), reason: 'orange, not fuchsia');
-          expect((c.g * 255).round(), greaterThan((c.b * 255).round()));
+          expect((c.b * 255).round(), greaterThan((c.r * 255).round() + 40), reason: 'blue');
         }
       }
       expect(light.agent, isNot(dark.agent), reason: 'the accent is tuned for each theme');
+      // inside the page: a slightly lighter blue than the page, still clearly visible against it
+      expect(contrastRatio(light.agentWash, light.pageBackground), greaterThan(1.02), reason: 'light: a lighter blue than the page (its border and shadow make it stand out)');
+      expect(contrastRatio(dark.agentWash, dark.pageBackground), greaterThan(1.2), reason: 'dark: clearly visible against the page');
     });
 
-    test('text and icons in the saffron colour read at 4.5:1 or better on the page and the cards, in light and dark', () {
+    test('text and icons in the sky-blue colour read at 4.5:1 or better on the page, the cards and the assistant\'s own tint, in light and dark; ordinary text too', () {
       for (final (name, g) in [('light', light), ('dark', dark)]) {
-        expect(contrastRatio(g.agent, g.surface), greaterThanOrEqualTo(4.5), reason: '$name: saffron text on a card');
-        expect(contrastRatio(g.agent, g.pageBackground), greaterThanOrEqualTo(4.5), reason: '$name: saffron text on the page');
+        expect(contrastRatio(g.agent, g.surface), greaterThanOrEqualTo(4.5), reason: '$name: blue text on a card');
+        expect(contrastRatio(g.agent, g.pageBackground), greaterThanOrEqualTo(4.5), reason: '$name: blue text on the page');
+        expect(contrastRatio(g.agent, g.agentWash), greaterThanOrEqualTo(4.5), reason: '$name: blue text on the assistant\'s bubbles');
+        expect(contrastRatio(g.text, g.agentWash), greaterThanOrEqualTo(4.5), reason: '$name: the answer text on its bubble');
+        expect(contrastRatio(g.mutedText, g.agentWash), greaterThanOrEqualTo(4.5), reason: '$name: small grey text on its bubble');
       }
     });
 
-    test('text and icons ON the saffron fills (the guide\'s bubbles, the button, Confirm) read at 4.5:1 or better on every stop', () {
+    test('text and icons ON the sky-blue fills (the guide\'s bubbles, the button, Confirm) read at 4.5:1 or better on every stop', () {
       for (final (name, g) in [('light', light), ('dark', dark)]) {
         for (final (stop, c) in [('top', g.agentTop), ('mid', g.agentMid), ('bottom', g.agentBottom)]) {
           expect(contrastRatio(g.onAgent, c), greaterThanOrEqualTo(4.5), reason: '$name: text on the $stop of the gradient');
         }
       }
+    });
+
+    test('no saffron is left anywhere in the assistant\'s code or colours', () {
+      final files = [
+        'lib/Pages/AgentPage.dart', 'lib/Pages/AgentChatsPage.dart', 'lib/Pages/AgentLogPage.dart', 'lib/agent/AgentOverlay.dart', 'lib/Pages/PlanPage.dart',
+        'lib/widgets/AgentFab.dart', 'lib/widgets/TaskProgressCard.dart', 'lib/theme/AgentLook.dart',
+      ];
+      for (final f in files) {
+        final code = File(f).readAsStringSync().replaceAll(RegExp(r'//.*'), '');
+        expect(RegExp(r'saffron|FF9F1C|E8590C|FFC857|FFB347|9A4A00|brass', caseSensitive: false).hasMatch(code), isFalse, reason: '$f still has saffron');
+      }
+      final colours = File('lib/theme/GuideColors.dart').readAsStringSync();
+      final agentLines = colours.split('\n').where((l) => RegExp(r'^\s*agent\w*:').hasMatch(l)).join('\n');
+      expect(RegExp(r'FF9F1C|E8590C|FFC857|FFB347|9A4A00').hasMatch(agentLines), isFalse, reason: 'the assistant tokens hold no saffron');
     });
 
     test('no pink or fuchsia is left anywhere in the assistant\'s code', () {
@@ -178,7 +198,7 @@ void main() {
     });
 
     for (final darkTheme in [false, true]) {
-      testWidgets('it looks like a glossy 3D saffron ball: lit from the top, shaded below, saffron in the middle (${darkTheme ? 'dark' : 'light'})', (tester) async {
+      testWidgets('it looks like a glossy 3D sky-blue ball: lit from the top, shaded below, sky blue in the middle (${darkTheme ? 'dark' : 'light'})', (tester) async {
         await pumpOverlay(tester, reduce: true, darkTheme: darkTheme);
         final boundary = tester.renderObject<RenderRepaintBoundary>(find.descendant(of: find.byType(AgentFab), matching: find.byType(RepaintBoundary)).first);
         late ByteData data;
@@ -198,11 +218,11 @@ void main() {
         }
 
         final topGloss = px(.5, .22); // inside the glossy highlight
-        final middle = px(.2, .55); // the saffron body, clear of the icon and the gloss
+        final middle = px(.2, .55); // the sky-blue body, clear of the icon and the gloss
         final bottom = px(.5, .93); // the shaded lower edge
         expect(topGloss.computeLuminance(), greaterThan(middle.computeLuminance()), reason: 'a highlight on top');
         expect(middle.computeLuminance(), greaterThan(bottom.computeLuminance()), reason: 'a shade below');
-        expect((middle.r * 255).round(), greaterThan((middle.b * 255).round() + 80), reason: 'saffron in the middle, not pink');
+        expect((middle.b * 255).round(), greaterThan((middle.r * 255).round() + 40), reason: 'sky blue in the middle, not pink or saffron');
         expect(find.descendant(of: find.byType(AgentFab), matching: find.byType(ClipOval)), findsOneWidget, reason: 'a round button');
       });
     }

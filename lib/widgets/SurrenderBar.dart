@@ -35,7 +35,22 @@ class _SurrenderBarState extends State<SurrenderBar> {
           return Padding(
             key: const ValueKey('surrender-none'),
             padding: const EdgeInsets.only(bottom: 10),
-            child: Text('Surrender %: not enough data yet.', style: t.caption),
+            child: Text('Surrender %: not worked out yet (it is calculated every night).', style: t.caption),
+          );
+        }
+        if (info.noData) {
+          // truly no reports and no commitment: no number, but the guide can still see why
+          return GestureDetector(
+            key: const ValueKey('surrender-nodata'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => showSurrenderBreakdown(context, widget.studentName, info),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Align(alignment: Alignment.centerLeft, child: Text('Surrender %: not enough data yet — no reports and no commitment. Tap for why.', style: t.caption)),
+              ),
+            ),
           );
         }
         return GestureDetector(
@@ -87,13 +102,13 @@ Future<void> showSurrenderBreakdown(BuildContext context, String name, Surrender
         final g = dialogContext.g;
         final t = dialogContext.gText;
         return GuideDialog(
-          title: Text('${name.split(' ').first}: Surrender ${info.percent}%', key: const ValueKey('surrender-dialog-title')),
+          title: Text(info.noData ? '${name.split(' ').first}: not enough data yet' : '${name.split(' ').first}: Surrender ${info.percent}%', key: const ValueKey('surrender-dialog-title')),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                if (!info.noData) Text(
                   '${info.stage}${info.trend == null ? '' : info.trend == 0 ? ' · the same as last week' : ' · ${info.trend! > 0 ? '↑ up' : '↓ down'} ${info.trend!.abs()} since last week'}',
                   style: t.caption,
                 ),
@@ -110,7 +125,7 @@ Future<void> showSurrenderBreakdown(BuildContext context, String name, Surrender
                           children: [
                             Text(p.label, style: t.bodyStrong),
                             Text(p.score == null ? 'not enough data' : '${(p.score! * 100).round()}%', style: t.bodyStrong.copyWith(color: p.score == null ? g.mutedText : g.brass)),
-                            Text('${p.weight}% of the total', style: t.caption),
+                            Text(p.effectiveWeight != null && (p.effectiveWeight! - p.weight).abs() >= 0.5 ? 'counts ${p.effectiveWeight!.toStringAsFixed(p.effectiveWeight! % 1 == 0 ? 0 : 1)}% (${p.weight}% when every part is known)' : '${p.weight}% of the total', style: t.caption),
                           ],
                         ),
                         if (p.score != null) ...[
@@ -122,6 +137,8 @@ Future<void> showSurrenderBreakdown(BuildContext context, String name, Surrender
                       ],
                     ),
                   ),
+                if (info.parts.any((p) => p.score == null))
+                  Text(info.noData ? 'Nothing can be judged yet: no sadhana reports in the last 30 days and no commitment.' : 'A part with nothing to judge is left out (never counted as a failure); the others count a little more.', key: const ValueKey('surrender-leftout'), style: t.caption),
                 if (info.cap == 'residence')
                   Text('He does not live in FOLK, so the most he can show is 90%. Staying in FOLK, with everything else strong, allows 95% and more.', key: const ValueKey('surrender-cap'), style: t.caption),
                 if (info.cap == 'incomplete')

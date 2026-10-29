@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'GuideColors.dart';
 
-/// The assistant's SAFFRON look, built from the tokens in [GuideColors]: one place for the gradient, the glow and the contrast
+/// The assistant's SKY-BLUE look, built from the tokens in [GuideColors]: one place for the gradient, the glow and the contrast
 /// rule, so the button, the page, the cards and the chips cannot drift apart.
 extension AgentLook on GuideColors {
-  /// The rich fill: warm saffron at the top, deep saffron at the bottom.
+  /// The fill: pale sky blue at the top, a clear sky blue at the bottom (light, never dark).
   LinearGradient get agentGradient => LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
@@ -24,7 +24,7 @@ extension AgentLook on GuideColors {
   /// Black at [alpha]: the depth of the assistant's shadows and shading (kept here, with the other colours of its look).
   Color agentShade(double alpha) => Colors.black.withValues(alpha: alpha);
 
-  /// A soft saffron glow under floating things.
+  /// A soft sky-blue glow under floating things.
   List<BoxShadow> get agentGlow => [
         BoxShadow(color: agentBottom.withValues(alpha: isDark ? .45 : .38), blurRadius: 18, offset: const Offset(0, 8)),
         BoxShadow(color: agentShade(isDark ? .5 : .22), blurRadius: 6, offset: const Offset(0, 3)),

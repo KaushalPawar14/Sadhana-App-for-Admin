@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../Services/HierarchyApi.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
@@ -66,8 +67,12 @@ String planStatusText(PlanDoc plan, DateTime now) {
 }
 
 class _PlanPageState extends State<PlanPage> {
-  /// Interaction cards whose questions are open.
-  final Set<String> _open = {};
+  /// Interaction cards whose questions were toggled by the guide (a batch card starts open, any other starts closed).
+  final Set<String> _toggled = {};
+
+  /// The students-a-day number the guide just chose (shown at once, until the server's new plan arrives).
+  int? _sizeChosen;
+  bool _savingSize = false;
 
   bool _week = false;
   PlanDoc? _plan;
@@ -94,6 +99,7 @@ class _PlanPageState extends State<PlanPage> {
         final updated = _loaded && fresh != null && _lastGenerated != null && fresh.isAfter(_lastGenerated!);
         setState(() {
           _plan = p;
+          _sizeChosen = null; // the server's own number is the truth again
           _loaded = true;
           _failed = false;
           if (fresh != null) _lastGenerated = fresh;
@@ -230,15 +236,79 @@ class _PlanPageState extends State<PlanPage> {
   List<Widget> _todayBody(BuildContext context, PlanDoc plan) {
     final t = context.gText;
     final items = plan.todayItems;
+    final students = items.where((i) => i.isInteraction).toList();
+    final others = items.where((i) => !i.isInteraction).toList();
     final date = DateTime.tryParse(plan.todayDate);
     return [
       GuideSectionTitle(date == null ? 'Today' : 'Today — ${DateFormat('EEEE d MMMM').format(date)}'),
       const SizedBox(height: 4),
+      if (plan.batch != null) _batchCard(context, plan.batch!),
       if (items.isEmpty)
         GuideCard(padding: const EdgeInsets.all(16), child: Text('Nothing is planned for today. A quiet day — enjoy it.', key: const ValueKey('plan-today-empty'), style: t.small))
-      else
-        for (var i = 0; i < items.length; i++) GuideEntry(index: i, child: _itemCard(context, items[i])),
+      else ...[
+        for (var i = 0; i < students.length; i++) GuideEntry(index: i, child: _itemCard(context, students[i], total: plan.batch?.members ?? students.length)),
+        if (others.isNotEmpty && students.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 14), child: GuideSectionTitle('Also today', key: const ValueKey('plan-also-today'))),
+        for (var i = 0; i < others.length; i++) GuideEntry(index: students.length + i, child: _itemCard(context, others[i])),
+      ],
     ];
+  }
+
+  /// The day's batch: how many students, how many done and left, "Next 4 ready", and the guide's own number a day.
+  Widget _batchCard(BuildContext context, PlanBatch b) {
+    final g = context.g;
+    final t = context.gText;
+    final size = _sizeChosen ?? b.size;
+    return Padding(
+      key: const ValueKey('plan-batch'),
+      padding: const EdgeInsets.only(top: 8),
+      child: GuideCard(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Text("Today's students", style: t.cardTitleSmall)),
+                Text(b.members == 0 ? 'none needed' : 'done ${b.done} · left ${b.left}', key: const ValueKey('plan-batch-counts'), style: t.bodyStrong.copyWith(color: g.agent)),
+              ],
+            ),
+            if (b.nextReady) ...[
+              const SizedBox(height: 6),
+              Align(alignment: Alignment.centerLeft, child: _tag(context, 'Next ${b.size} ready', key: const ValueKey('plan-next-ready'))),
+            ],
+            if (b.carried > 0) ...[
+              const SizedBox(height: 4),
+              Text('${b.carried} carried over from an earlier day, on top.', key: const ValueKey('plan-carried-note'), style: t.caption),
+            ],
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(child: Text('Students a day', style: t.small)),
+                IconButton(key: const ValueKey('plan-size-less'), tooltip: 'Fewer students a day', icon: const Icon(Icons.remove_circle_outline), onPressed: size > 1 && !_savingSize ? () => _setSize(size - 1) : null),
+                SizedBox(width: 28, child: Text('$size', key: const ValueKey('plan-size'), textAlign: TextAlign.center, style: t.bodyStrong)),
+                IconButton(key: const ValueKey('plan-size-more'), tooltip: 'More students a day', icon: const Icon(Icons.add_circle_outline), onPressed: size < 12 && !_savingSize ? () => _setSize(size + 1) : null),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _setSize(int n) async {
+    setState(() {
+      _sizeChosen = n;
+      _savingSize = true;
+    });
+    try {
+      await HierarchyApi.instance.savePlanSettings(dailyBatch: n);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _sizeChosen = null);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is HierarchyException ? e.message : 'Could not save that. Please try again.')));
+      }
+    }
+    if (mounted) setState(() => _savingSize = false);
   }
 
   List<Widget> _weekBody(BuildContext context, PlanDoc plan) {
@@ -246,6 +316,7 @@ class _PlanPageState extends State<PlanPage> {
     return [
       if (plan.intro.isNotEmpty)
         Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(plan.intro, key: const ValueKey('plan-intro'), style: t.body.copyWith(height: 1.45))),
+      if (plan.progress != null) _progressCard(context, plan.progress!),
       if (plan.sections.isEmpty)
         GuideCard(padding: const EdgeInsets.all(16), child: Text('Nothing to plan this week yet.', key: const ValueKey('plan-week-empty'), style: t.small)),
       for (final s in plan.sections) ...[
@@ -256,10 +327,45 @@ class _PlanPageState extends State<PlanPage> {
     ];
   }
 
-  Widget _itemCard(BuildContext context, PlanItem it) {
+  /// "Interactions needed: 20 · done 4 · left 16", and the same for each source, as bars.
+  Widget _progressCard(BuildContext context, PlanProgress p) {
+    final g = context.g;
+    final t = context.gText;
+    return Padding(
+      key: const ValueKey('plan-progress'),
+      padding: const EdgeInsets.only(top: 4, bottom: 4),
+      child: GuideCard(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(p.summary, key: const ValueKey('plan-progress-summary'), style: t.cardTitleSmall),
+            const SizedBox(height: 6),
+            for (final s in p.bySource) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(child: Text(s.label, style: t.small)),
+                  Text('done ${s.done} · left ${s.left}', key: ValueKey('plan-progress-${s.id}'), style: t.caption),
+                ],
+              ),
+              const SizedBox(height: 3),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(value: s.needed == 0 ? 0 : s.done / s.needed, minHeight: 6, backgroundColor: g.chipBackground, color: g.agentMid),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _itemCard(BuildContext context, PlanItem it, {int total = 0}) {
     final g = context.g;
     final t = context.gText;
     final when = it.scheduledFor.isEmpty ? null : DateTime.tryParse(it.scheduledFor);
+    final inBatch = it.batchPosition != null;
     return Padding(
       key: ValueKey('plan-item-${it.id}'),
       padding: const EdgeInsets.only(top: 8),
@@ -278,21 +384,35 @@ class _PlanPageState extends State<PlanPage> {
                 Expanded(child: Text(it.title, style: t.cardTitleSmall)),
               ],
             ),
+            if (inBatch) ...[
+              const SizedBox(height: 2),
+              Text('Student ${it.batchPosition}${total > 0 ? ' of $total' : ''}', key: ValueKey('plan-position-${it.id}'), style: t.caption.copyWith(color: g.agent)),
+            ],
             if (when != null) ...[
               const SizedBox(height: 2),
               Text(DateFormat('EEE d MMM').format(when), style: t.caption.copyWith(color: g.agent)),
+            ],
+            if (it.how.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(it.how, key: ValueKey('plan-how-${it.id}'), style: t.small.copyWith(height: 1.4, fontWeight: FontWeight.w600)),
             ],
             if (it.detail.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(it.detail, style: t.small.copyWith(height: 1.4)),
             ],
-            if (it.checkWithHim || it.forYou || it.done || it.percent != null) ...[
+            if (it.topicLabels.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text('Topics: ${it.topicLabels.join(', ')}', key: ValueKey('plan-topic-names-${it.id}'), style: t.caption),
+            ],
+            if (it.checkWithHim || it.forYou || it.done || it.percent != null || it.carriedOver || it.inToday) ...[
               const SizedBox(height: 6),
               Wrap(
                 spacing: 6,
                 runSpacing: 4,
                 children: [
                   if (it.done) _tag(context, 'Done'),
+                  if (it.carriedOver) _tag(context, 'Carried over', key: ValueKey('plan-carried-${it.id}')),
+                  if (it.inToday) _tag(context, "In today's batch"),
                   if (it.checkWithHim) _tag(context, 'Check with him first'),
                   if (it.forYou && !it.done) _tag(context, 'For you to do'),
                   if (it.percent != null) _tag(context, 'Surrender ${it.percent}%'),
@@ -300,6 +420,10 @@ class _PlanPageState extends State<PlanPage> {
               ),
             ],
             if (it.topics.isNotEmpty) _topics(context, it),
+            if (inBatch && it.reportBack.isNotEmpty && !it.done) ...[
+              const SizedBox(height: 6),
+              Text(it.reportBack, key: ValueKey('plan-report-${it.id}'), style: t.small.copyWith(height: 1.4, fontWeight: FontWeight.w700, color: g.agent)),
+            ],
           ],
         ),
       ),
@@ -311,20 +435,20 @@ class _PlanPageState extends State<PlanPage> {
   Widget _topics(BuildContext context, PlanItem it) {
     final g = context.g;
     final t = context.gText;
-    final open = _open.contains(it.id);
+    final open = (it.batchPosition != null) != _toggled.contains(it.id);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         GestureDetector(
           key: ValueKey('plan-topics-toggle-${it.id}'),
           behavior: HitTestBehavior.opaque,
-          onTap: () => setState(() => open ? _open.remove(it.id) : _open.add(it.id)),
+          onTap: () => setState(() => _toggled.contains(it.id) ? _toggled.remove(it.id) : _toggled.add(it.id)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
             child: Row(
               children: [
-                Expanded(child: Text(open ? 'Hide the questions' : 'Questions and suggestions (${it.topics.length} topic${it.topics.length == 1 ? '' : 's'})', style: t.bodyStrong.copyWith(color: g.brass))),
-                Icon(open ? Icons.expand_less : Icons.expand_more, color: g.brass),
+                Expanded(child: Text(open ? 'Hide the questions' : 'Questions and suggestions (${it.topics.length} topic${it.topics.length == 1 ? '' : 's'})', style: t.bodyStrong.copyWith(color: g.agent))),
+                Icon(open ? Icons.expand_less : Icons.expand_more, color: g.agent),
               ],
             ),
           ),
@@ -342,7 +466,7 @@ class _PlanPageState extends State<PlanPage> {
                 if (topic.meaning.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(topic.meaning, style: t.small.copyWith(height: 1.4))),
                 const SizedBox(height: 4),
                 for (var i = 0; i < topic.questions.length; i++) Padding(padding: const EdgeInsets.only(bottom: 3), child: Text('${i + 1}. ${topic.questions[i]}', style: t.small.copyWith(height: 1.35))),
-                for (final s in topic.suggestions) Padding(padding: const EdgeInsets.only(top: 2), child: Text('Suggestion: $s', style: t.small.copyWith(height: 1.35, color: g.mutedText))),
+                for (final s in topic.suggestions) Padding(padding: const EdgeInsets.only(top: 2), child: Text('${it.batchPosition != null ? 'Encourage' : 'Suggestion'}: $s', style: t.small.copyWith(height: 1.35, color: g.mutedText))),
                 for (final c in topic.conclusions) Padding(padding: const EdgeInsets.only(top: 2), child: Text('To share: $c', style: t.small.copyWith(height: 1.35, color: g.mutedText))),
               ],
             ],
@@ -351,9 +475,10 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
-  Widget _tag(BuildContext context, String label) {
+  Widget _tag(BuildContext context, String label, {Key? key}) {
     final g = context.g;
     return Container(
+      key: key,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(color: g.chipBackground, borderRadius: BorderRadius.circular(GuideShape.chipRadius)),
       child: Text(label, style: context.gText.pill),
@@ -361,7 +486,7 @@ class _PlanPageState extends State<PlanPage> {
   }
 }
 
-/// TODAY | THIS WEEK, a two-way toggle under the app bar: each side a 48 dp target, the chosen one in saffron.
+/// TODAY | THIS WEEK, a two-way toggle under the app bar: each side a 48 dp target, the chosen one in the assistant's sky blue.
 class _PlanToggle extends StatelessWidget implements PreferredSizeWidget {
   const _PlanToggle({required this.week, required this.onChanged});
 

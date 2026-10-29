@@ -6,9 +6,9 @@ import 'package:flutter/material.dart';
 import '../theme/AgentLook.dart';
 import '../theme/GuideTheme.dart';
 
-/// The assistant's floating button: a glossy 3D saffron ball.
+/// The assistant's floating button: a glossy 3D sky-blue ball.
 ///
-/// Layers, bottom to top: a drop shadow and a soft saffron glow; the saffron gradient (warm at the top, deep at the bottom); an
+/// Layers, bottom to top: a drop shadow and a soft sky-blue glow; the sky-blue gradient (pale at the top, clear blue at the bottom); an
 /// inner shade that darkens the lower edge; a bright rim along the top; a glossy highlight over the upper half; the icon. Pressed,
 /// it sinks: it shrinks a little, moves down a touch and its shadow tightens, as a real button would.
 ///
@@ -138,7 +138,7 @@ class AgentFabState extends State<AgentFab> with SingleTickerProviderStateMixin,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-              // the saffron body
+              // the sky-blue body
               DecoratedBox(decoration: BoxDecoration(gradient: g.agentGradient)),
               // inner shade: the lower edge falls away
               DecoratedBox(
