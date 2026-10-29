@@ -53,12 +53,13 @@ class _CurvedNavBarState extends State<CurvedNavBar> {
   final Set<int> _built = {tabHome};
 
   /// One aggregate "is there anything unseen under this tab" stream per tab that
-  /// hosts content with unseen state (Tasks does not). Built exactly once, in
+  /// hosts content with unseen state (Tasks only for a HOD: the Assistant log). Built exactly once, in
   /// `initState()`, never in `build()`; every per-feature stream is shared via
   /// `utils/UnseenAggregates.dart` — the SAME functions back the tile dots on the
   /// tab pages, so the nav bar and the tiles can never disagree.
   late final Stream<bool> _analysisUnseen;
   late final Stream<bool> _homeUnseen;
+  late final Stream<bool> _tasksUnseen;
 
   @override
   void initState() {
@@ -97,6 +98,9 @@ class _CurvedNavBarState extends State<CurvedNavBar> {
       UnseenAggregates.studentDoubtsUnseen(guide, isHod),
       UnseenAggregates.goalProposalsUnseen(guide),
     ]);
+
+    // The Tasks tab: for a HOD, a Guide's or Enabler's new Assistant log entry (the log card and its entries carry the dot on).
+    _tasksUnseen = isHod ? UnseenAggregates.assistantLogUnseen(AdminProfileProvider.current?.id ?? '') : Stream.value(false);
 
     // Was the "FOLK Boys" tab's dot.
     _homeUnseen = UnseenAggregates.anyOf([
@@ -166,8 +170,10 @@ class _CurvedNavBarState extends State<CurvedNavBar> {
                         icon: Icons.grid_view_rounded,
                         label: 'Analysis',
                         badge: _dot(_analysisUnseen)),
-                    const GuideNavItem(
-                        icon: Icons.check_box_outlined, label: 'Tasks'),
+                    GuideNavItem(
+                        icon: Icons.check_box_outlined,
+                        label: 'Tasks',
+                        badge: _dot(_tasksUnseen)),
                   ],
                 ),
               ),

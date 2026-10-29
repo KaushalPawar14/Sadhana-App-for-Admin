@@ -7,6 +7,8 @@ import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
 import '../actions/StudentActions.dart';
 import '../utils/AdminProfile.dart';
+import '../utils/UnseenAggregates.dart';
+import '../utils/UnseenDot.dart';
 import '../utils/ManualStudents.dart';
 import '../utils/StudentNameGuard.dart';
 import '../utils/Snackbar.dart';
@@ -42,6 +44,9 @@ class _AdminControlPageState extends State<AdminControlPage> {
   /// Who is using this device, for the HOD-only tile below. Null until the
   /// pref is read, so the gated tile simply does not render on first frame.
   String? _selectedGuide;
+
+  /// A Guide's or Enabler's new Assistant log entry, for a HOD: the dot on the "Assistant log" card. Built once, here.
+  late final Stream<bool> _logUnseen = _isHod ? UnseenAggregates.assistantLogUnseen(AdminProfileProvider.current?.id ?? '') : Stream.value(false);
 
   /// The single HOD check for this screen — role based (several HODs are
   /// possible; no id is special).
@@ -477,15 +482,23 @@ class _AdminControlPageState extends State<AdminControlPage> {
                 gap,
                 step(
                   4,
-                  GuideNavCard(
-                    key: const ValueKey('agent-log-card'),
-                    pastel: GuidePastel.mauve,
-                    icon: Icons.auto_awesome_outlined,
-                    title: "Assistant log",
-                    description: "What the AI assistant did, and for whom",
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const AgentLogPage()),
+                  StreamBuilder<bool>(
+                    stream: _logUnseen,
+                    builder: (context, snap) => UnseenBadge(
+                      key: const ValueKey('agent-log-dot'),
+                      show: snap.data ?? false,
+                      offset: const Offset(10, 10),
+                      child: GuideNavCard(
+                        key: const ValueKey('agent-log-card'),
+                        pastel: GuidePastel.mauve,
+                        icon: Icons.auto_awesome_outlined,
+                        title: "Assistant log",
+                        description: "What the AI assistant did, and for whom",
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const AgentLogPage()),
+                        ),
+                      ),
                     ),
                   ),
                 ),

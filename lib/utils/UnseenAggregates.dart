@@ -136,6 +136,20 @@ class UnseenAggregates {
     );
   }
 
+  /// The Assistant log, for a HOD: an entry a Guide or an Enabler made (never the HOD's own) since this HOD last opened the log. Clears
+  /// when they open it (`seenMarkers/{hod}.assistantLog`), per HOD. Only ever built for a HOD (only they may read the log).
+  static Stream<bool> assistantLogUnseen(String hod) {
+    if (debugDisable || hod.isEmpty) return Stream.value(false);
+    return SeenMarkers.unseenFrom(
+      _maxTimestamp(
+        GuideDb.instance.collection('agentActions').orderBy('createdMs', descending: true).limit(50).snapshots(),
+        'createdAt',
+        where: (d) => (d['role'] ?? '').toString() != 'HOD',
+      ),
+      SeenMarkers.seenAt(hod, 'assistantLog'),
+    );
+  }
+
   static Stream<bool> calendarEventsUnseen(String guide) {
     if (debugDisable) return Stream.value(false);
     return SeenMarkers.unseenFrom(

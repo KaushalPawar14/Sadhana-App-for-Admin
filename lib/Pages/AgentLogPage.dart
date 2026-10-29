@@ -5,7 +5,10 @@ import 'package:intl/intl.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../widgets/AiText.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/GuideDb.dart';
+import '../utils/SeenMarkers.dart';
+import '../utils/UnseenDot.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideWait.dart';
@@ -15,10 +18,79 @@ import '../widgets/GuideWait.dart';
 ///
 /// Read-only. The server writes every entry (the Admin SDK ignores rules); the security rules let only
 /// a HOD read them and nobody write them, so what is shown here cannot be edited from any phone.
-class AgentLogPage extends StatelessWidget {
-  const AgentLogPage({super.key, this.limit = 100});
+///
+/// Only the latest [kAgentLogKeep] entries exist (the server deletes the oldest as new ones come in, all admins together).
+///
+/// NEW: an entry a Guide or Enabler made since THIS HOD last opened the log is marked "New" with an orange dot (the HOD's own
+/// actions are never new to them). The marks clear when the HOD opens the log, per HOD (`seenMarkers/{hod}.assistantLog`); the dots
+/// on the Tasks tab and the Assistant log card (see `UnseenAggregates.assistantLogUnseen`) clear with them.
+class AgentLogPage extends StatefulWidget {
+  const AgentLogPage({super.key, this.limit = kAgentLogKeep});
 
   final int limit;
+
+  @override
+  State<AgentLogPage> createState() => _AgentLogPageState();
+}
+
+/// How many entries the Assistant log keeps (the same number as `AUDIT_KEEP` on the server).
+const int kAgentLogKeep = 50;
+
+class _AgentLogPageState extends State<AgentLogPage> {
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _entries =
+      GuideDb.instance.collection('agentActions').orderBy('createdMs', descending: true).limit(widget.limit).snapshots();
+
+  String get _me => AdminProfileProvider.current?.id ?? '';
+
+  /// When this HOD last opened the log, read BEFORE it is marked seen, so what was new until now can be shown as new.
+  DateTime? _since;
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _open();
+  }
+
+  Future<void> _open() async {
+    DateTime? since;
+    if (_me.isNotEmpty) {
+      try {
+        final doc = await GuideDb.instance.collection('seenMarkers').doc(_me).get();
+        final v = doc.data()?['assistantLog'];
+        if (v is Timestamp) since = v.toDate();
+      } catch (_) {/* a mark is a convenience: with none, everything from others counts as new */}
+    }
+    if (!mounted) return;
+    setState(() {
+      _since = since;
+      _ready = true;
+    });
+    // Opening the log clears the dots (the marks stay on this screen until it closes)
+    _markSeen();
+  }
+
+  void _markSeen() {
+    if (_me.isEmpty) return;
+    SeenMarkers.markSeen(_me, 'assistantLog').catchError((_) {});
+  }
+
+  @override
+  void dispose() {
+    // an entry that arrived while the log was open was seen here: it must not light the dots again
+    _markSeen();
+    super.dispose();
+  }
+
+  /// Made by a Guide or an Enabler (never a HOD) after this HOD last looked.
+  bool _isNew(Map<String, dynamic> d) {
+    if (!_ready) return false;
+    if ((d['role'] ?? '').toString() == 'HOD') return false;
+    final ms = d['createdMs'];
+    if (ms is! num) return false;
+    final since = _since;
+    return since == null || ms.toInt() > since.millisecondsSinceEpoch;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +98,7 @@ class AgentLogPage extends StatelessWidget {
     return GuideScaffold(
       appBar: const GuideAppBar(title: Text('Assistant log')),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: GuideDb.instance.collection('agentActions').orderBy('createdMs', descending: true).limit(limit).snapshots(),
+        stream: _entries,
         builder: (context, snap) {
           if (snap.hasError) {
             return Padding(
@@ -46,7 +118,7 @@ class AgentLogPage extends StatelessWidget {
             padding: const EdgeInsets.all(GuideSpace.lg),
             itemCount: docs.length,
             separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (context, i) => _LogCard(docs[i].data()),
+            itemBuilder: (context, i) => _LogCard(docs[i].data(), isNew: _isNew(docs[i].data())),
           );
         },
       ),
@@ -57,7 +129,10 @@ class AgentLogPage extends StatelessWidget {
 final DateFormat _stamp = DateFormat('d MMM yyyy, h:mm a');
 
 class _LogCard extends StatelessWidget {
-  const _LogCard(this.d);
+  const _LogCard(this.d, {this.isNew = false});
+
+  /// Marked "New" with an orange dot (see [AgentLogPage]).
+  final bool isNew;
   final Map<String, dynamic> d;
 
   static String _words(String status) => switch (status) {
@@ -100,8 +175,21 @@ class _LogCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (isNew) ...[
+                const Padding(padding: EdgeInsets.only(top: 4), child: UnseenDot(key: ValueKey('agent-log-new-dot'))),
+                const SizedBox(width: 6),
+              ],
               Expanded(child: Text('${d['adminName'] ?? d['adminId'] ?? '?'} (${_role((d['role'] ?? '').toString())})', style: t.cardTitleSmall)),
               const SizedBox(width: 8),
+              if (isNew) ...[
+                Container(
+                  key: const ValueKey('agent-log-new'),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: g.attention.withValues(alpha: .16), borderRadius: BorderRadius.circular(GuideShape.chipRadius)),
+                  child: Text('New', style: t.pill.copyWith(color: g.attention, fontWeight: FontWeight.w700)),
+                ),
+                const SizedBox(width: 6),
+              ],
               Flexible(
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
