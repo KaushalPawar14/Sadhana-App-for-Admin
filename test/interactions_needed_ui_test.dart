@@ -288,40 +288,53 @@ void main() {
   });
 
   // ------------------------------------------------------------------------------------------------ the plans
-  group('an interaction in the plan: one card per student, a section for each topic', () {
-    testWidgets('Today shows ONE card for Harsh with every reason; the questions open with a tap, a section per topic', (tester) async {
-      await _openPlan(tester);
-      expect(find.text('Interaction with Harsh · 42%'), findsOneWidget);
-      expect(find.textContaining('Why: Sounded discouraged or worried'), findsOneWidget);
-      expect(find.text('Surrender 42%'), findsOneWidget);
-      expect(find.text('Questions and suggestions (3 topics)'), findsOneWidget);
-      expect(find.text('How are you feeling, Harsh?'), findsNothing, reason: 'closed until tapped');
-      await tester.tap(find.byKey(const ValueKey('plan-topics-toggle-interaction:u1:2026-10-28')));
-      await tester.pump();
-      for (final label in ['His worry', 'Chanting target', 'Surrender step']) {
-        expect(find.text(label), findsOneWidget, reason: label);
-      }
-      expect(find.text('1. How are you feeling, Harsh?'), findsOneWidget);
-      expect(find.text('2. What is stopping you from chanting more?'), findsOneWidget);
-      expect(find.text('Suggestion: Listen first; do not correct or push.'), findsOneWidget);
-      expect(find.text('To share: Surrender grows through regular sadhana, service and association.'), findsOneWidget);
-      expect(find.text('Surrender is not giving up something; it is giving ourselves in service.'), findsOneWidget);
-      expect(find.text('Hide the questions'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('plan-topics-toggle-interaction:u1:2026-10-28')));
-      await tester.pump();
-      expect(find.text('1. How are you feeling, Harsh?'), findsNothing);
-    });
+  group('an interaction in the plan: one card per student, each topic a title and ONE line', () {
+    const harsh = PlanItem(
+      id: 'interaction:u1:2026-10-28',
+      kind: 'interaction',
+      title: 'Interaction with Harsh',
+      studentName: 'Harsh',
+      studentUid: 'u1',
+      percent: 42,
+      forYou: true,
+      batchPosition: 1,
+      also: 'Also: no report since 26 Oct',
+      points: [
+        PlanPoint(title: 'Worry', text: 'Sounded discouraged or worried in his AI chat — talk with him and listen first.', group: PlanGroup.worry, kind: 'concern'),
+        PlanPoint(title: 'Chanting target', text: 'Chanting 12 of 16 for your target — talk about moving to 16.', group: PlanGroup.target, kind: 'target_chanting'),
+        PlanPoint(title: 'Surrender 42%', text: 'Crossed 40% — encourage him to take the next step.', group: PlanGroup.followUp, kind: 'surrender'),
+      ],
+      cardGroups: [PlanGroup.worry, PlanGroup.target, PlanGroup.followUp],
+    );
 
-    testWidgets('a plain (fallback) brief says so; the AI one does not', (tester) async {
-      await _openPlan(tester, doc: _plan(source: 'fallback'));
-      await tester.tap(find.byKey(const ValueKey('plan-topics-toggle-interaction:u1:2026-10-28')));
-      await tester.pump();
-      expect(find.text('A plain version: tap Refresh for the AI-written questions.'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox());
-      await _openPlan(tester, doc: _plan());
-      await tester.tap(find.byKey(const ValueKey('plan-topics-toggle-interaction:u1:2026-10-28')));
-      await tester.pump();
-      expect(find.text('A plain version: tap Refresh for the AI-written questions.'), findsNothing);
+    PlanDoc doc() => PlanDoc(
+          todayDate: '2026-10-30',
+          todayItems: [harsh],
+          weekOf: '2026-10-26',
+          intro: '',
+          sections: const [
+            PlanSection(id: 'interactions', title: 'Interactions', items: [PlanItem(id: 'week:u2', kind: 'weekStudent', title: '', studentUid: 'u2', studentName: 'Kishan', scheduledFor: '2026-11-01')]),
+          ],
+          generatedAt: DateTime.utc(2026, 10, 30, 4, 10),
+          status: 'upToDate',
+          changedAt: DateTime.utc(2026, 10, 30, 4, 10),
+          batch: const PlanBatch(size: 4, round: 1, members: 1, carried: 0, nextReady: false, done: 0, left: 1),
+          progress: const PlanProgress(needed: 2, done: 0, left: 2, summary: '', bySource: []),
+        );
+
+    testWidgets('Today shows ONE card for Harsh: his name and %, each topic a title and ONE line, one "Also:" line; no questions, no talking points', (tester) async {
+      await _openPlan(tester, doc: doc());
+      expect(find.text('Interaction with Harsh · 42%'), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-item-interaction:u1:2026-10-28')), findsOneWidget);
+      for (final t in ['Worry', 'Chanting target', 'Surrender 42%']) {
+        expect(find.text(t), findsOneWidget, reason: t);
+      }
+      expect(find.text('Sounded discouraged or worried in his AI chat — talk with him and listen first.'), findsOneWidget);
+      expect(find.text('Chanting 12 of 16 for your target — talk about moving to 16.'), findsOneWidget);
+      expect(find.text('Also: no report since 26 Oct'), findsOneWidget);
+      for (final gone in ['Questions and suggestions', 'How are you feeling', 'Suggestion:', 'To share:', 'Why:', 'Encourage:']) {
+        expect(find.textContaining(gone), findsNothing, reason: gone);
+      }
     });
 
     testWidgets('once the guide has reported back, the item is ticked (a tick and "Done"), read-only as always', (tester) async {
@@ -334,22 +347,20 @@ void main() {
       expect(tester.takeException(), isNull, reason: 'the page is read-only: nothing to untick');
     });
 
-    testWidgets('This week lists the scheduled interaction with its day, in the "Interactions needed" section', (tester) async {
-      await _openPlan(tester);
+    testWidgets('This week lists the student by name under his day, nothing else', (tester) async {
+      await _openPlan(tester, doc: doc());
       await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
       await tester.pump();
-      expect(find.text('Interactions needed'), findsOneWidget);
-      expect(find.text('Interaction with Kishan'), findsOneWidget);
+      expect(find.text('Interactions'), findsOneWidget);
+      expect(find.text('Kishan'), findsOneWidget);
       expect(find.text('Sun 1 Nov'), findsOneWidget);
       expect(find.text('Students who need you'), findsNothing, reason: 'the old approach section is gone');
     });
 
     for (final dark in [false, true]) {
       for (final scale in kScales) {
-        testWidgets('${dark ? 'dark' : 'light'}, text scale $scale on 360 dp: the interaction card and its questions fit', (tester) async {
-          await _openPlan(tester, scale: scale, dark: dark);
-          await tester.tap(find.byKey(const ValueKey('plan-topics-toggle-interaction:u1:2026-10-28')));
-          await tester.pump();
+        testWidgets('${dark ? 'dark' : 'light'}, text scale $scale on 360 dp: the card, its lines and the week fit', (tester) async {
+          await _openPlan(tester, scale: scale, dark: dark, doc: doc());
           expect(tester.takeException(), isNull);
           await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
           await tester.pump();

@@ -10,6 +10,7 @@ import 'package:folk_guide_app/Pages/CompoundGoalProgressPage.dart';
 import 'package:folk_guide_app/Pages/GoalSetup.dart';
 import 'package:folk_guide_app/Pages/PlanPage.dart';
 import 'package:folk_guide_app/Services/HierarchyApi.dart';
+import 'package:folk_guide_app/agent/AgentOverlay.dart';
 import 'package:folk_guide_app/agent/AgentRoutes.dart';
 import 'package:folk_guide_app/theme/AgentLook.dart' show contrastRatio;
 import 'package:folk_guide_app/theme/GuideColors.dart';
@@ -77,6 +78,9 @@ AdminProfile profile(String id, String role) => AdminProfile.fromMap({
     });
 
 /// A MaterialApp whose theme follows a ThemeModeController, like the real app.
+/// A test of the assistant's button asks for the real overlay around the app.
+bool _withOverlay = false;
+
 class _App extends StatelessWidget {
   const _App({required this.home});
   final Widget home;
@@ -90,7 +94,7 @@ class _App extends StatelessWidget {
       themeAnimationDuration: Duration.zero,
       builder: (context, c) => MediaQuery(
         data: MediaQuery.of(context).copyWith(disableAnimations: true),
-        child: c!,
+        child: _withOverlay ? AgentOverlay(child: c!) : c!,
       ),
       home: home,
     );
@@ -141,6 +145,24 @@ void main() {
     HomeData.instance = const FirestoreHomeData();
     PlanData.instance = const FirestorePlanData();
     AdminProfileProvider.instance.debugSet(null);
+  });
+
+  testWidgets("THE ASSISTANT'S BUTTON: the real shell on screen shows it (it was there for ~3 seconds BEFORE Home); the shell going takes it away", (tester) async {
+    phone(tester, 1.0);
+    _withOverlay = true;
+    addTearDown(() {
+      _withOverlay = false;
+      AgentShell.ready.value = false;
+    });
+    AgentShell.ready.value = false;
+    await pumpShell(tester);
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(AgentShell.ready.value, isTrue, reason: 'the shell announced itself after its first frame');
+    expect(find.byKey(const ValueKey('agent-fab')).hitTestable(), findsOneWidget);
+    expect(tester.widget<AnimatedOpacity>(find.byKey(const ValueKey('agent-button-fade'))).opacity, 1);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(AgentShell.ready.value, isFalse, reason: 'the shell is gone: so is the button');
   });
 
   testWidgets('Home shows the real numbers: hero, target cards, board and calendar tiles', (tester) async {
@@ -245,7 +267,7 @@ void main() {
       final page = tester.widget<PlanPage>(find.byType(PlanPage));
       expect(page.initialWeek, isTrue);
       expect(page.section, isNull);
-      expect(find.textContaining('Hare Krishna Gopal!'), findsOneWidget, reason: 'the This week tab is showing');
+      expect(find.byKey(const ValueKey('plan-week-section-interactions')), findsOneWidget, reason: 'the This week tab is showing');
     });
 
     testWidgets("TODAY'S TASKS (the card) opens the Plan page on the Today tab", (tester) async {

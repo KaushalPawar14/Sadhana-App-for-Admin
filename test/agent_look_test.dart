@@ -107,6 +107,8 @@ void main() {
     /// The overlay on a plain page, signed in. [reduce] is the phone's reduce-motion setting.
     Future<void> pumpOverlay(WidgetTester tester, {bool reduce = false, bool darkTheme = false}) async {
       await prepareApp(tester);
+      AgentShell.ready.value = true; // the main shell is on screen (the button waits for it: see agent_button_shell_test.dart)
+      addTearDown(() => AgentShell.ready.value = false);
       phone(tester, 1.0);
       SharedPreferences.setMockInitialValues({});
       await tester.pumpWidget(MaterialApp(

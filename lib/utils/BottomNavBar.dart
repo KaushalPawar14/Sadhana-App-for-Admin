@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'Responsive.dart';
 import '../widgets/GuideSideNav.dart';
@@ -70,11 +72,17 @@ class _CurvedNavBarState extends State<CurvedNavBar> {
     super.initState();
     _buildUnseenStreams();
     GuideTabRequest.requested.addListener(_onTabRequest);
+    // the main shell is on screen: the assistant's button may fade in (never before: not on the splash, sign-in or a loading screen)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) AgentShell.ready.value = true;
+    });
   }
 
   @override
   void dispose() {
     GuideTabRequest.requested.removeListener(_onTabRequest);
+    // the shell is going (a sign-out, a restart of the app's flow): the button goes with it
+    scheduleMicrotask(() => AgentShell.ready.value = false);
     super.dispose();
   }
 

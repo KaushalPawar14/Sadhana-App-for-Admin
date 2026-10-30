@@ -17,6 +17,10 @@ import 'support/guide_test_support.dart';
 final DateTime _now = DateTime.utc(2026, 10, 30, 4, 30);
 
 class _FakePlanData extends PlanData {
+  _FakePlanData({this.needs = const {}});
+  final Map<String, List<String>> needs;
+  @override
+  Future<List<String>> needsOf(String studentUid) async => needs[studentUid] ?? const [];
   final controller = StreamController<PlanDoc?>.broadcast();
   @override
   Stream<PlanDoc?> plan(String adminId) => controller.stream;
@@ -24,44 +28,45 @@ class _FakePlanData extends PlanData {
   DateTime now() => _now;
 }
 
-PlanItem _student(String uid, String name, int pos, {bool done = false, bool carried = false, String how = 'In person — he lives in FOLK.'}) => PlanItem(
+PlanItem _student(String uid, String name, int pos, {bool done = false, bool carried = false, int? percent}) => PlanItem(
       id: 'interaction:$uid:2026-10-28',
       kind: 'interaction',
       title: 'Interaction with $name',
-      detail: 'Why: Not fulfilling his commitments for 3 days.',
       studentName: name,
+      studentUid: uid,
       forYou: true,
       done: done,
-      how: how,
-      encourage: const ['Agree a date, not a promise of everything.'],
-      reportBack: 'After talking, report his answers to the AI.',
+      percent: percent,
       carriedOver: carried,
       batchPosition: pos,
       batchRound: 1,
-      topics: const [
-        PlanTopic(key: 'sadhana_slip', label: 'His sadhana', reason: 'Not fulfilling his commitments for 3 days', questions: ['Why do you think it has been hard these days?', 'When do you think it will improve?', 'When will you be chanting your 16 rounds again?'], suggestions: ['Keep it simple and kind.']),
-      ],
+      points: const [PlanPoint(title: 'Chanting', text: 'Chanting under 16 rounds on 5 days — talk with him and help resolve it.', group: PlanGroup.followUp, kind: 'sadhana_slip')],
+      cardGroups: const [PlanGroup.followUp],
     );
 
 PlanDoc _plan({List<PlanItem>? today, PlanBatch? batch, PlanProgress? progress, List<PlanSection>? sections}) => PlanDoc(
       todayDate: '2026-10-30',
       todayItems: today ??
           [
-            _student('u1', 'Ravi', 1, carried: true),
+            _student('u1', 'Ravi', 1, carried: true, percent: 42),
             _student('u2', 'Amit', 2),
-            _student('u3', 'Kishan', 3, how: 'By call or online — he is a localite; check with him before suggesting a visit.'),
+            _student('u3', 'Kishan', 3),
             _student('u4', 'Mohit', 4, done: true),
             const PlanItem(id: 'meeting:u9:2026-10-30', kind: 'meeting', title: 'Meet Harsh', detail: 'A confirmed meeting.', forYou: true),
-            const PlanItem(id: 'doubts_to_answer::2026-10-30', kind: 'doubtsToAnswer', title: '2 doubts waiting for your answer', detail: 'Ravi, Amit.', forYou: true),
           ],
       weekOf: '2026-10-26',
-      intro: 'Hare Krishna Gopal! 16 students need an interaction (4 done this week), about 4 a day.',
+      intro: '',
       sections: sections ??
-          [
-            const PlanSection(id: 'interactions', title: 'Students to contact — planned days', items: [
-              PlanItem(id: 'interaction:u1:2026-10-28', kind: 'interaction', title: 'Interaction with Ravi', detail: 'Why: Not fulfilling his commitments for 3 days.', studentName: 'Ravi', scheduledFor: '2026-10-30', inToday: true, topicLabels: ['His sadhana'], how: 'In person — he lives in FOLK.'),
-              PlanItem(id: 'interaction:u5:2026-10-28', kind: 'interaction', title: 'Interaction with Sohan', detail: 'Why: Chanting target.', studentName: 'Sohan', scheduledFor: '2026-10-31', topicLabels: ['Chanting target', 'His doubt'], how: 'In person (he lives in a hostel), or by call.'),
+          const [
+            PlanSection(id: 'interactions', title: 'Interactions', items: [
+              PlanItem(id: 'week:u1', kind: 'weekStudent', title: '', studentUid: 'u1', studentName: 'Ravi', percent: 42, scheduledFor: '2026-10-30', inToday: true),
+              PlanItem(id: 'week:u2', kind: 'weekStudent', title: '', studentUid: 'u2', studentName: 'Amit', scheduledFor: '2026-10-30', inToday: true),
+              PlanItem(id: 'week:u4', kind: 'weekStudent', title: '', studentUid: 'u4', studentName: 'Mohit', scheduledFor: '2026-10-30', done: true),
+              PlanItem(id: 'week:u5', kind: 'weekStudent', title: '', studentUid: 'u5', studentName: 'Sohan', percent: 12, scheduledFor: '2026-10-31'),
+              PlanItem(id: 'week:u6', kind: 'weekStudent', title: '', studentUid: 'u6', studentName: 'Deep', scheduledFor: '2026-10-31'),
             ]),
+            PlanSection(id: 'targettasks', title: 'Target tasks', items: [PlanItem(id: 'tt1', kind: 'weekTask', title: 'Chanting 16 by Mon 30 Nov: 2 of 5 students'), PlanItem(id: 'tt2', kind: 'weekTask', title: 'Bring FOLK residents 3 → 5')]),
+            PlanSection(id: 'othertasks', title: 'Other tasks', items: [PlanItem(id: 'ot1', kind: 'weekOther', title: 'Meeting: Harsh', scheduledFor: '2026-10-30'), PlanItem(id: 'ot2', kind: 'weekOther', title: 'Book deadline: Ravi, Gita', scheduledFor: '2026-11-01')]),
           ],
       generatedAt: _now.subtract(const Duration(minutes: 20)),
       status: 'upToDate',
@@ -104,34 +109,23 @@ void main() {
     AdminProfileProvider.instance.debugSet(null);
   });
 
-  testWidgets('TODAY: the batch card (done · left), each student with his place, why, how, questions open, what to encourage and the report-back line', (tester) async {
+  testWidgets('TODAY: the batch card (done · left), each student with his place, and his topics as a title and ONE line each (nothing else)', (tester) async {
     await _open(tester);
     expect(find.byKey(const ValueKey('plan-batch')), findsOneWidget);
     expect(find.text('done 1 · left 3'), findsOneWidget);
     expect(find.text('Student 1 of 4'), findsOneWidget);
     expect(find.text('Student 3 of 4'), findsOneWidget);
-    expect(find.text('Interaction with Ravi'), findsOneWidget);
-    expect(find.text('In person — he lives in FOLK.'), findsWidgets);
-    expect(find.textContaining('By call or online — he is a localite'), findsOneWidget);
-    expect(find.text('Why: Not fulfilling his commitments for 3 days.'), findsWidgets);
-    // the questions are already open (the guide goes through them with the student)
-    expect(find.text('1. Why do you think it has been hard these days?'), findsWidgets);
-    expect(find.text('Encourage: Keep it simple and kind.'), findsWidgets);
-    expect(find.text('After talking, report his answers to the AI.'), findsNWidgets(3), reason: 'on every student still to talk to, not on the one already done');
-    expect(find.byKey(const ValueKey('plan-report-interaction:u4:2026-10-28')), findsNothing);
+    expect(find.text('Interaction with Amit'), findsOneWidget);
+    expect(find.text('Chanting'), findsNWidgets(4), reason: 'a title for each student\'s topic');
+    expect(find.text('Chanting under 16 rounds on 5 days — talk with him and help resolve it.'), findsNWidgets(4), reason: 'and ONE factual line with the direction');
+    // none of the old paragraphs, questions, talking points or how-to-meet lines
+    for (final gone in ['Encourage:', 'After talking, report', 'Why do you think', 'In person —', 'By call or online', 'Questions and suggestions', 'Hide the questions']) {
+      expect(find.textContaining(gone), findsNothing, reason: gone);
+    }
   });
 
   testWidgets("THE ORDER: each student's Surrender % is beside his name, in the order the server sent (highest first), on Today and in the week's list", (tester) async {
-    PlanItem withPct(String uid, String name, int pos, int pct) => PlanItem(
-          id: 'interaction:$uid:2026-10-28', kind: 'interaction', title: 'Interaction with $name', studentName: name, forYou: true, percent: pct, batchPosition: pos, batchRound: 1,
-          topics: const [PlanTopic(key: 'sadhana_slip', label: 'His sadhana', reason: 'x', questions: ['Why?'], suggestions: [])],
-        );
-    await _open(tester, doc: _plan(today: [withPct('u1', 'Top', 1, 91), withPct('u2', 'High', 2, 88), withPct('u3', 'Mid', 3, 47)], sections: [
-      PlanSection(id: 'interactions', title: 'Students to contact — planned days', items: [
-        PlanItem(id: 'interaction:u1:2026-10-28', kind: 'interaction', title: 'Interaction with Top', percent: 91, scheduledFor: '2026-10-30'),
-        PlanItem(id: 'interaction:u4:2026-10-28', kind: 'interaction', title: 'Interaction with Low', percent: 12, scheduledFor: '2026-10-31'),
-      ]),
-    ]));
+    await _open(tester, doc: _plan(today: [_student('u1', 'Top', 1, percent: 91), _student('u2', 'High', 2, percent: 88), _student('u3', 'Mid', 3, percent: 47)]));
     expect(find.text('Interaction with Top · 91%'), findsOneWidget);
     expect(find.text('Interaction with High · 88%'), findsOneWidget);
     double y(String t) => tester.getTopLeft(find.text(t)).dy;
@@ -139,8 +133,8 @@ void main() {
     expect(y('Interaction with High · 88%'), lessThan(y('Interaction with Mid · 47%')));
     await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
     await tester.pumpAndSettle();
-    expect(find.text('Interaction with Low · 12%'), findsOneWidget);
-    expect(find.text('Interaction with Top · 91%'), findsOneWidget);
+    expect(find.text('42%'), findsOneWidget, reason: 'small, beside the name in the week');
+    expect(find.text('12%'), findsOneWidget);
   });
 
   testWidgets('a student the guide has reported to the AI shows a tick; "Carried over" marks one from an earlier day', (tester) async {
@@ -152,23 +146,10 @@ void main() {
     expect(find.byKey(const ValueKey('plan-carried-note')), findsOneWidget);
   });
 
-  testWidgets('the questions can be hidden and shown again with a tap', (tester) async {
-    await _open(tester);
-    final toggle = find.byKey(const ValueKey('plan-topics-toggle-interaction:u1:2026-10-28'));
-    await tester.ensureVisible(toggle);
-    await tester.tap(toggle);
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('plan-topics-interaction:u1:2026-10-28')), findsNothing);
-    await tester.tap(toggle);
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('plan-topics-interaction:u1:2026-10-28')), findsOneWidget);
-  });
-
   testWidgets('the other one-day items are short and separate, under "Other tasks"', (tester) async {
     await _open(tester);
     expect(find.byKey(const ValueKey('plan-section-other')), findsOneWidget);
     expect(find.text('Meet Harsh'), findsOneWidget);
-    expect(find.text('2 doubts waiting for your answer'), findsOneWidget);
     final alsoY = tester.getTopLeft(find.byKey(const ValueKey('plan-section-other'))).dy;
     expect(tester.getTopLeft(find.text('Interaction with Mohit')).dy, lessThan(alsoY), reason: 'the batch comes first');
   });
@@ -219,23 +200,63 @@ void main() {
     expect(tester.widget<Text>(find.byKey(const ValueKey('plan-size'))).data, '4');
   });
 
-  testWidgets('THIS WEEK: "Interactions needed: 20 · done 4 · left 16", the four sources with their own counts, and every student with his planned day', (tester) async {
+  testWidgets('THIS WEEK is a clean overview: the totals, the interactions DAY BY DAY (names only, done ones ticked), target tasks, other tasks; no advice', (tester) async {
     await _open(tester);
     await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('plan-progress')), findsOneWidget);
-    expect(find.text('Interactions needed: 20 · done 4 · left 16'), findsOneWidget);
-    for (final l in ['Targets', 'Sadhana', 'Doubts and concerns', 'Surrender steps']) {
-      expect(find.text(l), findsOneWidget, reason: l);
+    expect(tester.widget<Text>(find.byKey(const ValueKey('plan-progress-summary'))).data, 'Interactions this week: 20 · done 4 · left 16');
+    // day by day, in order
+    expect(find.byKey(const ValueKey('plan-week-day-2026-10-30')), findsOneWidget);
+    expect(find.byKey(const ValueKey('plan-week-day-2026-10-31')), findsOneWidget);
+    double y(String k) => tester.getTopLeft(find.byKey(ValueKey(k))).dy;
+    expect(y('plan-week-day-2026-10-30'), lessThan(y('plan-week-day-2026-10-31')));
+    expect(find.text('Fri 30 Oct'), findsWidgets);
+    expect(find.text('Sat 31 Oct'), findsOneWidget);
+    for (final uid in ['u1', 'u2', 'u4', 'u5', 'u6']) {
+      expect(find.byKey(ValueKey('plan-week-name-$uid')), findsOneWidget, reason: uid);
     }
-    expect(find.text('done 2 · left 7'), findsOneWidget);
-    expect(find.text('Students to contact — planned days'), findsOneWidget);
-    expect(find.text('Fri 30 Oct'), findsOneWidget, reason: 'today for the batch');
-    expect(find.text('Sat 31 Oct'), findsOneWidget, reason: "tomorrow's students");
-    expect(find.text('Topics: Chanting target, His doubt'), findsOneWidget);
-    expect(find.text("In today's batch"), findsOneWidget);
-    expect(find.text('Students a day'), findsNothing, reason: 'the number is set on Today');
-    expect(find.textContaining('How are you'), findsNothing, reason: 'no questions in the week list: they are in Today');
+    expect(find.text('Ravi'), findsOneWidget);
+    expect(find.text('42%'), findsOneWidget);
+    // the done one is ticked, the others are not
+    expect(find.byKey(const ValueKey('plan-week-tick-u4')), findsOneWidget);
+    expect(find.byKey(const ValueKey('plan-week-tick-u1')), findsNothing);
+    // the two short lists
+    expect(find.text('Chanting 16 by Mon 30 Nov: 2 of 5 students'), findsOneWidget);
+    expect(find.text('Bring FOLK residents 3 → 5'), findsOneWidget);
+    expect(find.text('Meeting: Harsh'), findsOneWidget);
+    expect(find.text('Book deadline: Ravi, Gita'), findsOneWidget);
+    expect(find.text('Sun 1 Nov'), findsOneWidget, reason: 'with its date');
+    // no advice, no details, no questions, no topics
+    for (final gone in ['talk with him', 'Chanting under', 'Why:', 'Topics:', 'How are you', 'In person', 'Students a day', 'Surrender steps', 'Sadhana']) {
+      expect(find.textContaining(gone), findsNothing, reason: gone);
+    }
+  });
+
+  testWidgets('THIS WEEK: a tap on a name opens that student\'s card in Today (scrolled to); a student planned for another day opens his open topics', (tester) async {
+    HierarchyApi.useForTests((name, data) async => {'ok': true});
+    PlanData.instance = _FakePlanData(needs: {'u5': ['Chanting target: at 12 rounds, the phase asks for 16']});
+    final data = PlanData.instance as _FakePlanData;
+    phone(tester, 1.0, size: const Size(360, 700));
+    AdminProfileProvider.instance.debugSet(_me());
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(guideHost(const PlanPage(initialWeek: true)));
+    data.controller.add(_plan());
+    await tester.pump();
+    await tester.pump();
+    // Ravi has a card in Today: the page goes to Today
+    await tester.tap(find.byKey(const ValueKey('plan-week-name-u1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('plan-batch')), findsOneWidget, reason: 'the Today tab is showing');
+    expect(find.byKey(const ValueKey('plan-item-interaction:u1:2026-10-28')), findsOneWidget);
+    // Sohan is planned for tomorrow: a small dialog with his open topics
+    await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('plan-week-name-u5')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('plan-student-dialog-title')), findsOneWidget);
+    expect(find.text('Sohan · 12%'), findsOneWidget);
+    expect(find.textContaining('Planned for Saturday 31 October'), findsOneWidget);
+    expect(find.text('• Chanting target: at 12 rounds, the phase asks for 16'), findsOneWidget);
   });
 
   testWidgets('a HOD plan (no batch, no progress) still shows: with zero counts, never missing ones', (tester) async {
@@ -246,7 +267,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('plan-progress')), findsOneWidget);
-    expect(find.text('Interactions needed: 0 · done 0 · left 0'), findsOneWidget);
+    expect(find.text('Interactions this week: 0 · done 0 · left 0'), findsOneWidget);
   });
 
   group('every state: light and dark, text scale 1.0 / 1.3 / 1.6, no overflow', () {

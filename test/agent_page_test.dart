@@ -436,6 +436,8 @@ void main() {
     Future<void> pumpApp(WidgetTester tester, {bool signedIn = true, VoidCallback? onOpen, double scale = 1.0, bool dark = false, Size size = const Size(360, 800)}) async {
       await prepareApp(tester);
       if (!signedIn) AdminProfileProvider.instance.debugSet(null);
+      AgentShell.ready.value = true; // the main shell is on screen (the button waits for it: see agent_button_shell_test.dart)
+      addTearDown(() => AgentShell.ready.value = false);
       phone(tester, scale, size: size);
       SharedPreferences.setMockInitialValues({});
       await tester.pumpWidget(MaterialApp(

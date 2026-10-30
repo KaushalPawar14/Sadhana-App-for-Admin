@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -56,6 +57,13 @@ class AgentRouteVisibility extends NavigatorObserver {
   }
 }
 
+/// Whether the MAIN SHELL (Home and the other main tabs) is on screen. The assistant's button shows only then: never on the splash, the sign-in,
+/// a loading screen, "update required" or anything else before Home. The shell sets it when it appears and clears it when it goes.
+class AgentShell {
+  AgentShell._();
+  static final ValueNotifier<bool> ready = ValueNotifier<bool>(false);
+}
+
 /// The one conversation of this app session. It survives leaving the page and coming back; "New
 /// chat" clears it.
 class AgentSession {
@@ -82,7 +90,7 @@ class AgentSession {
 /// clear of the floating navigation by default, never off-screen. A colour of its own — the assistant's
 /// sky blue, drawn as a glossy 3D button with a light shine that sweeps across it every few seconds.
 class AgentOverlay extends StatelessWidget {
-  const AgentOverlay({super.key, required this.child, this.signedIn, this.onOpen});
+  const AgentOverlay({super.key, required this.child, this.signedIn, this.onOpen, this.shellReady});
 
   final Widget child;
 
@@ -91,6 +99,10 @@ class AgentOverlay extends StatelessWidget {
   final Listenable? signedIn;
   @visibleForTesting
   final VoidCallback? onOpen;
+
+  /// Tests hand in their own "the shell is on screen" signal; a test that hands in [signedIn] only (a bare overlay with no shell) counts as ready.
+  @visibleForTesting
+  final ValueListenable<bool>? shellReady;
 
   @override
   Widget build(BuildContext context) {
@@ -105,7 +117,11 @@ class AgentOverlay extends StatelessWidget {
             if (context.isDesktop) return const SizedBox.shrink();
             return ValueListenableBuilder<bool>(
               valueListenable: AgentRouteVisibility.instance.onAgent,
-              builder: (context, onAgent, _) => _DraggableAgentButton(hidden: onAgent, onOpen: onOpen),
+              builder: (context, onAgent, _) => ValueListenableBuilder<bool>(
+                valueListenable: shellReady ?? (signedIn != null ? _alwaysReady : AgentShell.ready),
+                // it fades in smoothly when Home appears; before that it is not even in the way of a tap
+                builder: (context, ready, _) => _DraggableAgentButton(hidden: onAgent, shown: ready, onOpen: onOpen),
+              ),
             );
           },
         ),
@@ -113,6 +129,8 @@ class AgentOverlay extends StatelessWidget {
     );
   }
 }
+
+final ValueNotifier<bool> _alwaysReady = ValueNotifier<bool>(true);
 
 const String _kPrefsDx = 'agent_button_dx_fraction';
 const String _kPrefsDy = 'agent_button_dy_fraction';
@@ -122,9 +140,12 @@ const double kAgentButtonSize = 56;
 const double _kSideInset = 14;
 
 class _DraggableAgentButton extends StatefulWidget {
-  const _DraggableAgentButton({required this.hidden, this.onOpen});
+  const _DraggableAgentButton({required this.hidden, required this.shown, this.onOpen});
 
   final bool hidden;
+
+  /// The main shell is on screen: fade in (false: invisible and untouchable).
+  final bool shown;
   final VoidCallback? onOpen;
 
   @override
@@ -209,7 +230,14 @@ class _DraggableAgentButtonState extends State<_DraggableAgentButton> {
         offstage: widget.hidden,
         child: TickerMode(
           enabled: !widget.hidden,
-          child: GestureDetector(
+          child: IgnorePointer(
+            ignoring: !widget.shown,
+            child: AnimatedOpacity(
+              key: const ValueKey('agent-button-fade'),
+              opacity: widget.shown ? 1 : 0,
+              duration: const Duration(milliseconds: 450),
+              curve: Curves.easeOut,
+              child: GestureDetector(
             key: const ValueKey('agent-button'),
             onPanStart: (_) => setState(() => _dragging = true),
             onPanUpdate: (d) => setState(() {
@@ -244,6 +272,8 @@ class _DraggableAgentButtonState extends State<_DraggableAgentButton> {
                   ),
                 ),
               ),
+            ),
+          ),
             ),
           ),
         ),

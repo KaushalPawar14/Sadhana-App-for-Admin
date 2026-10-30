@@ -45,8 +45,10 @@ class PlanTopic {
 
 /// One topic on a student's ONE card, as a one-line point ("He has asked to meet: answer him"). [group] is the section it belongs to.
 class PlanPoint {
-  const PlanPoint({required this.text, required this.group, this.kind = '', this.id = ''});
+  const PlanPoint({required this.text, required this.group, this.kind = '', this.id = '', this.title = ''});
 
+  /// "Worry", "Chanting target", "Surrender 40%": the short title; [text] is its ONE line.
+  final String title;
   final String text;
   final PlanGroup group;
   final String kind;
@@ -56,7 +58,7 @@ class PlanPoint {
     if (raw is! Map) return null;
     final text = (raw['text'] ?? '').toString();
     if (text.isEmpty) return null;
-    return PlanPoint(text: text, group: PlanGroup.parse(raw['group']) ?? PlanGroup.followUp, kind: (raw['kind'] ?? '').toString(), id: (raw['id'] ?? '').toString());
+    return PlanPoint(text: text, group: PlanGroup.parse(raw['group']) ?? PlanGroup.followUp, kind: (raw['kind'] ?? '').toString(), id: (raw['id'] ?? '').toString(), title: (raw['title'] ?? '').toString());
   }
 }
 
@@ -89,7 +91,11 @@ class PlanItem {
     this.mode = '',
     this.points = const [],
     this.cardGroups = const [],
+    this.also = '',
   });
+
+  /// "Also: no report since 20 Oct": extra information on his card (a missing report is never an item of its own).
+  final String also;
 
   /// The student this item is about (an interaction, or his one card), and how to meet him (`call` / `inperson`).
   final String studentUid;
@@ -216,6 +222,7 @@ class PlanItem {
             for (final p in (m['points'] as List))
               if (PlanPoint.fromMap(p) case final x?) x,
         ],
+        also: (m['also'] ?? '').toString(),
         cardGroups: [
           if (m['groups'] is List)
             for (final g in (m['groups'] as List))
@@ -467,6 +474,9 @@ abstract class PlanData {
   /// The changes since the admin's last plan refresh that the AI has not considered yet, live (no AI cost: counted by the server as they happen).
   Stream<PendingChanges> pending(String adminId) => Stream.value(PendingChanges.none);
 
+  /// What is open about one student (the lines of his reasons): shown when a name in This week is tapped and he has no card in Today.
+  Future<List<String>> needsOf(String studentUid) async => const [];
+
   /// The moment the admin last looked at the plan page.
   DateTime now() => DateTime.now();
 }
@@ -479,6 +489,17 @@ class FirestorePlanData extends PlanData {
         final d = s.data();
         return s.exists && d != null ? PlanDoc.fromMap(d) : null;
       });
+
+  @override
+  Future<List<String>> needsOf(String studentUid) async {
+    final snap = await GuideDb.instance.collection('interactionNeeds').doc(studentUid).get();
+    final needs = snap.data()?['needs'];
+    return [
+      if (needs is List)
+        for (final n in needs)
+          if (n is Map && (n['text'] ?? '').toString().isNotEmpty) n['text'].toString(),
+    ];
+  }
 
   @override
   Stream<PendingChanges> pending(String adminId) => GuideDb.instance
