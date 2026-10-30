@@ -5,7 +5,6 @@ import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/Pages/PlanPage.dart';
-import 'package:folk_guide_app/actions/InteractionActions.dart';
 import 'package:folk_guide_app/Services/HierarchyApi.dart';
 import 'package:folk_guide_app/utils/AdminProfile.dart';
 import 'package:folk_guide_app/utils/GuideDb.dart';
@@ -521,7 +520,7 @@ void main() {
     });
   });
 
-  group('ONE CARD PER STUDENT: all his topics as one-line points; the quick-report buttons', () {
+  group('ONE CARD PER STUDENT: all his topics as one-line points; TODAY IS READ-ONLY (no buttons, no ticks)', () {
     const ravi = PlanItem(
       id: 'interaction:u1:2026-10-28',
       kind: 'interaction',
@@ -594,95 +593,44 @@ void main() {
       expect(find.byKey(const ValueKey('plan-point-interaction:u1:2026-10-28-1')), findsOneWidget);
       expect(find.byKey(const ValueKey('plan-point-interaction:u1:2026-10-28-2')), findsNothing, reason: 'the worry and the book were covered');
       expect(find.byKey(const ValueKey('plan-done-interaction:u1:2026-10-28')), findsNothing, reason: 'topics are left: not ticked');
-      expect(find.byKey(const ValueKey('plan-quick-interaction:u1:2026-10-28')), findsOneWidget, reason: 'he can still be reported');
       // the section he moved to: the worry section is empty now
       expect(find.byKey(const ValueKey('plan-section-empty-worries')), findsOneWidget);
     });
 
-    group('one-tap reports (no notes, no AI)', () {
-      late List<({String uid, String name, QuickOutcome outcome, String mode, List<String> topics})> sent;
-      setUp(() {
-        sent = [];
-        quickReportWriter = ({required guideId, required studentUid, required studentName, required outcome, String mode = '', List<String> topics = const []}) async {
-          sent.add((uid: studentUid, name: studentName, outcome: outcome, mode: mode, topics: topics));
-          return const SavedInteraction(id: 'log1');
-        };
-      });
-      tearDown(() => quickReportWriter = saveQuickReport);
+    group('TODAY IS READ-ONLY: only the assistant completes a task', () {
+      const done = PlanItem(id: 'interaction:u3:2026-10-28', kind: 'interaction', title: 'Interaction with Mohit', studentName: 'Mohit', studentUid: 'u3', batchPosition: 2, done: true);
+      const kButtonWords = ['Talked', 'Not reachable', 'Willing', 'willing', 'New commitment', 'Report in one tap', 'Recorded'];
 
-      testWidgets('every outcome is one tap and writes ONE record for that student', (tester) async {
-        await _open(tester, doc: doc([ravi]), size: const Size(360, 3200));
-        for (final e in {
-          'talked': QuickOutcome.talked,
-          'unreachable': QuickOutcome.notReachable,
-          'more': QuickOutcome.moreWilling,
-          'same': QuickOutcome.sameWilling,
-          'less': QuickOutcome.lessWilling,
-        }.entries) {
-          final key = ValueKey('plan-quick-interaction:u1:2026-10-28-${e.key}');
-          expect(find.byKey(key), findsOneWidget, reason: e.key);
-          await tester.ensureVisible(find.byKey(key));
-          await tester.tap(find.byKey(key));
-          await tester.pump();
-          await tester.pump();
-        }
-        expect(sent.map((s) => s.outcome), [QuickOutcome.talked, QuickOutcome.notReachable, QuickOutcome.moreWilling, QuickOutcome.sameWilling, QuickOutcome.lessWilling]);
-        expect(sent.every((s) => s.uid == 'u1' && s.name == 'Ravi' && s.mode == 'call'), isTrue);
-        expect(find.textContaining('Recorded'), findsWidgets);
-      });
-
-      test('the outcomes mean what they say: talked and the three willingness taps reach him; not reachable does not', () {
-        expect(QuickOutcome.talked.reached, isTrue);
-        expect(QuickOutcome.notReachable.reached, isFalse);
-        expect([QuickOutcome.moreWilling.shift, QuickOutcome.sameWilling.shift, QuickOutcome.lessWilling.shift, QuickOutcome.talked.shift, QuickOutcome.notReachable.shift], [1, 0, -1, null, null]);
-        expect([QuickOutcome.moreWilling, QuickOutcome.sameWilling, QuickOutcome.lessWilling].every((o) => o.reached), isTrue);
-      });
-
-      testWidgets('"New commitment" asks for the rounds, saves them for the student, and records that he was talked to', (tester) async {
-        final saved = <String>[];
-        quickCommitmentWriter = (uid, rounds) async => saved.add('$uid:$rounds');
-        addTearDown(() => quickCommitmentWriter = (uid, rounds) async {});
-        await _open(tester, doc: doc([ravi]), size: const Size(360, 3200));
-        const key = ValueKey('plan-quick-interaction:u1:2026-10-28-commitment');
-        await tester.ensureVisible(find.byKey(key));
-        await tester.tap(find.byKey(key));
-        await tester.pumpAndSettle();
-        expect(find.text('Ravi: new commitment'), findsOneWidget);
-        await tester.enterText(find.byKey(const ValueKey('quick-commitment-rounds')), '12');
-        await tester.tap(find.byKey(const ValueKey('quick-commitment-save')));
-        await tester.pumpAndSettle();
-        expect(saved, ['u1:12']);
-        expect(sent.map((s) => s.outcome), [QuickOutcome.talked]);
-        // a silly number saves nothing
-        await tester.tap(find.byKey(key));
-        await tester.pumpAndSettle();
-        await tester.enterText(find.byKey(const ValueKey('quick-commitment-rounds')), '99');
-        await tester.tap(find.byKey(const ValueKey('quick-commitment-save')));
-        await tester.pumpAndSettle();
-        expect(saved.length, 1);
-        expect(sent.length, 1);
-      });
-
-      testWidgets('a student already reported (ticked), a student not in the batch and a small card have no quick buttons', (tester) async {
-        const done = PlanItem(id: 'interaction:u3:2026-10-28', kind: 'interaction', title: 'Interaction with Mohit', studentName: 'Mohit', studentUid: 'u3', batchPosition: 2, done: true);
+      testWidgets('no button, no tick box and no one-tap report on any card (open, done, in the batch, small), and no button of any kind inside a card', (tester) async {
         await _open(tester, doc: doc([ravi, done, amit]), size: const Size(360, 3600));
-        expect(find.byKey(const ValueKey('plan-quick-interaction:u1:2026-10-28')), findsOneWidget);
-        expect(find.byKey(const ValueKey('plan-quick-interaction:u3:2026-10-28')), findsNothing);
-        expect(find.byKey(const ValueKey('plan-quick-student:u2:2026-10-30')), findsNothing);
+        for (final word in kButtonWords) {
+          expect(find.textContaining(word), findsNothing, reason: word);
+        }
+        expect(find.byWidgetPredicate((w) => w.key is ValueKey<String> && (w.key! as ValueKey<String>).value.startsWith('plan-quick')), findsNothing);
+        for (final card in ['interaction:u1:2026-10-28', 'interaction:u3:2026-10-28', 'student:u2:2026-10-30']) {
+          final inside = find.descendant(of: find.byKey(ValueKey('plan-item-$card')), matching: find.byWidgetPredicate((w) => w is ButtonStyleButton || w is Checkbox || w is Switch || w is IconButton || w is FloatingActionButton));
+          expect(inside, findsNothing, reason: card);
+        }
+      });
+
+      testWidgets('only a student\'s name can be tapped (to open his details); a done card shows its tick, which is a picture, not a control', (tester) async {
+        await _open(tester, doc: doc([ravi, done]), size: const Size(360, 3600));
+        expect(find.byKey(const ValueKey('plan-open-interaction:u1:2026-10-28')), findsOneWidget);
+        expect(find.byKey(const ValueKey('plan-done-interaction:u3:2026-10-28')), findsOneWidget);
+        expect(find.descendant(of: find.byKey(const ValueKey('plan-item-interaction:u3:2026-10-28')), matching: find.byType(InkWell)), findsOneWidget, reason: 'the name, nothing else');
       });
     });
 
     for (final dark in [false, true]) {
       for (final scale in kScales) {
-        testWidgets('${dark ? 'dark' : 'light'}, text scale $scale on 360 dp: the card, its points and the buttons fit', (tester) async {
+        testWidgets('${dark ? 'dark' : 'light'}, text scale $scale on 360 dp: the card and its points fit', (tester) async {
           await _open(tester, doc: doc([ravi, amit]), scale: scale, dark: dark, size: const Size(360, 3600));
           expect(tester.takeException(), isNull);
           final card = tester.getRect(find.byKey(const ValueKey('plan-item-interaction:u1:2026-10-28')));
           expect(card.width, lessThanOrEqualTo(360));
-          for (final k in ['talked', 'unreachable', 'more', 'same', 'less', 'commitment']) {
-            final r = tester.getRect(find.byKey(ValueKey('plan-quick-interaction:u1:2026-10-28-$k')));
-            expect(r.right, lessThanOrEqualTo(card.right + 0.5), reason: k);
-            expect(r.height, greaterThanOrEqualTo(44), reason: k);
+          for (var i = 0; i < 4; i++) {
+            final r = tester.getRect(find.byKey(ValueKey('plan-point-interaction:u1:2026-10-28-$i')));
+            expect(r.right, lessThanOrEqualTo(card.right + 0.5), reason: 'point $i');
           }
         });
       }

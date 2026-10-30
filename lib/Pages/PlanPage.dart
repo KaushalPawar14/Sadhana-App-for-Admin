@@ -4,13 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../Services/HierarchyApi.dart';
-import '../actions/InteractionActions.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/PlanData.dart';
 import '../utils/Pronouns.dart';
 import '../utils/SeenMarkers.dart';
+import 'StudentProfilePage.dart';
 import '../widgets/GuideAppBar.dart';
 import '../theme/GuideColors.dart';
 import '../widgets/GuideButtons.dart';
@@ -83,8 +83,6 @@ const Map<PlanGroup, String> kPlanGroupTitles = {PlanGroup.worry: 'Worries', Pla
 String _sectionKey(PlanGroup g) => switch (g) { PlanGroup.worry => 'worries', PlanGroup.followUp => 'followups', PlanGroup.target => 'targets', PlanGroup.other => 'other' };
 
 class _PlanPageState extends State<PlanPage> {
-  /// Interaction cards whose questions were toggled by the guide (a batch card starts open, any other starts closed).
-  final Set<String> _toggled = {};
 
   /// The students-a-day number the guide just chose (shown at once, until the server's new plan arrives).
   int? _sizeChosen;
@@ -113,8 +111,6 @@ class _PlanPageState extends State<PlanPage> {
   /// One GlobalKey per student card in Today (a tap on his name in This week scrolls to it).
   final Map<String, GlobalKey> _cardKeys = {};
 
-  /// Cards whose one-tap report is being saved (their buttons wait).
-  final Set<String> _quickBusy = {};
   final Map<PlanGroup, GlobalKey> _sectionKeys = {for (final g in PlanGroup.values) g: GlobalKey()};
   bool _scrolled = false;
 
@@ -705,76 +701,6 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
-  /// ONE-TAP REPORT on a student's card in Today (no notes, no AI): the outcome is recorded, he is ticked (or stays, when he was not reachable),
-  /// his Surrender % and history follow, as for any report. Free text or voice stays optional: tell the assistant (that is the one AI call).
-  Widget _quickButtons(BuildContext context, PlanItem it) {
-    final t = context.gText;
-    final busy = _quickBusy.contains(it.id);
-    Widget btn(String key, String label, QuickOutcome o) => GuideSecondaryButton(
-          key: ValueKey('plan-quick-${it.id}-$key'),
-          label: label,
-          expand: false,
-          onPressed: busy ? null : () => _quick(it, o),
-        );
-    return Padding(
-      key: ValueKey('plan-quick-${it.id}'),
-      padding: const EdgeInsets.only(top: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Report in one tap', style: t.caption),
-          const SizedBox(height: 4),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              btn('talked', 'Talked ✓', QuickOutcome.talked),
-              btn('unreachable', 'Not reachable', QuickOutcome.notReachable),
-              btn('more', 'More willing ↑', QuickOutcome.moreWilling),
-              btn('same', 'Same willing', QuickOutcome.sameWilling),
-              btn('less', 'Less willing ↓', QuickOutcome.lessWilling),
-              GuideSecondaryButton(key: ValueKey('plan-quick-${it.id}-commitment'), label: 'New commitment', expand: false, onPressed: busy ? null : () => _quickCommitment(it)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _quick(PlanItem it, QuickOutcome o, {String? extra}) async {
-    if (_quickBusy.contains(it.id) || it.studentUid.isEmpty) return;
-    setState(() => _quickBusy.add(it.id));
-    try {
-      await quickReportWriter(
-        guideId: _me,
-        studentUid: it.studentUid,
-        studentName: it.studentName,
-        outcome: o,
-        mode: it.mode,
-        topics: [for (final tp in it.topics) tp.label],
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${o.recorded}: ${it.studentName}.${extra == null ? '' : ' $extra'}')));
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not record that. Please try again.')));
-    }
-    if (mounted) setState(() => _quickBusy.remove(it.id));
-  }
-
-  /// "New commitment": asks for the rounds, saves them for the student (the shared write the assistant uses too) and records that the guide talked.
-  Future<void> _quickCommitment(PlanItem it) async {
-    final rounds = await showDialog<int>(context: context, builder: (_) => _RoundsDialog(studentName: it.studentName));
-    if (rounds == null || rounds < 1 || rounds > 64 || !mounted) return;
-    try {
-      await quickCommitmentWriter(it.studentUid, rounds);
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not save that commitment. Please try again.')));
-      return;
-    }
-    await _quick(it, QuickOutcome.talked, extra: 'Commitment: $rounds rounds a day.');
-  }
-
   /// ONE CARD PER STUDENT, short and factual: his name and Surrender %, then each topic as a TITLE and ONE line with the direction (written by plain
   /// code on the server: no questions, no talking points), and at most one "Also: ..." line. A non-student item (a target task, a phase end ...) is
   /// its title and one line.
@@ -800,7 +726,15 @@ class _PlanPageState extends State<PlanPage> {
                   const SizedBox(width: 6),
                 ],
                 // the student's Surrender % beside his name (the list is in that order: highest first, a worry on top)
-                Expanded(child: Text(it.isInteraction && it.percent != null ? '${it.title} · ${it.percent}%' : it.title, key: ValueKey('plan-title-${it.id}'), style: t.cardTitleSmall)),
+                Expanded(
+                  child: it.isCard && it.studentUid.isNotEmpty
+                      ? InkWell(
+                          key: ValueKey('plan-open-${it.id}'),
+                          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => StudentProfilePage(studentUid: it.studentUid))),
+                          child: Text(it.isInteraction && it.percent != null ? '${it.title} · ${it.percent}%' : it.title, key: ValueKey('plan-title-${it.id}'), style: t.cardTitleSmall),
+                        )
+                      : Text(it.isInteraction && it.percent != null ? '${it.title} · ${it.percent}%' : it.title, key: ValueKey('plan-title-${it.id}'), style: t.cardTitleSmall),
+                ),
               ],
             ),
             if (inBatch) ...[
@@ -843,7 +777,6 @@ class _PlanPageState extends State<PlanPage> {
                 ],
               ),
             ],
-            if (it.isInteraction && !it.done && inBatch && it.studentUid.isNotEmpty) _quickButtons(context, it),
           ],
         ),
       ),
@@ -963,45 +896,6 @@ class _PlanToggle extends StatelessWidget implements PreferredSizeWidget {
         decoration: BoxDecoration(color: g.chipBackground, borderRadius: BorderRadius.circular(GuideShape.chipRadius + 2)),
         child: Row(children: [side('TODAY', false, const ValueKey('plan-tab-today')), side('THIS WEEK', true, const ValueKey('plan-tab-week'))]),
       ),
-    );
-  }
-}
-
-/// The small dialog behind "New commitment": the rounds a day. It owns its text field, so the field is disposed only when the dialog is gone.
-class _RoundsDialog extends StatefulWidget {
-  const _RoundsDialog({required this.studentName});
-
-  final String studentName;
-
-  @override
-  State<_RoundsDialog> createState() => _RoundsDialogState();
-}
-
-class _RoundsDialogState extends State<_RoundsDialog> {
-  final _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GuideDialog(
-      title: Text('${widget.studentName}: new commitment', key: const ValueKey('quick-commitment-title')),
-      content: TextField(
-        key: const ValueKey('quick-commitment-rounds'),
-        controller: _controller,
-        autofocus: true,
-        keyboardType: TextInputType.number,
-        decoration: const InputDecoration(labelText: 'Rounds a day'),
-        onSubmitted: (v) => Navigator.pop(context, int.tryParse(v.trim())),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        TextButton(key: const ValueKey('quick-commitment-save'), onPressed: () => Navigator.pop(context, int.tryParse(_controller.text.trim())), child: const Text('Save')),
-      ],
     );
   }
 }
