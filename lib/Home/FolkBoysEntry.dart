@@ -88,8 +88,8 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
   PlanDoc? _plan;
   bool _planLoaded = false;
 
-  /// What changed since the guide's last plan refresh that the AI has not looked at yet (the badge on both plan widgets; a tap lists them).
-  PendingChanges _pending = PendingChanges.none;
+  /// What is NEW (not seen yet: since he last left the Plan page): the badge on both plan widgets; a tap lists them.
+  NewChanges _pending = NewChanges.none;
   int? _studentCount;
   List<CalendarEvent>? _events;
   final List<StreamSubscription<Object?>> _subs = [];
@@ -147,7 +147,7 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     }, onError: (_) {
       if (mounted) setState(() => _targetsFailed = true);
     }));
-    _subs.add(PlanData.instance.pending(planOwner).listen((p) {
+    _subs.add(PlanData.instance.newChanges(planOwner).listen((p) {
       if (mounted) setState(() => _pending = p);
     }, onError: (_) {}));
     // the plan the server keeps for this guide: live, so the counts follow every tick and every new item
@@ -503,18 +503,18 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
         child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: kHomeCardMaxWidth), child: SizedBox(width: double.infinity, child: child)),
       );
 
-  /// "● 3 changes the AI has not looked at yet" on a dark card: a brass badge and a short line; a tap lists them.
+  /// "3 new" on a dark card: a brass badge and a short line; a tap lists them.
   Widget _pendingLine(String id) {
     final t = context.gText;
     return GestureDetector(
       key: ValueKey('home-pending-$id'),
       behavior: HitTestBehavior.opaque,
-      onTap: () => showPendingChanges(context, _pending),
+      onTap: () => showNewChanges(context, _pending),
       child: Row(
         children: [
-          PendingBadge(count: _pending.count, onDark: true, onTap: () => showPendingChanges(context, _pending)),
+          PendingBadge(count: _pending.count, onDark: true, onTap: () => showNewChanges(context, _pending)),
           const SizedBox(width: 8),
-          Expanded(child: Text('change${_pending.count == 1 ? '' : 's'} not in the plan yet — tap Refresh', style: t.heroCaption, maxLines: 2, overflow: TextOverflow.ellipsis)),
+          Expanded(child: Text('new — tap to see', style: t.heroCaption, maxLines: 2, overflow: TextOverflow.ellipsis)),
         ],
       ),
     );

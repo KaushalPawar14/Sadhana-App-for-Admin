@@ -205,14 +205,6 @@ class HierarchyApi {
     return r['previous'] is num ? (r['previous'] as num).round() : 4;
   }
 
-  /// The Refresh button at the top of the Plan page: the AI writes the questions again and the plan is worked out afresh. A guide refreshes only
-  /// his own plan; a HOD may refresh every guide's ([all]). Once per 2 minutes: then `ok` is false and `retryInSec` says how long is left.
-  /// While the month's AI budget is used up the server refuses with its own clear sentence (a [HierarchyException]).
-  Future<({bool ok, int retryInSec})> refreshPlan({bool all = false}) async {
-    final r = await _call('refreshPlan', {if (all) 'all': true});
-    return (ok: r['ok'] != false, retryInSec: r['retryInSec'] is num ? (r['retryInSec'] as num).round() : 0);
-  }
-
   /// The admin opened the app: the FIRST call of the day makes the server write the AI questions for Today's students (his batch, and whoever joined it);
   /// every other call that day, and a day he never opens the app, costs nothing. Never throws: the plan simply stays as it is.
   Future<void> openPlan() async {

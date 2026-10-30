@@ -27,12 +27,13 @@ import '../widgets/GuideSurface.dart';
 /// "Plan": the guide's TODAY and THIS WEEK plans, worked out by the server and shown READ-ONLY (no ticking, no replying: for any help,
 /// ask the assistant in a chat).
 ///
-/// HOW IT STAYS CURRENT. Ticks, finished items going away and new doubts / worries / items appear BY THEMSELVES (free: no AI). The AI rewrites
-/// the plan (new questions) only when asked: the REFRESH button at the top of this page (once per 2 minutes; a HOD also has "Refresh all
-/// guides"), every morning at 6 AM, and on Monday morning (This week). Under "Last updated" the page says honestly when and by what:
-///   Last updated: Fri 30 Oct, 6:00 AM (daily update)      (by refresh / daily update / weekly update)
-///   Refreshing…                                            the AI is writing it now; then the new plan appears with a short "Updated" highlight
-///   You can refresh again in N sec                         the 2-minute wait after a refresh
+/// HOW IT STAYS CURRENT. THE PLAN UPDATES ITSELF: within about a minute of any change (a report, an interaction, a book, a doubt, a worry, a commitment, a
+/// meeting, a target, a calendar event, an assignment, a Surrender change) the server works it out again (plain code, no AI) and it appears here with a short
+/// "Updated" highlight. There is no Refresh button. The page says when it was last updated ("Updated Fri 30 Oct, 6:00 AM").
+///
+/// WHAT IS NEW. A badge ("3 new") counts the changes the admin has not seen yet, a tap lists them ("New doubt: Testing", "Book finished: Ayush"), and the rows in
+/// Today / This week that they concern carry a small "New" tag. SEEN = he opened this page and then LEFT it: the next visit has no tags, the badge on Home is
+/// cleared, and what changes after that is a fresh count.
 ///
 /// Opened from Home: THIS WEEK opens the This week tab ([initialWeek]); TODAY'S TASKS (or one of its three counts) opens Today at that
 /// section ([section]: Follow-ups, Target tasks or Other tasks).
@@ -52,9 +53,6 @@ class PlanPage extends StatefulWidget {
 /// How long the "Updated" highlight stays.
 const Duration kPlanUpdatedHighlight = Duration(seconds: 4);
 
-/// The server lets a guide refresh once per this long.
-const Duration kPlanRefreshGap = Duration(minutes: 2);
-
 /// "6:00 AM" for the instant, in India time (the server's clock), whatever the phone's own zone.
 String planClock(DateTime t) {
   final ist = t.toUtc().add(const Duration(hours: 5, minutes: 30));
@@ -62,25 +60,15 @@ String planClock(DateTime t) {
   return '$h:${ist.minute.toString().padLeft(2, '0')} ${ist.hour < 12 ? 'AM' : 'PM'}';
 }
 
-/// "Last updated: Fri 30 Oct, 6:00 AM (daily update)": when the AI last rewrote the plan and by what (a refresh, the 6 AM run, Monday's run).
-/// A plan the AI has not rewritten yet shows the time it was worked out, with no "by".
+/// "Updated Fri 30 Oct, 6:00 AM": when the plan was last worked out again (the server does it by itself, within a minute of any change).
 String planLastUpdated(PlanDoc plan) {
-  final at = plan.refreshedAt ?? plan.generatedAt;
+  final at = plan.generatedAt ?? plan.refreshedAt;
   final stamp = at == null ? '—' : DateFormat('EEE d MMM, h:mm a').format(at.toUtc().add(const Duration(hours: 5, minutes: 30)));
-  final by = plan.refreshedAt == null
-      ? ''
-      : switch (plan.refreshedBy) {
-          'refresh' => ' (by refresh)',
-          'open' => ' (first open today)',
-          'daily' => ' (daily update)',
-          'weekly' => ' (weekly update)',
-          _ => '',
-        };
-  return 'Last updated: $stamp$by';
+  return 'Updated $stamp';
 }
 
-/// The status line under "Last updated".
-String planStatusText(PlanDoc plan, {bool refreshing = false}) => refreshing || plan.status == 'updating' ? 'Refreshing…' : 'Up to date';
+/// The status line under "Updated".
+String planStatusText(PlanDoc plan) => plan.status == 'updating' ? 'Updating…' : 'Up to date';
 
 /// The names of Today's three groups, as the page's sections.
 const Map<PlanGroup, String> kPlanGroupTitles = {PlanGroup.worry: 'Worries', PlanGroup.target: 'Target tasks', PlanGroup.followUp: 'Follow-ups', PlanGroup.other: 'Other tasks'};
@@ -101,17 +89,12 @@ class _PlanPageState extends State<PlanPage> {
   bool _justUpdated = false;
   DateTime? _lastGenerated;
   StreamSubscription<PlanDoc?>? _sub;
-  StreamSubscription<PendingChanges>? _pendingSub;
-  PendingChanges _pending = PendingChanges.none;
-  Timer? _highlight;
+  StreamSubscription<NewChanges>? _newSub;
 
-  /// Refresh: busy (own / everyone's), the seconds left of the 2-minute wait for each, and the server's refusal in words (the budget).
-  bool _refreshing = false;
-  bool _refreshingAll = false;
-  int _waitOwn = 0;
-  int _waitAll = 0;
-  Timer? _waitTimer;
-  String? _refreshError;
+  /// What is NEW (not seen yet): the badge, the list a tap shows and the "New" tags. It stays as it was when the page opened plus whatever arrives while it is open;
+  /// leaving the page marks it seen.
+  NewChanges _new = NewChanges.none;
+  Timer? _highlight;
 
   /// Opened from a Home count: scroll to that section once the plan is on screen.
   /// One GlobalKey per student card in Today (a tap on his name in This week scrolls to it).
@@ -131,9 +114,9 @@ class _PlanPageState extends State<PlanPage> {
     super.initState();
     // opening the plan clears its orange dot
     if (_me.isNotEmpty) SeenMarkers.markSeen(_me, 'plan').catchError((_) {});
-    // the live badge: what changed since the last refresh that the AI has not considered yet (counted by the server, no AI)
-    _pendingSub = PlanData.instance.pending(_me).listen((p) {
-      if (mounted) setState(() => _pending = p);
+    // the live badge and the "New" tags: what changed since the admin last LEFT this page (recorded by the server, no AI)
+    _newSub = PlanData.instance.newChanges(_me).listen((p) {
+      if (mounted) setState(() => _new = p);
     }, onError: (_) {});
     _sub = PlanData.instance.plan(_me).listen(
       (p) {
@@ -187,46 +170,11 @@ class _PlanPageState extends State<PlanPage> {
   @override
   void dispose() {
     _sub?.cancel();
-    _pendingSub?.cancel();
+    _newSub?.cancel();
     _highlight?.cancel();
-    _waitTimer?.cancel();
+    // LEFT: what was new is seen now (the next visit has no "New" tags, the badge outside is cleared)
+    if (_me.isNotEmpty) PlanData.instance.markPlanSeen(_me).catchError((_) {});
     super.dispose();
-  }
-
-  // ---------------------------------------------------------------------------
-  // Refresh
-  // ---------------------------------------------------------------------------
-
-  void _startWait(bool all, int seconds) {
-    setState(() => all ? _waitAll = seconds : _waitOwn = seconds);
-    _waitTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      setState(() {
-        if (_waitOwn > 0) _waitOwn--;
-        if (_waitAll > 0) _waitAll--;
-      });
-      if (_waitOwn == 0 && _waitAll == 0) {
-        _waitTimer?.cancel();
-        _waitTimer = null;
-      }
-    });
-  }
-
-  /// The AI rewrites the plan, now. The server decides (once per 2 minutes, the guide's own plan only, not while the budget is used up).
-  Future<void> _refresh({bool all = false}) async {
-    if (_refreshing || (all ? _waitAll : _waitOwn) > 0) return;
-    setState(() {
-      _refreshing = true;
-      _refreshingAll = all;
-      _refreshError = null;
-    });
-    try {
-      final r = await HierarchyApi.instance.refreshPlan(all: all);
-      if (mounted) _startWait(all, r.ok ? kPlanRefreshGap.inSeconds : r.retryInSec);
-    } catch (e) {
-      if (mounted) setState(() => _refreshError = e is HierarchyException ? e.message : 'Could not refresh the plan. Please try again.');
-    }
-    if (mounted) setState(() => _refreshing = false);
   }
 
   @override
@@ -258,12 +206,12 @@ class _PlanPageState extends State<PlanPage> {
         child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _refreshBar(context),
+          _newBar(context),
           const SizedBox(height: 10),
           Text('Read-only — for any help, ask the AI in a chat.', key: const ValueKey('plan-readonly'), style: t.bodyStrong),
           const SizedBox(height: 6),
           Text(
-            'Tap Refresh to update the plan with your latest changes.',
+            'The plan updates by itself, within a minute of any change.',
             key: const ValueKey('plan-note'),
             style: t.small.copyWith(height: 1.4),
           ),
@@ -284,85 +232,35 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
-  /// REFRESH at the top: one button (a HOD also has "Refresh all guides"), the wait that follows, and the server's refusal in words.
-  Widget _refreshBar(BuildContext context) {
+  /// THE BADGE at the top: "3 new" (the changes not seen yet; a tap lists them), or "✓ Nothing new". There are no refresh buttons.
+  Widget _newBar(BuildContext context) {
     final t = context.gText;
     final g = context.g;
-    final hod = AdminProfileProvider.current?.isHod ?? false;
-    final ownBusy = _refreshing && !_refreshingAll;
-    final allBusy = _refreshing && _refreshingAll;
-    final wait = _waitOwn > 0 ? _waitOwn : (hod ? _waitAll : 0);
-    final waitText = _waitOwn > 0 ? 'You can refresh again in $_waitOwn sec' : (hod && _waitAll > 0 ? 'You can refresh all guides again in $_waitAll sec' : null);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: 10,
-          runSpacing: 6,
-          crossAxisAlignment: WrapCrossAlignment.center,
+    if (_new.count == 0) {
+      return Text('✓ Nothing new', key: const ValueKey('plan-pending-ok'), style: t.small.copyWith(color: g.success, fontWeight: FontWeight.w600));
+    }
+    return GestureDetector(
+      key: const ValueKey('plan-pending-line'),
+      behavior: HitTestBehavior.opaque,
+      onTap: () => showNewChanges(context, _new),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
+        child: Row(
           children: [
-            // the live badge on the button: how many changes the AI has not considered yet
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                GuidePrimaryButton(
-                  key: const ValueKey('plan-refresh'),
-                  label: ownBusy ? 'Refreshing…' : 'Refresh',
-                  icon: Icons.refresh_rounded,
-                  expand: false,
-                  onPressed: _refreshing || _waitOwn > 0 ? null : () => _refresh(),
-                ),
-                if (_pending.count > 0)
-                  Positioned(
-                    top: -6,
-                    right: -6,
-                    child: PendingBadge(key: const ValueKey('plan-refresh-badge'), count: _pending.count, onTap: () => showPendingChanges(context, _pending)),
-                  ),
-              ],
-            ),
-            if (hod)
-              GuideSecondaryButton(
-                key: const ValueKey('plan-refresh-all'),
-                label: allBusy ? 'Refreshing…' : 'Refresh all guides',
-                icon: Icons.refresh_rounded,
-                onPressed: _refreshing || _waitAll > 0 ? null : () => _refresh(all: true),
-              ),
+            PendingBadge(key: const ValueKey('plan-refresh-badge'), count: _new.count, onTap: () => showNewChanges(context, _new)),
+            const SizedBox(width: 8),
+            Text('new — tap to see', style: t.small.copyWith(color: g.warning, fontWeight: FontWeight.w600)),
           ],
         ),
-        // pending changes (tap for the list), or "✓ Up to date"
-        Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: _pending.count == 0
-              ? Text('✓ Up to date', key: const ValueKey('plan-pending-ok'), style: t.small.copyWith(color: g.success, fontWeight: FontWeight.w600))
-              : GestureDetector(
-                  key: const ValueKey('plan-pending-line'),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => showPendingChanges(context, _pending),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text('${_pending.count} change${_pending.count == 1 ? '' : 's'} the AI has not looked at yet — tap to see', style: t.small.copyWith(color: g.warning, fontWeight: FontWeight.w700, height: 1.3)),
-                    ),
-                  ),
-                ),
-        ),
-        if (waitText != null && wait > 0 && _refreshError == null)
-          Padding(padding: const EdgeInsets.only(top: 4), child: Text(waitText, key: const ValueKey('plan-refresh-wait'), style: t.caption)),
-        if (_refreshError != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(_refreshError!, key: const ValueKey('plan-refresh-error'), style: t.small.copyWith(color: g.warning, height: 1.4)),
-          ),
-      ],
+      ),
     );
   }
 
   Widget _statusCard(BuildContext context, PlanDoc plan) {
     final g = context.g;
     final t = context.gText;
-    final refreshing = _refreshing || plan.status == 'updating';
-    final status = planStatusText(plan, refreshing: _refreshing);
+    final refreshing = plan.status == 'updating';
+    final status = planStatusText(plan);
     return AnimatedContainer(
       key: const ValueKey('plan-status'),
       duration: const Duration(milliseconds: 300),
@@ -597,6 +495,7 @@ class _PlanPageState extends State<PlanPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (done) ...[Icon(Icons.check_rounded, key: ValueKey('plan-week-tick-${it.studentUid}'), size: 16, color: g.success), const SizedBox(width: 4)],
+                if (_new.isNewFor(studentUid: it.studentUid)) ...[NewTag(key: ValueKey('plan-week-new-${it.studentUid}')), const SizedBox(width: 4)],
                 Flexible(child: Text(it.studentName, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.bodyStrong.copyWith(fontSize: 14, color: done ? g.mutedText : g.text, decoration: done ? TextDecoration.lineThrough : null))),
                 if (it.percent != null) ...[const SizedBox(width: 6), Text('${it.percent}%', style: t.caption)],
               ],
@@ -632,7 +531,13 @@ class _PlanPageState extends State<PlanPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(it.title, style: t.body.copyWith(height: 1.35, fontWeight: it.steps.isEmpty ? null : FontWeight.w700, decoration: it.done ? TextDecoration.lineThrough : null)),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: Text(it.title, style: t.body.copyWith(height: 1.35, fontWeight: it.steps.isEmpty ? null : FontWeight.w700, decoration: it.done ? TextDecoration.lineThrough : null))),
+                          if (_new.isNewFor(isTarget: true)) ...[const SizedBox(width: 6), NewTag(key: ValueKey('plan-week-task-new-${it.id}'))],
+                        ],
+                      ),
                       // each student's step, the done ones ticked: "Testing 12 → 16", "Amit 8 → 12 ✓"
                       if (it.steps.isNotEmpty)
                         Padding(
@@ -839,6 +744,7 @@ class _PlanPageState extends State<PlanPage> {
                               Row(
                                 children: [
                                   Flexible(child: Text(name, key: ValueKey('plan-title-${it.id}'), maxLines: 2, overflow: TextOverflow.ellipsis, style: struck(t.cardTitleSmall))),
+                                  if (_new.isNewFor(studentUid: it.studentUid, isTarget: it.kind == 'targetTask')) ...[const SizedBox(width: 8), NewTag(key: ValueKey('plan-new-${it.id}'))],
                                   if (it.isInteraction && it.percent != null) ...[const SizedBox(width: 8), Text('${it.percent}%', key: ValueKey('plan-percent-${it.id}'), style: t.caption.copyWith(fontWeight: FontWeight.w700))],
                                 ],
                               ),
@@ -1022,7 +928,7 @@ class _PlanPageState extends State<PlanPage> {
   }
 }
 
-/// The small round badge with the number of pending changes (the Refresh button, the Home plan widgets). Tapping it lists them.
+/// The small round badge with the number of NEW changes (the Plan page, the Home plan widgets). Tapping it lists them.
 class PendingBadge extends StatelessWidget {
   const PendingBadge({super.key, required this.count, this.onTap, this.onDark = false});
 
@@ -1041,7 +947,7 @@ class PendingBadge extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Semantics(
-        label: '$count pending change${count == 1 ? '' : 's'}',
+        label: '$count new',
         child: Container(
           constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
           padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -1054,24 +960,36 @@ class PendingBadge extends StatelessWidget {
   }
 }
 
-/// The short list a tap on the badge shows: "2 changes: interaction with Ravi; interaction with Amit", one line each. They are cleared when the plan
-/// is refreshed (the AI then considers them).
-Future<void> showPendingChanges(BuildContext context, PendingChanges pending) => showDialog<void>(
+/// The small "New" tag on a row of Today / This week that has something the admin has not seen yet.
+class NewTag extends StatelessWidget {
+  const NewTag({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.g;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(color: g.warning, borderRadius: BorderRadius.circular(8)),
+      child: const Text('New', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800, height: 1.3)),
+    );
+  }
+}
+
+/// The simple list a tap on the badge shows: one line each, newest first ("New doubt: Testing", "Book finished: Ayush", "New task: Surrender check — Ravi").
+Future<void> showNewChanges(BuildContext context, NewChanges changes) => showDialog<void>(
       context: context,
       builder: (dialogContext) {
         final t = dialogContext.gText;
         return GuideDialog(
-          title: Text('${pending.count} change${pending.count == 1 ? '' : 's'} since the last refresh', key: const ValueKey('pending-title')),
+          title: Text('${changes.count} new', key: const ValueKey('pending-title')),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(pending.summary, key: const ValueKey('pending-summary'), style: t.small.copyWith(height: 1.4)),
-                const SizedBox(height: 10),
-                for (final c in pending.items) Padding(padding: const EdgeInsets.only(bottom: 4), child: Text('• ${c.text}', style: t.body.copyWith(fontSize: 14, height: 1.35))),
-                const SizedBox(height: 8),
-                Text('Tap Refresh and the AI will take them into account.', style: t.caption),
+                for (final c in changes.items) Padding(key: ValueKey('new-change-${c.text}'), padding: const EdgeInsets.only(bottom: 6), child: Text('• ${c.text}', style: t.body.copyWith(fontSize: 14, height: 1.35))),
+                const SizedBox(height: 4),
+                Text('They are marked "New" in the plan until you have looked at it.', style: t.caption),
               ],
             ),
           ),

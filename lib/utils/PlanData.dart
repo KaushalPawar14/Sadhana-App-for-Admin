@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'GuideDb.dart';
+import 'SeenMarkers.dart';
 
 /// The Today / This week plans, as the server wrote them (`guidePlans/{adminId}`, worked out by `functions/guidePlans.js`; the app only
 /// reads it). Read-only everywhere: a plan changes when its data changes (a tick, a finished item, a new doubt: free and automatic), through the
@@ -542,17 +543,23 @@ class PlanDoc {
   }
 }
 
-/// One change since the guide's last plan refresh that the AI has not considered yet ("interaction with Ravi").
+/// The `seenMarkers` key: the moment the admin last left the Plan page.
+const String kPlanNewKey = 'planNew';
+
+/// One NEW change in an admin's plan area ("New doubt: Testing", "Book finished: Ayush", "New task: Surrender check — Ravi").
 class PendingChange {
-  const PendingChange({required this.type, required this.text, this.at});
+  const PendingChange({required this.type, required this.text, this.at, this.studentUid = ''});
 
   final String type;
   final String text;
   final DateTime? at;
+
+  /// The student it is about (empty for a target, a calendar event ...): his rows in Today / This week carry the "New" tag.
+  final String studentUid;
 }
 
-/// What is pending for one guide (`planChanges/{adminId}/items`, written by the server for THAT guide's own students, cleared when the AI
-/// rewrites his plan): the number on the Refresh badge, and the list a tap shows.
+/// What changed in an admin's plan area (`planChanges/{adminId}/items`, written by the server for THAT admin's own scope, kept 14 days). The plans update
+/// by themselves; the badge counts the changes NEWER than the moment the admin last left the Plan page ([NewChanges]).
 class PendingChanges {
   const PendingChanges(this.items);
 
@@ -561,16 +568,43 @@ class PendingChanges {
   final List<PendingChange> items;
   int get count => items.length;
 
-  /// "2 changes: interaction with Ravi; interaction with Amit" (the newest first).
-  String get summary => count == 0 ? '' : '$count change${count == 1 ? '' : 's'}: ${items.map((c) => c.text).join('; ')}';
-
   static PendingChanges fromDocs(Iterable<Map<String, dynamic>> docs) {
     final list = [
       for (final d in docs)
-        if ((d['text'] ?? '').toString().isNotEmpty) PendingChange(type: (d['type'] ?? '').toString(), text: (d['text'] ?? '').toString(), at: d['at'] is Timestamp ? (d['at'] as Timestamp).toDate() : null),
+        if ((d['text'] ?? '').toString().isNotEmpty)
+          PendingChange(
+            type: (d['type'] ?? '').toString(),
+            text: (d['text'] ?? '').toString(),
+            studentUid: (d['studentUid'] ?? '').toString(),
+            at: d['at'] is Timestamp ? (d['at'] as Timestamp).toDate() : null,
+          ),
     ]..sort((a, b) => (b.at ?? DateTime(2000)).compareTo(a.at ?? DateTime(2000)));
     return PendingChanges(list);
   }
+}
+
+/// THE NEW, NOT SEEN YET changes of one admin: those newer than the moment he last LEFT the Plan page (his first time: the last 24 hours). The badge on the Home
+/// plan widgets and on the Plan page shows [count]; a tap lists [items]; the rows in Today / This week they concern carry a small "New" tag ([isNewFor]).
+class NewChanges {
+  const NewChanges(this.items);
+
+  static const NewChanges none = NewChanges([]);
+
+  /// The changes newer than [seen] (null: the last 24 hours before [now]), newest first.
+  factory NewChanges.of(PendingChanges all, DateTime? seen, DateTime now) {
+    final since = seen ?? now.subtract(const Duration(days: 1));
+    return NewChanges([for (final c in all.items) if (c.at != null && c.at!.isAfter(since)) c]..sort((a, b) => b.at!.compareTo(a.at!)));
+  }
+
+  final List<PendingChange> items;
+  int get count => items.length;
+
+  /// The students a new change is about.
+  Set<String> get studentUids => {for (final c in items) if (c.studentUid.isNotEmpty) c.studentUid};
+  bool get hasTarget => items.any((c) => c.type == 'target');
+
+  /// Whether an item of the plan (a student's card or row, a target task) has something new.
+  bool isNewFor({String studentUid = '', bool isTarget = false}) => (studentUid.isNotEmpty && studentUids.contains(studentUid)) || (isTarget && hasTarget);
 }
 
 /// What the Plan page and the dots read, behind one interface (tests hand in a fake).
@@ -582,8 +616,46 @@ abstract class PlanData {
   /// The admin's plan, live; null until the server has written one.
   Stream<PlanDoc?> plan(String adminId);
 
-  /// The changes since the admin's last plan refresh that the AI has not considered yet, live (no AI cost: counted by the server as they happen).
+  /// What changed in the admin's plan area in the last 14 days, live (no AI cost: recorded by the server as it happens).
   Stream<PendingChanges> pending(String adminId) => Stream.value(PendingChanges.none);
+
+  /// The moment the admin last LEFT the Plan page (null: never).
+  Stream<DateTime?> seenAt(String adminId) => Stream.value(null);
+
+  /// The admin has left the Plan page: what is in it now is seen (the badge clears, the "New" tags are gone on his next visit).
+  Future<void> markPlanSeen(String adminId) async {}
+
+  /// The NEW changes of one admin, live: [pending] newer than [seenAt]. (One subscription of each; cancelled with this one.)
+  Stream<NewChanges> newChanges(String adminId) {
+    late final StreamController<NewChanges> c;
+    StreamSubscription<PendingChanges>? a;
+    StreamSubscription<DateTime?>? b;
+    PendingChanges? items;
+    DateTime? seen;
+    var seenKnown = false;
+    void emit() {
+      if (items != null && seenKnown) c.add(NewChanges.of(items!, seen, now()));
+    }
+
+    c = StreamController<NewChanges>(
+      onListen: () {
+        a = pending(adminId).listen((v) {
+          items = v;
+          emit();
+        }, onError: c.addError);
+        b = seenAt(adminId).listen((v) {
+          seen = v;
+          seenKnown = true;
+          emit();
+        }, onError: c.addError);
+      },
+      onCancel: () async {
+        await a?.cancel();
+        await b?.cancel();
+      },
+    );
+    return c.stream;
+  }
 
   /// What is open about one student (the lines of his reasons): shown when a name in This week is tapped and he has no card in Today.
   Future<List<String>> needsOf(String studentUid) async => const [];
@@ -611,6 +683,12 @@ class FirestorePlanData extends PlanData {
           if (n is Map && (n['text'] ?? '').toString().isNotEmpty) n['text'].toString(),
     ];
   }
+
+  @override
+  Stream<DateTime?> seenAt(String adminId) => SeenMarkers.seenAt(adminId, kPlanNewKey).map((t) => t?.toDate());
+
+  @override
+  Future<void> markPlanSeen(String adminId) => SeenMarkers.markSeen(adminId, kPlanNewKey);
 
   @override
   Stream<PendingChanges> pending(String adminId) => GuideDb.instance

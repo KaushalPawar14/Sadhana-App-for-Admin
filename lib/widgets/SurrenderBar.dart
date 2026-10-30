@@ -126,6 +126,26 @@ Future<void> showSurrenderBreakdown(BuildContext context, String name, Surrender
                         ],
                         const SizedBox(height: 4),
                         Text(p.reason, style: t.body.copyWith(fontSize: 13, height: 1.35)),
+                        // the Sadhana part: its four equal pieces of 10, each with its points and its reason ("Reported 3 of 30 days → 1 of 10")
+                        for (final q in p.sub)
+                          Padding(
+                            key: ValueKey('surrender-sub-${q.key}'),
+                            padding: const EdgeInsets.only(top: 8, left: 10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Wrap(
+                                  spacing: 8,
+                                  children: [
+                                    Text(q.label, style: t.bodyStrong.copyWith(fontSize: 13)),
+                                    Text('${surrenderPoints(q.earned)} of ${q.weight}', key: ValueKey('surrender-points-${q.key}'), style: t.bodyStrong.copyWith(fontSize: 13, color: q.earned == 0 ? g.mutedText : g.brass)),
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                Text(q.reason, style: t.caption.copyWith(height: 1.3)),
+                              ],
+                            ),
+                          ),
                       ],
                     ),
                   ),

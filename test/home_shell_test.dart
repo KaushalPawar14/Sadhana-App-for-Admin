@@ -318,16 +318,19 @@ void main() {
       expect([c.students, c.cards, c.tasks, c.total], [2, 2, 0, 2], reason: 'two students: two cards, not five topics');
     });
 
-    testWidgets('PENDING CHANGES: both widgets show the live badge and a line; a tap lists them; none pending: no badge', (tester) async {
+    testWidgets('NEW CHANGES: both widgets show the live badge and a line; a tap lists them; none new: no badge', (tester) async {
       phone(tester, 1.0);
-      await pumpShell(tester, planData: FixedPlanData(homePlan(), changes: pendingOf(['interaction with Amit', 'interaction with Ravi'])));
+      await pumpShell(tester, planData: FixedPlanData(homePlan(), changes: pendingOf(['Interaction recorded: Amit', 'Interaction recorded: Ravi'])));
       for (final id in ['week', 'today']) {
         expect(find.byKey(ValueKey('home-pending-$id')), findsOneWidget, reason: id);
       }
-      expect(find.text('changes not in the plan yet — tap Refresh'), findsNWidgets(2));
+      expect(find.text('new — tap to see'), findsNWidgets(2));
+      expect(find.textContaining('Refresh'), findsNothing, reason: 'there is no Refresh any more');
       await tester.tap(find.byKey(const ValueKey('home-pending-today')));
       await tester.pumpAndSettle();
-      expect(tester.widget<Text>(find.byKey(const ValueKey('pending-summary'))).data, '2 changes: interaction with Ravi; interaction with Amit');
+      expect(find.text('2 new'), findsOneWidget);
+      expect(find.text('• Interaction recorded: Ravi'), findsOneWidget);
+      expect(find.text('• Interaction recorded: Amit'), findsOneWidget);
       await tester.tap(find.text('Close'));
       await tester.pumpAndSettle();
       await tester.pumpWidget(const SizedBox());
@@ -336,7 +339,7 @@ void main() {
       expect(find.byKey(const ValueKey('home-pending-today')), findsNothing);
     });
 
-    testWidgets('the pending line is live on Home: a change arrives, then the refresh clears it', (tester) async {
+    testWidgets('the new-changes line is live on Home: a change arrives, and it is gone once the admin has seen it (the cursor moves)', (tester) async {
       phone(tester, 1.0);
       final live = ManualPlanData();
       await pumpShell(tester, planData: live);
@@ -345,11 +348,11 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(find.byKey(const ValueKey('home-pending-today')), findsNothing);
-      live.pendingC.add(pendingOf(["worry from Ravi's AI chat"]));
+      live.pendingC.add(pendingOf(['New worry: Ravi']));
       await tester.pump();
       await tester.pump();
       expect(find.byKey(const ValueKey('home-pending-today')), findsOneWidget);
-      expect(find.text('change not in the plan yet — tap Refresh'), findsNWidgets(2));
+      expect(find.text('new — tap to see'), findsNWidgets(2));
       live.pendingC.add(PendingChanges.none);
       await tester.pump();
       await tester.pump();

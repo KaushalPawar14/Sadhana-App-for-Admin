@@ -66,6 +66,7 @@ PlanItem interactionItem(String uid, String name, List<String> sources, {bool do
       id: 'interaction:$uid:2026-10-28',
       kind: 'interaction',
       title: 'Interaction with $name',
+      studentUid: uid,
       studentName: name,
       forYou: true,
       done: done,

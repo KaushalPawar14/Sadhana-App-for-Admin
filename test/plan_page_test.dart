@@ -15,9 +15,9 @@ import 'package:folk_guide_app/utils/UnseenAggregates.dart';
 import 'support/guide_test_support.dart';
 import 'support/plan_fakes.dart';
 
-/// The Plan page (Today | This week), READ-ONLY, kept current two ways: the free updates that appear by themselves, and the REFRESH button
-/// (the AI writes it again; once per 2 minutes; a HOD also has "Refresh all guides"). Under "Last updated" it says when and by what:
-/// "Last updated: Fri 30 Oct, 6:00 AM (daily update)", then Up to date / Refreshing… / Updated.
+/// The Plan page (Today | This week), READ-ONLY. It UPDATES ITSELF (the server works it out again within a minute of any change): there is no Refresh button
+/// (guide or HOD), no "Refresh all guides", no countdown. It says "Updated Fri 30 Oct, 6:00 AM", then Up to date / Updating… / Updated. A badge counts the NEW
+/// changes (not seen yet), a tap lists them, the rows they concern carry a "New" tag; leaving the page marks them seen.
 
 /// Friday 30 Oct 2026, 10:00 IST = 04:30 UTC.
 final DateTime _now = DateTime.utc(2026, 10, 30, 4, 30);
@@ -28,6 +28,17 @@ class _FakePlanData extends PlanData {
   final pendingC = StreamController<PendingChanges>.broadcast();
   @override
   Stream<PendingChanges> pending(String adminId) => pendingC.stream;
+
+  /// When the admin last left the page (null: never), and the leavings the page reported.
+  DateTime? seen;
+  final marked = <String>[];
+  @override
+  Stream<DateTime?> seenAt(String adminId) async* {
+    yield seen;
+  }
+
+  @override
+  Future<void> markPlanSeen(String adminId) async => marked.add(adminId);
   DateTime clock = _now;
   @override
   Stream<PlanDoc?> plan(String adminId) => controller.stream;
@@ -125,20 +136,14 @@ void main() {
     AdminProfileProvider.instance.debugSet(null);
   });
 
-  group('the words: "Last updated … (by …)" and the status', () {
-    test('by refresh / daily update / weekly update, India time', () {
-      final at = DateTime.utc(2026, 10, 30, 0, 30); // 6:00 AM IST
-      expect(planLastUpdated(_plan(refreshedAt: at, refreshedBy: 'daily')), 'Last updated: Fri 30 Oct, 6:00 AM (daily update)');
-      expect(planLastUpdated(_plan(refreshedAt: at, refreshedBy: 'refresh')), 'Last updated: Fri 30 Oct, 6:00 AM (by refresh)');
-      expect(planLastUpdated(_plan(refreshedAt: at, refreshedBy: 'weekly')), 'Last updated: Fri 30 Oct, 6:00 AM (weekly update)');
+  group('the words: "Updated …" and the status', () {
+    test('"Updated" and the time the plan was last worked out, India time', () {
+      expect(planLastUpdated(_plan(generatedAt: DateTime.utc(2026, 10, 30, 0, 30))), 'Updated Fri 30 Oct, 6:00 AM');
+      expect(planLastUpdated(_plan(generatedAt: DateTime.utc(2026, 10, 30, 6, 30))), 'Updated Fri 30 Oct, 12:00 PM');
     });
-    test('a plan the AI has not rewritten yet shows when it was worked out, with no "by"', () {
-      expect(planLastUpdated(_plan(generatedAt: DateTime.utc(2026, 10, 30, 0, 30))), 'Last updated: Fri 30 Oct, 6:00 AM');
-    });
-    test('status: up to date, or refreshing', () {
+    test('status: up to date, or updating', () {
       expect(planStatusText(_plan()), 'Up to date');
-      expect(planStatusText(_plan(status: 'updating')), 'Refreshing…');
-      expect(planStatusText(_plan(), refreshing: true), 'Refreshing…');
+      expect(planStatusText(_plan(status: 'updating')), 'Updating…');
     });
     test('clock face in India time, 12-hour', () {
       expect(planClock(DateTime.utc(2026, 10, 30, 0, 30)), '6:00 AM');
@@ -149,22 +154,33 @@ void main() {
   });
 
   group('the page', () {
-    testWidgets('read-only line and the Refresh note, at the top; TODAY | THIS WEEK in the app bar; no hourly promise, no countdown', (tester) async {
+    testWidgets('read-only line and the note that it updates by itself, at the top; TODAY | THIS WEEK in the app bar; no hourly promise, no countdown', (tester) async {
       await _open(tester);
       expect(find.text('Read-only — for any help, ask the AI in a chat.'), findsOneWidget);
-      expect(find.text('Tap Refresh to update the plan with your latest changes.'), findsOneWidget);
+      expect(find.text('The plan updates by itself, within a minute of any change.'), findsOneWidget);
+      expect(find.textContaining('Refresh'), findsNothing);
       expect(find.textContaining('about an hour'), findsNothing);
       expect(find.textContaining('updating in'), findsNothing);
       expect(find.text('TODAY'), findsOneWidget);
       expect(find.text('THIS WEEK'), findsOneWidget);
     });
 
-    testWidgets('the Refresh button is the first thing under the app bar, above the notes', (tester) async {
+    testWidgets('NO REFRESH BUTTONS: not for a guide, not for a HOD (no "Refresh all guides"), no countdown, no refusal line', (tester) async {
+      for (final role in ['GUIDE', 'HOD']) {
+        await _open(tester, role: role);
+        for (final k in ['plan-refresh', 'plan-refresh-all', 'plan-refresh-wait', 'plan-refresh-error']) {
+          expect(find.byKey(ValueKey(k)), findsNothing, reason: '$role $k');
+        }
+        expect(find.text('Refresh'), findsNothing);
+        expect(find.text('Refresh all guides'), findsNothing);
+        expect(find.textContaining('refresh again'), findsNothing);
+        await tester.pumpWidget(const SizedBox());
+      }
+    });
+
+    testWidgets('the first thing under the app bar is the "Nothing new" line (or the badge), above the notes', (tester) async {
       await _open(tester);
-      final refresh = tester.getTopLeft(find.byKey(const ValueKey('plan-refresh'))).dy;
-      expect(refresh, lessThan(tester.getTopLeft(find.byKey(const ValueKey('plan-readonly'))).dy));
-      expect(tester.getSize(find.byKey(const ValueKey('plan-refresh'))).height, greaterThanOrEqualTo(48));
-      expect(find.text('Refresh'), findsOneWidget);
+      expect(tester.getTopLeft(find.byKey(const ValueKey('plan-pending-ok'))).dy, lessThan(tester.getTopLeft(find.byKey(const ValueKey('plan-readonly'))).dy));
     });
 
     testWidgets('READ-ONLY: nothing to tick, nothing to type, nothing to switch', (tester) async {
@@ -205,33 +221,27 @@ void main() {
     });
   });
 
-  group('"Last updated" and the status', () {
-    testWidgets('Last updated shows the time of the last AI update and what made it (India time), on both tabs', (tester) async {
-      await _open(tester, doc: _plan(generatedAt: DateTime.utc(2026, 10, 30, 3, 0), refreshedAt: DateTime.utc(2026, 10, 30, 0, 30), refreshedBy: 'daily'));
-      expect(_lastUpdated(tester), 'Last updated: Fri 30 Oct, 6:00 AM (daily update)');
+  group('"Updated" and the status', () {
+    testWidgets('"Updated" shows the time the plan was last worked out (India time), on both tabs', (tester) async {
+      await _open(tester, doc: _plan(generatedAt: DateTime.utc(2026, 10, 30, 0, 30)));
+      expect(_lastUpdated(tester), 'Updated Fri 30 Oct, 6:00 AM');
       await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('plan-last-updated')), findsOneWidget);
     });
 
-    testWidgets('Up to date when nothing is being written; Refreshing… while the server writes it', (tester) async {
+    testWidgets('Up to date when nothing is being written; Updating… while the server writes it', (tester) async {
       final data = await _open(tester);
       expect(_statusText(tester), 'Up to date');
       await _emit(tester, data, _plan(status: 'updating'));
-      expect(_statusText(tester), 'Refreshing…');
+      expect(_statusText(tester), 'Updating…');
     });
 
-    testWidgets('Refreshing…, then the new plan appears with a short "Updated" highlight', (tester) async {
+    testWidgets('a new plan arriving by itself shows at once with a short "Updated" highlight; the time moves on', (tester) async {
       final data = await _open(tester);
-      await _emit(tester, data, _plan(status: 'updating'));
-      expect(_statusText(tester), 'Refreshing…');
-      await _emit(
-        tester,
-        data,
-        _plan(generatedAt: _now, refreshedAt: _now, refreshedBy: 'refresh', today: const [PlanItem(id: 'followup:u9:2026-10-30', kind: 'followUp', title: 'Follow up with Ravi')]),
-      );
+      await _emit(tester, data, _plan(generatedAt: _now, today: const [PlanItem(id: 'followup:u9:2026-10-30', kind: 'followUp', title: 'Follow up with Ravi')]));
       expect(_statusText(tester), 'Updated');
-      expect(_lastUpdated(tester), 'Last updated: Fri 30 Oct, 10:00 AM (by refresh)');
+      expect(_lastUpdated(tester), 'Updated Fri 30 Oct, 10:00 AM');
       expect(find.text('Follow up with Ravi'), findsOneWidget, reason: 'the new plan is on screen');
       expect(find.text('Meet Harsh'), findsNothing);
       final lit = tester.widget<AnimatedContainer>(find.byKey(const ValueKey('plan-status')));
@@ -240,85 +250,140 @@ void main() {
       expect(_statusText(tester), 'Up to date');
     });
 
-    testWidgets('a FREE update (a tick, a new item) shows at once on an open page; "Last updated" stays', (tester) async {
-      final at = DateTime.utc(2026, 10, 30, 0, 30);
-      final data = await _open(tester, doc: _plan(refreshedAt: at, refreshedBy: 'daily'));
-      await _emit(tester, data, _plan(generatedAt: _now, refreshedAt: at, refreshedBy: 'daily', today: const [PlanItem(id: 'doubts::x', kind: 'doubtsToAnswer', title: '1 doubt waiting for your answer')]));
-      expect(find.text('1 doubt waiting for your answer'), findsOneWidget);
-      expect(_lastUpdated(tester), 'Last updated: Fri 30 Oct, 6:00 AM (daily update)');
-    });
-
     testWidgets('a plan that is the same as before does not flash "Updated" on first show', (tester) async {
       await _open(tester);
       expect(_statusText(tester), 'Up to date');
     });
   });
 
-  group('THE PENDING-CHANGES BADGE on the Refresh button', () {
+  group('THE NEW-CHANGES BADGE: what the admin has not SEEN yet (since he last left the Plan page)', () {
+    // the changes as the server records them (the newest is the LAST in [texts]); [at] is the minute of the first
+    PendingChanges changes(List<String> texts, {List<String> uids = const [], List<String> types = const [], int minute = 0}) => PendingChanges([
+          for (var i = 0; i < texts.length; i++)
+            PendingChange(type: i < types.length ? types[i] : 'interaction', text: texts[i], studentUid: i < uids.length ? uids[i] : '', at: DateTime(2026, 10, 30, 10, minute + i)),
+        ]);
     Future<void> emitPending(WidgetTester tester, _FakePlanData data, PendingChanges p) async {
       data.pendingC.add(p);
       await tester.pump();
       await tester.pump();
     }
 
-    String badge(WidgetTester tester) => tester.widget<Text>(find.descendant(of: find.byKey(const ValueKey('plan-refresh-badge')), matching: find.byType(Text))).data!;
+    Future<_FakePlanData> openSeen(WidgetTester tester, DateTime? seen, {double scale = 1.0, bool dark = false, PlanDoc? doc}) async {
+      phone(tester, scale);
+      AdminProfileProvider.instance.debugSet(_me());
+      final data = _FakePlanData()..seen = seen;
+      PlanData.instance = data;
+      await tester.pumpWidget(guideHost(const PlanPage(), dark: dark));
+      await _emit(tester, data, doc ?? _plan());
+      return data;
+    }
 
-    testWidgets('no pending changes: "✓ Up to date" and no badge', (tester) async {
-      final data = await _open(tester);
+    String badge(WidgetTester tester) => tester.widget<Text>(find.descendant(of: find.byKey(const ValueKey('plan-refresh-badge')), matching: find.byType(Text))).data!;
+    final seenAt = DateTime(2026, 10, 30, 9, 59);
+
+    testWidgets('nothing new: "✓ Nothing new" and no badge', (tester) async {
+      final data = await openSeen(tester, seenAt);
       await emitPending(tester, data, PendingChanges.none);
       expect(find.byKey(const ValueKey('plan-pending-ok')), findsOneWidget);
-      expect(find.text('✓ Up to date'), findsOneWidget);
+      expect(find.text('✓ Nothing new'), findsOneWidget);
       expect(find.byKey(const ValueKey('plan-refresh-badge')), findsNothing);
-      expect(find.byKey(const ValueKey('plan-pending-line')), findsNothing);
     });
 
-    testWidgets('the badge shows the count; the line says so; a tap lists them newest first', (tester) async {
-      final data = await _open(tester);
-      await emitPending(tester, data, pendingOf(['interaction with Amit', 'interaction with Ravi']));
-      expect(badge(tester), '2');
-      expect(find.byKey(const ValueKey('plan-pending-ok')), findsNothing);
-      expect(find.text('2 changes the AI has not looked at yet — tap to see'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('plan-refresh-badge')));
-      await tester.pumpAndSettle();
-      expect(tester.widget<Text>(find.byKey(const ValueKey('pending-summary'))).data, '2 changes: interaction with Ravi; interaction with Amit');
-      expect(find.text('2 changes since the last refresh'), findsOneWidget);
-      expect(find.text('• interaction with Ravi'), findsOneWidget);
-      expect(find.text('• interaction with Amit'), findsOneWidget);
-      await tester.tap(find.text('Close'));
-      await tester.pumpAndSettle();
-      // the line opens the same list; one change reads in the singular
-      await emitPending(tester, data, pendingOf(['doubt from Amit Shah']));
-      expect(find.text('1 change the AI has not looked at yet — tap to see'), findsOneWidget);
+    testWidgets('the badge counts only the changes NEWER than the last time he left the page; the older ones are seen', (tester) async {
+      final data = await openSeen(tester, DateTime(2026, 10, 30, 10, 1)); // left at 10:01
+      await emitPending(tester, data, changes(['Interaction recorded: Old', 'New doubt: Testing', 'Book finished: Ayush'])); // 10:00, 10:01, 10:02
+      expect(badge(tester), '1', reason: 'only 10:02 is newer than 10:01');
+      expect(find.text('new — tap to see'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('plan-pending-line')));
       await tester.pumpAndSettle();
-      expect(tester.widget<Text>(find.byKey(const ValueKey('pending-summary'))).data, '1 change: doubt from Amit Shah');
+      expect(find.text('1 new'), findsOneWidget);
+      expect(find.text('• Book finished: Ayush'), findsOneWidget);
+      expect(find.text('• New doubt: Testing'), findsNothing);
     });
 
-    testWidgets('it counts live, also during the 2-minute wait after a refresh; the refresh clears it', (tester) async {
-      HierarchyApi.useForTests((name, data) async => {'ok': true});
-      final data = await _open(tester);
-      await emitPending(tester, data, pendingOf(['interaction with Ravi']));
+    testWidgets('a tap on the badge lists them newest first: "New doubt: Testing", "Book finished: Ayush", "New task: Surrender check — Ravi"', (tester) async {
+      final data = await openSeen(tester, seenAt);
+      await emitPending(tester, data, changes(['New doubt: Testing', 'Book finished: Ayush', 'New task: Surrender check — Ravi']));
+      expect(badge(tester), '3');
+      await tester.tap(find.byKey(const ValueKey('plan-refresh-badge')));
+      await tester.pumpAndSettle();
+      expect(find.text('3 new'), findsOneWidget);
+      final y = [for (final x in ['New task: Surrender check — Ravi', 'Book finished: Ayush', 'New doubt: Testing']) tester.getTopLeft(find.text('• $x')).dy];
+      expect(y, [...y]..sort(), reason: 'newest first');
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('the rows they concern carry a small "New" tag: Today and This week (a student; a target task); the others do not', (tester) async {
+      final data = await openSeen(tester, seenAt, doc: _batchPlan());
+      await emitPending(tester, data, changes(['New doubt: Amit'], uids: ['u2'], types: ['doubt']));
+      // Today: Amit's task
+      final amitId = _batchPlan().todayItems.firstWhere((i) => i.studentUid == 'u2').id;
+      final raviId = _batchPlan().todayItems.firstWhere((i) => i.studentUid == 'u1').id;
+      expect(find.byKey(ValueKey('plan-new-$amitId')), findsOneWidget);
+      expect(find.byKey(ValueKey('plan-new-$raviId')), findsNothing);
+      expect(find.text('New'), findsOneWidget);
+      // This week
+      await _emit(tester, data, _plan());
+      await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('plan-week-new-u2')), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-week-new-u1')), findsNothing);
+      // a new target: the target tasks
+      await emitPending(tester, data, changes(['Chanting target changed'], types: ['target']));
+      expect(find.byKey(const ValueKey('plan-week-task-new-tt1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-week-new-u2')), findsNothing, reason: 'no student change now');
+    });
+
+    testWidgets('SEEN = he LEFT the page: leaving reports it (the cursor moves to now); until then the tags stay', (tester) async {
+      final data = await openSeen(tester, seenAt);
+      await emitPending(tester, data, changes(['New doubt: Testing']));
       expect(badge(tester), '1');
-      await tester.tap(find.byKey(const ValueKey('plan-refresh')));
-      await tester.pump();
-      await tester.pump();
-      expect(find.byKey(const ValueKey('plan-refresh-wait')), findsOneWidget, reason: 'the 2-minute wait is running');
-      // the server cleared the list when the AI considered it ...
-      await emitPending(tester, data, PendingChanges.none);
-      expect(find.text('✓ Up to date'), findsOneWidget);
-      expect(find.byKey(const ValueKey('plan-refresh-badge')), findsNothing);
-      // ... and a new change during the wait shows at once, the button still waiting
-      await emitPending(tester, data, pendingOf(['book change: Ravi Kumar, Gita']));
-      expect(badge(tester), '1');
-      expect(find.byKey(const ValueKey('plan-refresh-wait')), findsOneWidget);
+      expect(data.marked, isEmpty, reason: 'opening is not leaving');
       await tester.pumpWidget(const SizedBox());
+      expect(data.marked, ['G'], reason: 'leaving the page marks it seen');
     });
 
-    testWidgets('a long list still fits: 120 changes read as 99+; no overflow in light, dark or large text', (tester) async {
+    testWidgets('THE NEXT VISIT: with the cursor at the time he left there are no tags and no badge; a change after that is a FRESH count', (tester) async {
+      // visit 1: two new changes; he leaves at 10:30
+      var data = await openSeen(tester, seenAt, doc: _batchPlan());
+      await emitPending(tester, data, changes(['New doubt: Amit', 'Book finished: Ravi'], uids: ['u2', 'u1'], minute: 5));
+      expect(badge(tester), '2');
+      await tester.pumpWidget(const SizedBox());
+      final left = DateTime(2026, 10, 30, 10, 30);
+      // visit 2: the same records, the cursor now 10:30: nothing is new
+      data = await openSeen(tester, left, doc: _batchPlan());
+      await emitPending(tester, data, changes(['New doubt: Amit', 'Book finished: Ravi'], uids: ['u2', 'u1'], minute: 5));
+      expect(find.byKey(const ValueKey('plan-refresh-badge')), findsNothing, reason: 'the badge is cleared');
+      expect(find.text('✓ Nothing new'), findsOneWidget);
+      expect(find.text('New'), findsNothing, reason: 'the New tags are gone');
+      // a new change after that: a fresh count of one
+      await emitPending(tester, data, PendingChanges([
+        ...changes(['New doubt: Amit', 'Book finished: Ravi'], uids: ['u2', 'u1'], minute: 5).items,
+        PendingChange(type: 'surrender', text: 'Surrender crossed 40%: Ravi', studentUid: 'u1', at: DateTime(2026, 10, 30, 10, 40)),
+      ]));
+      expect(badge(tester), '1');
+      await tester.tap(find.byKey(const ValueKey('plan-refresh-badge')));
+      await tester.pumpAndSettle();
+      expect(find.text('• Surrender crossed 40%: Ravi'), findsOneWidget);
+      expect(find.text('• New doubt: Amit'), findsNothing);
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('it counts live while the page is open: a change that arrives now is new at once', (tester) async {
+      final data = await openSeen(tester, seenAt);
+      await emitPending(tester, data, PendingChanges.none);
+      expect(find.byKey(const ValueKey('plan-refresh-badge')), findsNothing);
+      await emitPending(tester, data, changes(['New worry: Ravi Kumar'], minute: 20));
+      expect(badge(tester), '1');
+    });
+
+    testWidgets('a long list still fits: 120 new changes read as 99+; no overflow in light, dark or large text', (tester) async {
       for (final dark in [false, true]) {
         for (final scale in kScales) {
-          final data = await _open(tester, scale: scale, dark: dark);
-          await emitPending(tester, data, pendingOf([for (var i = 0; i < 120; i++) 'interaction with Student $i']));
+          final data = await openSeen(tester, seenAt, scale: scale, dark: dark);
+          await emitPending(tester, data, PendingChanges([for (var i = 0; i < 120; i++) PendingChange(type: 'interaction', text: 'Interaction recorded: Student $i', at: DateTime(2026, 10, 30, 11, i % 60))]));
           expect(badge(tester), '99+');
           await tester.tap(find.byKey(const ValueKey('plan-refresh-badge')));
           await tester.pumpAndSettle();
@@ -330,15 +395,21 @@ void main() {
       }
     });
 
-    test('PendingChanges: the newest first, the summary line, empty records ignored', () {
-      final p = PendingChanges.fromDocs([
+    test('NewChanges: only the records newer than the cursor (the last 24 hours when he has never left), the newest first; empty records ignored', () {
+      final all = PendingChanges.fromDocs([
         {'type': 'interaction', 'text': 'older', 'at': Timestamp.fromDate(DateTime(2026, 10, 30, 9))},
-        {'type': 'doubt', 'text': 'newer', 'at': Timestamp.fromDate(DateTime(2026, 10, 30, 11))},
+        {'type': 'doubt', 'text': 'newer', 'studentUid': 'u1', 'at': Timestamp.fromDate(DateTime(2026, 10, 30, 11))},
         {'type': 'x', 'text': ''},
+        {'type': 'book', 'text': 'ancient', 'at': Timestamp.fromDate(DateTime(2026, 10, 20, 9))},
       ]);
-      expect(p.count, 2);
-      expect(p.summary, '2 changes: newer; older');
-      expect(PendingChanges.none.summary, '');
+      expect(all.count, 3);
+      final seen = NewChanges.of(all, DateTime(2026, 10, 30, 10), DateTime(2026, 10, 30, 12));
+      expect(seen.items.map((c) => c.text), ['newer']);
+      expect(seen.isNewFor(studentUid: 'u1'), isTrue);
+      expect(seen.isNewFor(studentUid: 'u2'), isFalse);
+      expect(seen.isNewFor(isTarget: true), isFalse);
+      final never = NewChanges.of(all, null, DateTime(2026, 10, 30, 12));
+      expect(never.items.map((c) => c.text), ['newer', 'older'], reason: 'the last 24 hours');
     });
   });
 
@@ -396,108 +467,6 @@ void main() {
       }
     });
 
-    testWidgets('"Last updated" says when the AI wrote it: "(first open today)"', (tester) async {
-      final plan = _plan(refreshedAt: DateTime.utc(2026, 10, 30, 3, 30), refreshedBy: 'open');
-      expect(planLastUpdated(plan), 'Last updated: Fri 30 Oct, 9:00 AM (first open today)');
-    });
-  });
-
-  group('the REFRESH button', () {
-    Future<List<Map<String, dynamic>>> calls(WidgetTester tester, {Future<Map<String, dynamic>> Function(String, Map<String, dynamic>)? answer}) async {
-      final sent = <Map<String, dynamic>>[];
-      HierarchyApi.useForTests((name, data) async {
-        sent.add({'name': name, ...data});
-        return answer != null ? answer(name, data) : {'ok': true};
-      });
-      return sent;
-    }
-
-    testWidgets('a tap asks the server to refresh THIS guide\'s plan; "Refreshing…" shows while it works; then the 2-minute wait counts down', (tester) async {
-      final done = Completer<Map<String, dynamic>>();
-      final sent = await calls(tester, answer: (_, __) => done.future);
-      await _open(tester);
-      await tester.tap(find.byKey(const ValueKey('plan-refresh')));
-      await tester.pump();
-      expect(sent, [
-        {'name': 'refreshPlan'}
-      ], reason: 'no "all": only his own plan');
-      expect(find.text('Refreshing…'), findsWidgets);
-      expect(_statusText(tester), 'Refreshing…');
-      await tester.tap(find.byKey(const ValueKey('plan-refresh')));
-      await tester.pump();
-      expect(sent.length, 1, reason: 'a second tap while it works does nothing');
-      done.complete({'ok': true, 'refreshed': 1});
-      await tester.pump();
-      await tester.pump();
-      expect(find.byKey(const ValueKey('plan-refresh-wait')), findsOneWidget);
-      expect(tester.widget<Text>(find.byKey(const ValueKey('plan-refresh-wait'))).data, 'You can refresh again in 120 sec');
-      await tester.pump(const Duration(seconds: 1));
-      expect(tester.widget<Text>(find.byKey(const ValueKey('plan-refresh-wait'))).data, 'You can refresh again in 119 sec');
-      await tester.tap(find.byKey(const ValueKey('plan-refresh')));
-      await tester.pump();
-      expect(sent.length, 1, reason: 'held back for 2 minutes');
-      await tester.pump(const Duration(seconds: 119));
-      expect(find.byKey(const ValueKey('plan-refresh-wait')), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('plan-refresh')));
-      await tester.pump();
-      expect(sent.length, 2, reason: 'after the wait it works again');
-      await tester.pumpWidget(const SizedBox());
-    });
-
-    testWidgets('the server says how long is left when the guide is early (another phone, a second tap): "You can refresh again in N sec"', (tester) async {
-      await calls(tester, answer: (_, __) async => {'ok': false, 'retryInSec': 75});
-      await _open(tester);
-      await tester.tap(find.byKey(const ValueKey('plan-refresh')));
-      await tester.pump();
-      await tester.pump();
-      expect(tester.widget<Text>(find.byKey(const ValueKey('plan-refresh-wait'))).data, 'You can refresh again in 75 sec');
-      await tester.pumpWidget(const SizedBox());
-    });
-
-    testWidgets('BUDGET USED UP: the server\'s clear message is shown, and the guide can try again (nothing was used)', (tester) async {
-      const message = "This month's AI budget is used up, so the plan can't be refreshed with the AI until next month (a HOD can raise the budget). It still updates by itself when you finish a task or something new comes up.";
-      await calls(tester, answer: (_, __) async => throw HierarchyException('resource-exhausted', message));
-      await _open(tester);
-      await tester.tap(find.byKey(const ValueKey('plan-refresh')));
-      await tester.pump();
-      await tester.pump();
-      expect(find.text(message), findsOneWidget);
-      expect(find.byKey(const ValueKey('plan-refresh-wait')), findsNothing, reason: 'no wait: nothing ran');
-      expect(find.text('Refresh'), findsOneWidget);
-    });
-
-    testWidgets('any other failure says so kindly', (tester) async {
-      await calls(tester, answer: (_, __) async => throw Exception('boom'));
-      await _open(tester);
-      await tester.tap(find.byKey(const ValueKey('plan-refresh')));
-      await tester.pump();
-      await tester.pump();
-      expect(find.text('Could not refresh the plan. Please try again.'), findsOneWidget);
-      expect(find.textContaining('boom'), findsNothing);
-    });
-
-    testWidgets('a guide has no "Refresh all guides"; a HOD has, and it sends all: true, with its own wait', (tester) async {
-      final sent = await calls(tester);
-      await _open(tester);
-      expect(find.byKey(const ValueKey('plan-refresh-all')), findsNothing);
-      await tester.pumpWidget(const SizedBox());
-      await _open(tester, role: 'HOD');
-      expect(find.byKey(const ValueKey('plan-refresh-all')), findsOneWidget);
-      expect(find.text('Refresh all guides'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('plan-refresh-all')));
-      await tester.pump();
-      await tester.pump();
-      expect(sent, [
-        {'name': 'refreshPlan', 'all': true}
-      ]);
-      expect(tester.widget<Text>(find.byKey(const ValueKey('plan-refresh-wait'))).data, 'You can refresh all guides again in 120 sec');
-      // his own refresh has its own clock
-      await tester.tap(find.byKey(const ValueKey('plan-refresh')));
-      await tester.pump();
-      expect(sent.length, 2);
-      expect(sent.last, {'name': 'refreshPlan'});
-      await tester.pumpWidget(const SizedBox());
-    });
   });
 
   group('every state: light and dark, text scale 1.0 / 1.3 / 1.6', () {
@@ -511,10 +480,10 @@ void main() {
               await tester.pumpAndSettle();
             }
             expect(tester.takeException(), isNull);
-            for (final k in ['plan-tab-today', 'plan-tab-week', 'plan-refresh', 'plan-refresh-all']) {
+            for (final k in ['plan-tab-today', 'plan-tab-week']) {
               expect(tester.getSize(find.byKey(ValueKey(k))).height, greaterThanOrEqualTo(48), reason: k);
             }
-            for (final status in [_plan(status: 'updating'), _plan(), _plan(refreshedAt: _now, refreshedBy: 'weekly'), _batchPlan()]) {
+            for (final status in [_plan(status: 'updating'), _plan(), _plan(generatedAt: _now), _batchPlan()]) {
               await _emit(tester, data, status);
               expect(tester.takeException(), isNull);
             }
@@ -527,7 +496,7 @@ void main() {
 
     testWidgets('screenshots: Today and This week (for looking at)', (tester) async {
       for (final dark in [false, true]) {
-        await _open(tester, dark: dark, doc: _plan(refreshedAt: DateTime.utc(2026, 10, 30, 0, 30), refreshedBy: 'daily'));
+        await _open(tester, dark: dark, doc: _plan(generatedAt: DateTime.utc(2026, 10, 30, 0, 30)));
         await shot(tester, 'plan_today_${dark ? 'dark' : 'light'}');
         await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
         await tester.pumpAndSettle();

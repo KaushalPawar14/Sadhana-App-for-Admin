@@ -23,7 +23,20 @@ SurrenderInfo info({bool long = false, String? cap}) => SurrenderInfo(
       name: 'Arjun Kumar',
       parts: [
         SurrenderPart(key: 'commitment', label: 'Commitment', weight: 10, score: 0.6, points: 6, reason: long ? 'Committed to 12 rounds and 30 min of reading a day. ' * 6 : 'Committed to 12 rounds and 30 min of reading a day.'),
-        SurrenderPart(key: 'sadhana', label: 'Sadhana actually done', weight: 40, score: 0.5, points: 20, reason: long ? 'Last 30 days: rounds 70% of 16, reading 20 minutes on average, early rising 12 of 30 days. ' * 6 : 'Last 30 days: rounds 70% of 16.'),
+        SurrenderPart(
+          key: 'sadhana',
+          label: 'Sadhana actually done',
+          weight: 40,
+          score: 0.775,
+          points: 31,
+          reason: long ? 'Last 30 days: rounds 70% of 16, reading 20 minutes on average, early rising 12 of 30 days. ' * 6 : 'From the daily report forms, the last 30 days: 31 of 40.',
+          sub: const [
+            SurrenderPart(key: 'sadhana_regularity', label: 'Reporting regularity', weight: 10, score: 0.1, points: 1, reason: 'Reported 3 of 30 days → 1 of 10'),
+            SurrenderPart(key: 'sadhana_chanting', label: 'Chanting', weight: 10, score: 1, points: 10, reason: 'Averaging 16 of 16 rounds on the days reported → 10 of 10'),
+            SurrenderPart(key: 'sadhana_reading', label: 'Reading', weight: 10, score: 1, points: 10, reason: 'Averaging 60 of 60 min of reading on the days reported → 10 of 10'),
+            SurrenderPart(key: 'sadhana_timings', label: 'Timings', weight: 10, score: 1, points: 10, reason: 'Timings on the days reported: 100% of the best (wake-up, sleep, japa finish) → 10 of 10'),
+          ],
+        ),
         SurrenderPart(key: 'association', label: 'Association with his guide', weight: 20, score: 0.8, points: 16, reason: '2 interactions in the last 30 days.'),
         SurrenderPart(key: 'attitude', label: 'Attitude and willingness', weight: 10, score: 0, points: 0, missing: true, reason: 'No attitude observed yet → 0 of 10'),
         SurrenderPart(key: 'lit', label: 'LIT', weight: 20, score: 0, points: 0, missing: true, reason: 'No LIT yet → 0 of 20'),
@@ -72,6 +85,14 @@ void main() {
             // the dialog's card is opaque (fully faded in) and its parts can be reached by scrolling
             final first = find.byKey(const ValueKey('surrender-part-commitment'));
             expect(first, findsOneWidget);
+            // THE SADHANA PART: its four equal pieces, each with its points and reason
+            for (final k in ['regularity', 'chanting', 'reading', 'timings']) {
+              expect(find.byKey(ValueKey('surrender-sub-sadhana_$k')), findsOneWidget, reason: k);
+            }
+            expect(find.byKey(const ValueKey('surrender-points-sadhana_regularity')), findsOneWidget);
+            expect(tester.widget<Text>(find.byKey(const ValueKey('surrender-points-sadhana_regularity'))).data, '1 of 10');
+            expect(find.text('Reported 3 of 30 days → 1 of 10'), findsOneWidget);
+            expect(tester.widget<Text>(find.byKey(const ValueKey('surrender-points-sadhana'))).data, '31 of 40');
             final opacity = tester.widgetList<FadeTransition>(find.ancestor(of: title, matching: find.byType(FadeTransition))).map((f) => f.opacity.value);
             expect(opacity.every((o) => o == 1.0), isTrue, reason: 'faded in all the way: $opacity');
             await tester.scrollUntilVisible(find.text('Close'), 200, scrollable: find.byType(Scrollable).last);
