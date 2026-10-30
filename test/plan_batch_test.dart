@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/Pages/PlanPage.dart';
 import 'package:folk_guide_app/Services/HierarchyApi.dart';
+import 'package:folk_guide_app/theme/AgentLook.dart' show contrastRatio;
+import 'package:folk_guide_app/theme/GuideColors.dart';
 import 'package:folk_guide_app/utils/AdminProfile.dart';
 import 'package:folk_guide_app/utils/PlanData.dart';
 import 'package:folk_guide_app/utils/SeenMarkers.dart';
@@ -189,6 +191,52 @@ void main() {
     await _open(tester, doc: _plan(batch: const PlanBatch(size: 12, round: 1, members: 12, carried: 0, nextReady: false, done: 0, left: 12)));
     expect(tester.widget<IconButton>(find.byKey(const ValueKey('plan-size-more'))).onPressed, isNull);
   });
+
+  testWidgets('STEPPER: a new plan from the server with the new number replaces the guide\'s choice at once (Today follows the batch size)', (tester) async {
+    HierarchyApi.useForTests((name, data) async => {'ok': true});
+    final data = await _open(tester);
+    await tester.tap(find.byKey(const ValueKey('plan-size-more')));
+    await tester.pump();
+    expect(tester.widget<Text>(find.byKey(const ValueKey('plan-size'))).data, '5', reason: 'shown at once');
+    data.controller.add(_plan(batch: const PlanBatch(size: 5, round: 1, members: 5, carried: 0, nextReady: false, done: 0, left: 5)));
+    await tester.pump();
+    await tester.pump();
+    expect(tester.widget<Text>(find.byKey(const ValueKey('plan-size'))).data, '5', reason: "and the server's own number says the same");
+    expect(find.byKey(const ValueKey('plan-batch-counts')), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(const ValueKey('plan-batch-counts'))).data, 'done 0 · left 5');
+  });
+
+  for (final dark in [false, true]) {
+    testWidgets('STEPPER COLOURS (${dark ? 'dark' : 'light'}): the minus, the plus and the number are legible (4.5:1) and match the theme; enabled and disabled look different', (tester) async {
+      await _open(tester, dark: dark);
+      final g = dark ? GuideColors.dark : GuideColors.light;
+      const enabled = <WidgetState>{};
+      const disabled = {WidgetState.disabled};
+      for (final k in ['plan-size-less', 'plan-size-more']) {
+        final b = tester.widget<IconButton>(find.byKey(ValueKey(k)));
+        expect(b.onPressed, isNotNull, reason: '$k enabled at 4');
+        final on = b.style!.foregroundColor!.resolve(enabled)!;
+        final onFill = b.style!.backgroundColor!.resolve(enabled)!;
+        final onRing = (b.style!.shape!.resolve(enabled)! as CircleBorder).side.color;
+        expect(on, g.text, reason: 'the page\'s own text colour');
+        expect(contrastRatio(on, onFill), greaterThanOrEqualTo(4.5), reason: '$k enabled icon on its fill');
+        expect(contrastRatio(onRing, g.surface), greaterThanOrEqualTo(4.5), reason: '$k ring against the card');
+        final off = b.style!.foregroundColor!.resolve(disabled)!;
+        expect(contrastRatio(off, g.surface), greaterThanOrEqualTo(4.5), reason: '$k disabled icon (muted text) on the card');
+        expect(b.style!.backgroundColor!.resolve(disabled), isNot(onFill), reason: 'enabled is filled, disabled is empty');
+        expect(off, isNot(on));
+      }
+      expect(tester.getSize(find.byKey(const ValueKey('plan-size-less'))).height, greaterThanOrEqualTo(48));
+      final number = tester.widget<Text>(find.byKey(const ValueKey('plan-size')));
+      expect(number.style!.color, g.text);
+      expect(contrastRatio(number.style!.color!, g.surface), greaterThanOrEqualTo(4.5));
+      // the real disabled state (the limit) is drawn from the same colours
+      await _open(tester, dark: dark, doc: _plan(batch: const PlanBatch(size: 1, round: 1, members: 1, carried: 0, nextReady: false, done: 0, left: 1)));
+      final less = tester.widget<IconButton>(find.byKey(const ValueKey('plan-size-less')));
+      expect(less.onPressed, isNull);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('a failed save puts the old number back and says why', (tester) async {
     HierarchyApi.useForTests((name, data) async => throw HierarchyException('invalid-argument', 'Choose a number from 1 to 12.'));

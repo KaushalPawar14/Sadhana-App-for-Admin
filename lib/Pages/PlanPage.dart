@@ -88,7 +88,13 @@ class _PlanPageState extends State<PlanPage> {
   int? _sizeChosen;
   bool _savingSize = false;
 
-  late bool _week = widget.initialWeek;
+  /// 0 Today, 1 This week, 2 Missing reports.
+  late int _tab = widget.initialWeek ? 1 : 0;
+  bool get _week => _tab == 1;
+
+  /// Students the guide just ignored (they leave the tab at once, before the server's new plan arrives).
+  final Set<String> _ignoredNow = {};
+  final Set<String> _ignoring = {};
   PlanDoc? _plan;
   bool _loaded = false;
   bool _failed = false;
@@ -218,14 +224,14 @@ class _PlanPageState extends State<PlanPage> {
     return GuideScaffold(
       appBar: GuideAppBar(
         title: const Text('Plan'),
-        bottom: _PlanToggle(week: _week, onChanged: (w) => setState(() => _week = w)),
+        bottom: _PlanToggle(tab: _tab, missing: _plan?.missingReports.where((m) => !_ignoredNow.contains(m.studentUid)).length, onChanged: (t) => setState(() => _tab = t)),
       ),
       body: GuideCrossFade(
         child: !_loaded && !_failed
             ? const KeyedSubtree(key: ValueKey('plan-wait'), child: Center(child: CircularProgressIndicator()))
             : _failed
                 ? KeyedSubtree(key: const ValueKey('plan-failed'), child: Center(child: Text('Could not load your plan.', style: context.gText.small.copyWith(color: g.mutedText))))
-                : KeyedSubtree(key: ValueKey(_week ? 'week' : 'today'), child: _body(context)),
+                : KeyedSubtree(key: ValueKey(_tab == 2 ? 'missing' : _week ? 'week' : 'today'), child: _body(context)),
       ),
     );
   }
@@ -256,7 +262,7 @@ class _PlanPageState extends State<PlanPage> {
           else ...[
             _statusCard(context, plan),
             const SizedBox(height: 12),
-            if (_week) ..._weekBody(context, plan) else ..._todayBody(context, plan),
+            if (_tab == 2) ..._missingBody(context, plan) else if (_week) ..._weekBody(context, plan) else ..._todayBody(context, plan),
           ],
         ],
       ),
@@ -509,15 +515,117 @@ class _PlanPageState extends State<PlanPage> {
             Row(
               children: [
                 Expanded(child: Text('Students a day', style: t.small)),
-                IconButton(key: const ValueKey('plan-size-less'), tooltip: 'Fewer students a day', icon: const Icon(Icons.remove_circle_outline), onPressed: size > 1 && !_savingSize ? () => _setSize(size - 1) : null),
-                SizedBox(width: 28, child: Text('$size', key: const ValueKey('plan-size'), textAlign: TextAlign.center, style: t.bodyStrong)),
-                IconButton(key: const ValueKey('plan-size-more'), tooltip: 'More students a day', icon: const Icon(Icons.add_circle_outline), onPressed: size < 12 && !_savingSize ? () => _setSize(size + 1) : null),
+                _stepButton(context, key: const ValueKey('plan-size-less'), tooltip: 'Fewer students a day', icon: Icons.remove, onPressed: size > 1 && !_savingSize ? () => _setSize(size - 1) : null),
+                SizedBox(width: 36, child: Text('$size', key: const ValueKey('plan-size'), textAlign: TextAlign.center, style: t.cardTitleSmall.copyWith(color: g.text))),
+                _stepButton(context, key: const ValueKey('plan-size-more'), tooltip: 'More students a day', icon: Icons.add, onPressed: size < 12 && !_savingSize ? () => _setSize(size + 1) : null),
               ],
             ),
           ],
         ),
       ),
     );
+  }
+
+  /// One side of the "Students a day" stepper. Its colours are the theme's own and always legible, light or dark (text on the chip fill, at least
+  /// 4.5:1): ENABLED is a filled chip with a strong ring and the page's text colour; DISABLED is an empty ring with the muted text colour.
+  Widget _stepButton(BuildContext context, {required Key key, required String tooltip, required IconData icon, required VoidCallback? onPressed}) {
+    final g = context.g;
+    bool off(Set<WidgetState> s) => s.contains(WidgetState.disabled);
+    return IconButton(
+      key: key,
+      tooltip: tooltip,
+      icon: Icon(icon, size: 22),
+      onPressed: onPressed,
+      style: ButtonStyle(
+        minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+        fixedSize: const WidgetStatePropertyAll(Size(48, 48)),
+        padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+        shape: WidgetStateProperty.resolveWith((s) => CircleBorder(side: BorderSide(color: off(s) ? g.border : g.text, width: off(s) ? 1 : 1.5))),
+        backgroundColor: WidgetStateProperty.resolveWith((s) => off(s) ? Colors.transparent : g.chipBackground),
+        foregroundColor: WidgetStateProperty.resolveWith((s) => off(s) ? g.mutedText : g.text),
+      ),
+    );
+  }
+
+  /// MISSING REPORTS: every student with no report for 5 or more days (or never). A note, then one card per student with ONE button: Ignore.
+  List<Widget> _missingBody(BuildContext context, PlanDoc plan) {
+    final t = context.gText;
+    final list = plan.missingReports.where((m) => !_ignoredNow.contains(m.studentUid)).toList();
+    return [
+      Text('You can ask him the reason — tell the AI what he said. Otherwise, ignore.', key: const ValueKey('plan-missing-note'), style: t.bodyStrong.copyWith(height: 1.35)),
+      const SizedBox(height: 4),
+      Text('Students with no daily report for 5 days or more, or who have never reported.', style: t.small.copyWith(height: 1.35)),
+      const SizedBox(height: 8),
+      if (list.isEmpty)
+        GuideCard(
+          padding: const EdgeInsets.all(16),
+          child: Text('Nobody is missing their daily report.', key: const ValueKey('plan-missing-empty'), style: t.small),
+        )
+      else
+        for (final m in list) _missingCard(context, m),
+    ];
+  }
+
+  Widget _missingCard(BuildContext context, MissingReport m) {
+    final g = context.g;
+    final t = context.gText;
+    final busy = _ignoring.contains(m.studentUid);
+    return Padding(
+      key: ValueKey('plan-missing-${m.studentUid}'),
+      padding: const EdgeInsets.only(top: 8),
+      child: GuideCard(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              key: ValueKey('plan-missing-open-${m.studentUid}'),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => StudentProfilePage(studentUid: m.studentUid))),
+              child: Text(m.studentName, style: t.cardTitleSmall),
+            ),
+            const SizedBox(height: 2),
+            Text(m.label, key: ValueKey('plan-missing-label-${m.studentUid}'), style: t.small.copyWith(color: g.agent, fontWeight: FontWeight.w600)),
+            if (m.reason.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text('Reason: ${m.reason}', key: ValueKey('plan-missing-reason-${m.studentUid}'), style: t.small.copyWith(height: 1.35)),
+            ],
+            const SizedBox(height: 8),
+            GuideSecondaryButton(key: ValueKey('plan-ignore-${m.studentUid}'), label: 'Ignore', expand: false, onPressed: busy ? null : () => _ignore(m)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// IGNORE, after a confirmation: he never appears in Missing reports again (the AI can undo it); his attitude part counts 0 while ignored.
+  Future<void> _ignore(MissingReport m) async {
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => GuideDialog(
+        title: Text('Ignore ${m.studentName}\'s daily reports?', key: const ValueKey('plan-ignore-title')),
+        content: Text(
+          '${m.studentName} will not appear in Missing reports again. While ignored, the attitude and willingness part of his Surrender % counts 0 (up to −10%). '
+          'He still appears for targets, worries, doubts and Surrender steps. You can tell the AI to stop ignoring him.',
+          style: dialogContext.gText.small.copyWith(height: 1.4),
+        ),
+        actions: [
+          TextButton(key: const ValueKey('plan-ignore-cancel'), onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          TextButton(key: const ValueKey('plan-ignore-confirm'), onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Ignore')),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+    setState(() => _ignoring.add(m.studentUid));
+    try {
+      final message = await HierarchyApi.instance.studentGuideNote(studentUid: m.studentUid, kind: 'report_ignore');
+      if (mounted) {
+        setState(() => _ignoredNow.add(m.studentUid));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is HierarchyException ? e.message : 'Could not ignore him. Please try again.')));
+    }
+    if (mounted) setState(() => _ignoring.remove(m.studentUid));
   }
 
   Future<void> _setSize(int n) async {
@@ -661,7 +769,7 @@ class _PlanPageState extends State<PlanPage> {
       if (c.isCard && c.studentUid == it.studentUid) card = c;
     }
     if (card != null) {
-      setState(() => _week = false);
+      setState(() => _tab = 0);
       void go({bool retry = true}) {
         final ctx = _cardKeys[it.studentUid]?.currentContext;
         if (ctx == null) {
@@ -852,12 +960,16 @@ Future<void> showPendingChanges(BuildContext context, PendingChanges pending) =>
       },
     );
 
-/// TODAY | THIS WEEK, a two-way toggle under the app bar: each side a 48 dp target, the chosen one in the assistant's sky blue.
+/// TODAY · THIS WEEK · MISSING REPORTS, a three-way toggle under the app bar: each side a 48 dp target, the chosen one in the assistant's sky blue.
 class _PlanToggle extends StatelessWidget implements PreferredSizeWidget {
-  const _PlanToggle({required this.week, required this.onChanged});
+  const _PlanToggle({required this.tab, required this.onChanged, this.missing});
 
-  final bool week;
-  final ValueChanged<bool> onChanged;
+  /// 0 Today, 1 This week, 2 Missing reports.
+  final int tab;
+
+  /// How many students are in Missing reports (null until the plan is there).
+  final int? missing;
+  final ValueChanged<int> onChanged;
 
   @override
   Size get preferredSize => const Size.fromHeight(GuideShape.touchTarget + 12);
@@ -866,8 +978,8 @@ class _PlanToggle extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     final g = context.g;
     final t = context.gText;
-    Widget side(String label, bool isWeek, Key key) {
-      final on = week == isWeek;
+    Widget side(String label, int index, Key key) {
+      final on = tab == index;
       return Expanded(
         child: Semantics(
           button: true,
@@ -875,7 +987,7 @@ class _PlanToggle extends StatelessWidget implements PreferredSizeWidget {
           child: GestureDetector(
             key: key,
             behavior: HitTestBehavior.opaque,
-            onTap: () => onChanged(isWeek),
+            onTap: () => onChanged(index),
             child: Container(
               height: GuideShape.touchTarget,
               alignment: Alignment.center,
@@ -883,7 +995,10 @@ class _PlanToggle extends StatelessWidget implements PreferredSizeWidget {
                 color: on ? g.agentMid : Colors.transparent,
                 borderRadius: BorderRadius.circular(GuideShape.chipRadius),
               ),
-              child: Text(label, style: t.bodyStrong.copyWith(color: on ? g.onAgent : g.text, letterSpacing: .6)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(label, maxLines: 2, textAlign: TextAlign.center, style: t.bodyStrong.copyWith(fontSize: 12, height: 1.1, color: on ? g.onAgent : g.text, letterSpacing: .3)),
+              ),
             ),
           ),
         ),
@@ -894,7 +1009,11 @@ class _PlanToggle extends StatelessWidget implements PreferredSizeWidget {
       padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 4, GuideSpace.pagePadding, 8),
       child: Container(
         decoration: BoxDecoration(color: g.chipBackground, borderRadius: BorderRadius.circular(GuideShape.chipRadius + 2)),
-        child: Row(children: [side('TODAY', false, const ValueKey('plan-tab-today')), side('THIS WEEK', true, const ValueKey('plan-tab-week'))]),
+        child: Row(children: [
+          side('TODAY', 0, const ValueKey('plan-tab-today')),
+          side('THIS WEEK', 1, const ValueKey('plan-tab-week')),
+          side(missing == null ? 'MISSING REPORTS' : 'MISSING REPORTS ($missing)', 2, const ValueKey('plan-tab-missing')),
+        ]),
       ),
     );
   }

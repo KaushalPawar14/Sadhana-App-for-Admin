@@ -223,6 +223,28 @@ Future<AgentResult> interactionPlanRemove(Map<String, dynamic> a, AgentEnv env) 
   return _done('$message (${_s(s['name'])})');
 }
 
+/// WHY a student is not filling his daily report, as he told the guide: saved in his history and shown under his name in the Plan's Missing
+/// reports tab (the server does it: `studentGuideNote`, kind report_reason). A missing report is not an interaction.
+Future<AgentResult> studentReportReasonAdd(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _s(a['studentUid']);
+  final s = await env.student(uid);
+  final message = await HierarchyApi.instance.studentGuideNote(studentUid: uid, kind: 'report_reason', text: _s(a['reason']));
+  return _done('$message (${_s(s['name'])}: "${_s(a['reason'])}")');
+}
+
+/// Ignore a student's missing daily reports (he leaves Missing reports for good; his attitude part counts 0 while ignored), or stop ignoring him
+/// (`studentGuideNote`, kind report_ignore / report_unignore).
+Future<AgentResult> studentReportIgnoreSet(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _s(a['studentUid']);
+  final s = await env.student(uid);
+  final message = await HierarchyApi.instance.studentGuideNote(
+    studentUid: uid,
+    kind: a['ignore'] == false ? 'report_unignore' : 'report_ignore',
+    text: a['reason'] == null ? null : _s(a['reason']),
+  );
+  return _done('$message (${_s(s['name'])})');
+}
+
 /// The advice for a student: stop / resume suggesting more chanting or reading, or discuss the daily report / timings again (the server keeps the
 /// constraint and a line in his history: `studentGuideNote`, kind = the setting).
 Future<AgentResult> studentAdviceSet(Map<String, dynamic> a, AgentEnv env) async {
@@ -601,6 +623,8 @@ final Map<String, AgentRun> kAgentWritesB = {
   'student_note_add': studentNoteAdd,
   'student_folk_interest_set': studentFolkInterestSet,
   'student_advice_set': studentAdviceSet,
+  'student_report_reason_add': studentReportReasonAdd,
+  'student_report_ignore_set': studentReportIgnoreSet,
   'interaction_plan_remove': interactionPlanRemove,
   'plan_item_skip': planItemSkip,
   'plan_item_change': planItemChange,

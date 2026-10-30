@@ -74,7 +74,7 @@ PlanItem interactionItem(String uid, String name, List<String> sources, {bool do
     );
 
 /// A Today plan: [today] items, a week's progress (needed · done · left) when [left] is given.
-PlanDoc planDoc({List<PlanItem>? today, int? left, int done = 0, String refreshedBy = '', DateTime? refreshedAt, String status = 'upToDate'}) => PlanDoc(
+PlanDoc planDoc({List<PlanItem>? today, int? left, int done = 0, String refreshedBy = '', DateTime? refreshedAt, String status = 'upToDate', List<MissingReport> missing = const []}) => PlanDoc(
       todayDate: '2026-10-30',
       todayItems: today ?? const [],
       weekOf: '2026-10-26',
@@ -86,5 +86,6 @@ PlanDoc planDoc({List<PlanItem>? today, int? left, int done = 0, String refreshe
       refreshedAt: refreshedAt,
       refreshedBy: refreshedBy,
       batch: const PlanBatch(size: 4, round: 1, members: 4, carried: 0, nextReady: false, done: 0, left: 4),
+      missingReports: missing,
       progress: left == null ? null : PlanProgress(needed: left + done, done: done, left: left, summary: 'Interactions needed: ${left + done} · done $done · left $left', bySource: const []),
     );

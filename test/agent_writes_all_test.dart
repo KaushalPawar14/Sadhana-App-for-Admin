@@ -106,7 +106,7 @@ void main() {
 
   test('the table covers every executor (nothing is left untested by omission)', () {
     // the names exercised below, plus the ones whose callables the test phone cannot reach
-    expect(all.length, 95 + 0, reason: 'a change was added or removed: update this file');
+    expect(all.length, 97 + 0, reason: 'a change was added or removed: update this file');
   });
 
   group('students', () {
@@ -252,6 +252,23 @@ void main() {
       await all['student_advice_set']!({'studentUid': 'u1', 'setting': 'stop_chanting_push'}, e);
       expect(calls.last.containsKey('text'), isFalse);
     });
+    test('student_report_reason_add: the reason he gave goes to the server as a report_reason note', () async {
+      final e = env();
+      final r = await all['student_report_reason_add']!({'studentUid': 'u1', 'reason': 'His phone broke'}, e);
+      expect(r.ok, isTrue);
+      expect(calls.last['kind'], 'report_reason');
+      expect(calls.last['studentUid'], 'u1');
+      expect(calls.last['text'], 'His phone broke');
+    });
+    test('student_report_ignore_set: ignore -> report_ignore, stop ignoring -> report_unignore (reversible)', () async {
+      final e = env();
+      await all['student_report_ignore_set']!({'studentUid': 'u1', 'ignore': true, 'reason': 'he is travelling'}, e);
+      expect(calls.last['kind'], 'report_ignore');
+      expect(calls.last['text'], 'he is travelling');
+      await all['student_report_ignore_set']!({'studentUid': 'u1', 'ignore': false}, e);
+      expect(calls.last['kind'], 'report_unignore');
+      expect(calls.last.containsKey('text'), isFalse);
+    });
     test('a student outside the scope is not found: nothing is sent', () async {
       await db.collection('users').doc('u_far').set({'name': 'Far', 'gender': 'female', 'guideId': 'F9', 'teamGuide': '', 'role': 'Stay at Hostel'});
       AdminProfileProvider.instance.debugSet(AdminProfile.fromMap({
@@ -263,6 +280,8 @@ void main() {
       await expectLater(all['student_note_add']!({'studentUid': 'u_far', 'text': 'x'}, e), throwsA(anything));
       await expectLater(all['student_folk_interest_set']!({'studentUid': 'u_far', 'interest': 'not_interested'}, e), throwsA(anything));
       await expectLater(all['student_advice_set']!({'studentUid': 'u_far', 'setting': 'stop_chanting_push'}, e), throwsA(anything));
+      await expectLater(all['student_report_ignore_set']!({'studentUid': 'u_far', 'ignore': true}, e), throwsA(anything));
+      await expectLater(all['student_report_reason_add']!({'studentUid': 'u_far', 'reason': 'x'}, e), throwsA(anything));
       expect(calls.length, before);
     });
   });

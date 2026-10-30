@@ -368,6 +368,36 @@ class PlanSection {
 
 /// Where the plan stands: `upToDate`, or `updating` (an AI run is writing it: the guide's Refresh, the 6 AM run). [refreshedAt] / [refreshedBy]
 /// say when and by what the AI last rewrote it (`refresh`, `daily`, `weekly`); the free updates in between do not change them.
+/// One student in the Plan's MISSING REPORTS tab: no daily report for 5 or more days (or never). Not an interaction.
+class MissingReport {
+  const MissingReport({required this.studentUid, required this.studentName, required this.label, this.days, this.reason = '', this.gender = ''});
+
+  final String studentUid;
+  final String studentName;
+
+  /// "No report for 8 days" / "Never reported".
+  final String label;
+  final int? days;
+
+  /// What he told the guide (as the guide told the assistant); '' when nothing was said.
+  final String reason;
+  final String gender;
+
+  static MissingReport? fromMap(Object? raw) {
+    if (raw is! Map) return null;
+    final uid = (raw['studentUid'] ?? '').toString();
+    if (uid.isEmpty) return null;
+    return MissingReport(
+      studentUid: uid,
+      studentName: (raw['studentName'] ?? '').toString(),
+      label: (raw['label'] ?? '').toString(),
+      days: raw['days'] is num ? (raw['days'] as num).round() : null,
+      reason: (raw['reason'] ?? '').toString(),
+      gender: (raw['gender'] ?? '').toString(),
+    );
+  }
+}
+
 class PlanDoc {
   const PlanDoc({
     required this.todayDate,
@@ -382,6 +412,7 @@ class PlanDoc {
     this.refreshedBy = '',
     this.batch,
     this.progress,
+    this.missingReports = const [],
   });
 
   final String todayDate;
@@ -398,6 +429,9 @@ class PlanDoc {
   /// Today's batch (null for a HOD's plan, which has none) and the week's progress.
   final PlanBatch? batch;
   final PlanProgress? progress;
+
+  /// The students in the Missing reports tab (the server works them out; the ones the guide ignores are not in it).
+  final List<MissingReport> missingReports;
 
   static DateTime? _ts(Object? v) => v is Timestamp ? v.toDate() : null;
 
@@ -427,6 +461,11 @@ class PlanDoc {
       refreshedBy: (d['refreshedBy'] ?? '').toString(),
       batch: PlanBatch.fromMap(today['batch']),
       progress: PlanProgress.fromMap(week['progress']),
+      missingReports: [
+        if (d['missingReports'] is Map && (d['missingReports'] as Map)['items'] is List)
+          for (final e in (d['missingReports'] as Map)['items'] as List)
+            if (MissingReport.fromMap(e) != null) MissingReport.fromMap(e)!,
+      ],
     );
   }
 }
