@@ -235,7 +235,11 @@ class AgentReply {
     this.choices = const [],
     this.executed,
     this.buttons = const [],
+    this.notDone = false,
   });
+
+  /// The server says nothing was done for this request (it could not, or was refused): the progress card then says "Not done", never "Done".
+  final bool notDone;
 
   /// "Guide me": the buttons of the answer (each opens a screen for a student).
   final List<GuideButton> buttons;
@@ -288,6 +292,7 @@ class AgentReply {
       choices: [for (final c in (m['choices'] as List? ?? const []).whereType<Map>()) AgentChoice.fromMap(c)],
       executed: m['executed'] is Map ? ExecutedByServer.fromMap(m['executed'] as Map) : null,
       buttons: [for (final b in (m['buttons'] as List? ?? const [])) if (GuideButton.fromMap(b) case final x?) x],
+      notDone: m['notDone'] == true,
     );
   }
 }

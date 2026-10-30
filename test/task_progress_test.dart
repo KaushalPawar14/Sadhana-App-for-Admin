@@ -263,7 +263,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 33));
       }
       expect(tester.widget<Text>(find.byKey(const ValueKey('task-progress-percent'))).data, stopped, reason: 'it stopped');
-      expect(find.text('Stopped'), findsOneWidget);
+      expect(find.text('Not done'), findsOneWidget);
       expect(find.byKey(const ValueKey('task-progress-failure')), findsOneWidget);
       expect(find.text('Arjun is not in your team.'), findsOneWidget, reason: 'the reason, in a sentence');
       expect(stopped, isNot('100%'));
@@ -434,6 +434,40 @@ void main() {
       p.tick(const Duration(seconds: 1));
       expect(p.outcome, TaskOutcome.failed);
       expect(p.failure, contains('Daily limit reached'));
+    });
+
+    Future<ProgressEntry> sendOne(Map<String, dynamic> reply, String text) async {
+      db = FakeFirebaseFirestore();
+      replies = [reply];
+      HierarchyApi.useForTests((name, args) async => replies.removeAt(0));
+      final c = AgentController(env: AgentEnv(profile: adminProfile(Who.hod), db: db, clock: () => DateTime(2026, 10, 23, 12)));
+      await c.send(text);
+      final p = c.entries.whereType<ProgressEntry>().single;
+      for (var i = 0; i <= 20; i++) {
+        p.progress.tick(Duration(milliseconds: i * 200));
+      }
+      return p;
+    }
+
+    test('an answer the server marks as not done ends the card as "Not done" with the reason, never at 100%', () async {
+      final p = await sendOne({'sessionId': null, 'status': 'message', 'notDone': true, 'text': 'I could not do that one just now, and nothing was changed.'}, 'Make the girl named Hetvi unassigned.');
+      expect(p.progress.outcome, TaskOutcome.failed);
+      expect(p.progress.percent, lessThan(100));
+      expect(p.progress.failure, contains('nothing was changed'));
+    });
+
+    test('an old-style answer that says it has no tool or asks to send it again is never shown as Done', () async {
+      for (final text in ["I found Hetvi, but I don't have the tool to make her unassigned. Please send the same request again.", 'Could you send it again?', 'I could not do that.', 'Nothing was changed.']) {
+        final p = await sendOne({'sessionId': null, 'status': 'message', 'text': text}, 'Make Hetvi unassigned');
+        expect(p.progress.outcome, TaskOutcome.failed, reason: text);
+        expect(p.progress.percent, lessThan(100), reason: text);
+      }
+    });
+
+    test('an answer that really answers is Done (100%), and so is an answer after changes the server ran', () async {
+      final p = await sendOne({'sessionId': null, 'status': 'message', 'text': 'Hetvi Shah is now unassigned.'}, 'Make Hetvi unassigned');
+      expect(p.progress.outcome, TaskOutcome.done);
+      expect(p.progress.percent, 100);
     });
 
     testWidgets('on the assistant page the card sits under the guide\'s request and ends at 100% when the task is done', (tester) async {

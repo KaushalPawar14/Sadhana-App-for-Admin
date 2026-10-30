@@ -15,6 +15,7 @@ import 'package:folk_guide_app/utils/BookProgressData.dart';
 import 'package:folk_guide_app/utils/SeenMarkers.dart';
 import 'package:folk_guide_app/utils/StudentScope.dart';
 import 'package:folk_guide_app/widgets/GuideBoard.dart';
+import 'package:folk_guide_app/widgets/BoardDraggable.dart';
 
 import 'support/fake_snapshots.dart';
 import 'support/guide_test_support.dart';
@@ -258,6 +259,22 @@ Future<void> dragCard(WidgetTester tester, String name, String column) async {
   await tester.pump(const Duration(milliseconds: 300));
 }
 
+/// The website: a click-and-drag of the card showing [name] onto the column titled [column], with a mouse (or a trackpad), NO waiting before the move.
+Future<void> dragCardWithMouse(WidgetTester tester, String name, String column, {PointerDeviceKind kind = PointerDeviceKind.mouse}) async {
+  final from = tester.getCenter(find.text(name).first);
+  final to = tester.getCenter(find.text(column).first) + const Offset(0, 120);
+  final gesture = await tester.startGesture(from, kind: kind);
+  await gesture.moveTo(from + const Offset(12, 12));
+  await tester.pump();
+  await gesture.moveTo(from + (to - from) / 2);
+  await tester.pump();
+  await gesture.moveTo(to);
+  await tester.pump();
+  await gesture.up();
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
@@ -450,6 +467,91 @@ void main() {
       expect(args['studentId'], 'sfu');
       expect(args['toGuideId'], 'F1');
       await tester.pump(const Duration(seconds: 4));
+    });
+
+    group('the website: click and drag with a mouse or trackpad (no long press)', () {
+      testWidgets('a mouse drags a card to another guide at once: the same confirmation and the same server call as the phone', (tester) async {
+        final api = <List<Object?>>[];
+        await openBoard(tester, api: api, size: const Size(1400, 900));
+        await dragCardWithMouse(tester, 'Arjun Kumar', 'M1 Das');
+        expect(find.text('Reassign this boy?'), findsOneWidget);
+        await tester.tap(find.text('Reassign'));
+        await tester.pumpAndSettle();
+        final args = api.firstWhere((c) => c[0] == 'assignStudent')[1] as Map;
+        expect(args['studentId'], 'sg1');
+        expect(args['toGuideId'], 'M1');
+        await tester.pump(const Duration(seconds: 4));
+      });
+
+      testWidgets('a mouse drags a student to Unassigned (the HOD): released through assignStudent with no guide', (tester) async {
+        final api = <List<Object?>>[];
+        await openBoard(tester, me: profile('H', 'HOD', admins: everyone), api: api, size: const Size(3200, 900));
+        await dragCardWithMouse(tester, 'Arjun Kumar', 'Unassigned (males)');
+        expect(find.text('Reassign this boy?'), findsOneWidget);
+        expect(find.textContaining('no guide (Unassigned)'), findsWidgets);
+        await tester.tap(find.text('Reassign'));
+        await tester.pumpAndSettle();
+        final args = api.firstWhere((c) => c[0] == 'assignStudent')[1] as Map;
+        expect(args['studentId'], 'sg1');
+        expect(args['toGuideId'], '');
+        await tester.pump(const Duration(seconds: 4));
+      });
+
+      test('mouse and trackpad pick a card up at once; a finger, a stylus and anything else press and hold', () {
+        expect(BoardDraggable.picksUpAtOnce(PointerDeviceKind.mouse), isTrue);
+        expect(BoardDraggable.picksUpAtOnce(PointerDeviceKind.trackpad), isTrue);
+        expect(BoardDraggable.picksUpAtOnce(PointerDeviceKind.touch), isFalse);
+        expect(BoardDraggable.picksUpAtOnce(PointerDeviceKind.stylus), isFalse);
+      });
+
+      testWidgets('cancelling the confirmation after a mouse drag sends nothing', (tester) async {
+        final api = <List<Object?>>[];
+        await openBoard(tester, api: api, size: const Size(1400, 900));
+        await dragCardWithMouse(tester, 'Arjun Kumar', 'M1 Das');
+        expect(find.text('Reassign this boy?'), findsOneWidget);
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+        expect(api.where((c) => c[0] == 'assignStudent'), isEmpty);
+        await tester.pump(const Duration(seconds: 4));
+      });
+
+      testWidgets('the rules are the same: a Guide may not release a Male Enabler boy with the mouse either', (tester) async {
+        final api = <List<Object?>>[];
+        await openBoard(tester, api: api, size: const Size(1400, 900));
+        await dragCardWithMouse(tester, 'Chaitanya Das', 'Unassigned');
+        expect(find.textContaining('only M1 Das or the HOD can release him'), findsOneWidget);
+        expect(api.where((c) => c[0] == 'assignStudent'), isEmpty);
+        await tester.pump(const Duration(seconds: 4));
+      });
+
+      testWidgets('a mouse drag shows the lifted card and the delete target while it moves, and a plain click still expands the card', (tester) async {
+        await openBoard(tester, size: const Size(1400, 900));
+        final from = tester.getCenter(find.text('Arjun Kumar'));
+        final g = await tester.startGesture(from, kind: PointerDeviceKind.mouse);
+        await g.moveTo(from + const Offset(20, 20));
+        await tester.pump();
+        expect(find.textContaining('Drop here to delete permanently'), findsOneWidget);
+        await g.up();
+        await tester.pumpAndSettle();
+        expect(find.textContaining('Drop here to delete permanently'), findsNothing);
+        // a click without moving is still the tap that expands the card (the details open with a second tap)
+        await tester.tap(find.text('Arjun Kumar').first, kind: PointerDeviceKind.mouse);
+        await tester.pumpAndSettle();
+        expect(find.byType(BoardDraggable<String>), findsWidgets);
+      });
+    });
+
+    testWidgets('the phone is unchanged: a finger that swipes at once does not pick the card up (it scrolls), only press and hold does', (tester) async {
+      final api = <List<Object?>>[];
+      await openBoard(tester, api: api, size: const Size(1400, 900));
+      final from = tester.getCenter(find.text('Arjun Kumar').first);
+      final g = await tester.startGesture(from); // a finger
+      await g.moveTo(from + const Offset(0, 120));
+      await tester.pump();
+      expect(find.textContaining('Drop here to delete permanently'), findsNothing);
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(api.where((c) => c[0] == 'assignStudent'), isEmpty);
     });
 
     testWidgets('the delete target appears only while a card is dragged', (tester) async {

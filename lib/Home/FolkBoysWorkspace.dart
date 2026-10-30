@@ -17,6 +17,7 @@ import '../utils/Snackbar.dart';
 import '../utils/StudentDeletion.dart';
 import '../utils/StudentScope.dart';
 import '../utils/UnseenDot.dart';
+import '../widgets/BoardDraggable.dart';
 import '../widgets/GuideBoard.dart';
 import '../widgets/GuideBoardGhost.dart';
 import '../widgets/GuideBoardMotion.dart';
@@ -3005,7 +3006,8 @@ class _FolkBoysWorkspaceState extends State<FolkBoysWorkspace> {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 9),
-      child: LongPressDraggable<String>(
+      // A finger presses and holds; a mouse or trackpad drags at once (see [BoardDraggable]): the same drop, the same rules, on the phone and on the website.
+      child: BoardDraggable<String>(
         data: boy.uid,
         onDragStarted: _lockScroll,
         onDragUpdate: _onDragUpdate,

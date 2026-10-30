@@ -106,7 +106,7 @@ void main() {
 
   test('the table covers every executor (nothing is left untested by omission)', () {
     // the names exercised below, plus the ones whose callables the test phone cannot reach
-    expect(all.length, 99 + 0, reason: 'a change was added or removed: update this file');
+    expect(all.length, 100 + 0, reason: 'a change was added or removed: update this file');
   });
 
   group('students', () {
@@ -131,6 +131,10 @@ void main() {
     test('student_assign goes through the server', () async {
       await all['student_assign']!({'studentUid': 'u1', 'toGuideId': 'G'}, env());
       expect(calls.any((c) => c['_call'] == 'assignStudent' && c['studentId'] == 'u1' && c['toGuideId'] == 'G'), isTrue);
+    });
+    test('student_unassign goes through the server with an empty guide (like the board drop on Unassigned)', () async {
+      await all['student_unassign']!({'studentUid': 'u1'}, env());
+      expect(calls.any((c) => c['_call'] == 'assignStudent' && c['studentId'] == 'u1' && c['toGuideId'] == ''), isTrue);
     });
     test('student_delete reports a refusal in words (the server step cannot run here)', () async {
       await expectLater(all['student_delete']!({'studentUid': 'u1'}, env()), throwsA(anything));

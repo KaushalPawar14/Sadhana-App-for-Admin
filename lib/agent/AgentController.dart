@@ -73,6 +73,12 @@ class ErrorEntry extends ChatEntry {
 /// A task's progress card: its percentage, driven by the real steps the task goes through (see [TaskProgress]). It is made when the
 /// guide asks for something and follows that request all the way - through a confirmation, the saving and the result. It lives
 /// on the phone only; a saved chat does not carry it.
+/// An answer that says the assistant could not do it (or asks to send it again): its card must say "Not done".
+bool looksNotDone(String? text) => text != null && RegExp(
+        r"(don'?t|do not|doesn'?t|did not|didn'?t|could not|couldn'?t|can'?t|cannot|unable to|not able to) (currently |actually )?(have|see|do|make|find|complete|change|move|assign|unassign)\b[^.!?\n]{0,30}\b(tool|way|option|ability|that|this|it|them|him|her)\b|\bnothing was changed\b|\bwas not done\b|\bnot done\b|\b(send|say|try|ask)\b[^.!?\n]{0,40}\b(again|once more)\b",
+        caseSensitive: false)
+    .hasMatch(text);
+
 class ProgressEntry extends ChatEntry {
   ProgressEntry(this.request);
 
@@ -355,7 +361,12 @@ class AgentController extends ChangeNotifier {
       if (reply.ended) sessionGone = true;
       switch (reply.status) {
         case AgentStatus.message:
-          _task?.progress.finish();
+          // "Done" only when something was really done: the server says so when it was not, and an answer that says it could not is never shown as done
+          if (reply.notDone || (reply.executed == null && looksNotDone(reply.text))) {
+            _task?.progress.fail(reply.text ?? 'Nothing was changed.');
+          } else {
+            _task?.progress.finish();
+          }
           // changes the server ran by itself: shown as done, with their Undo, before the assistant's closing words
           if (reply.executed != null) _addExecuted(reply.executed!);
           if (reply.text != null || reply.links.isNotEmpty || reply.buttons.isNotEmpty) _add(AssistantEntry(reply.text ?? '', reply.links, reply.buttons));

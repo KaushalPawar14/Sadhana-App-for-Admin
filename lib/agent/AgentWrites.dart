@@ -363,6 +363,16 @@ Future<AgentResult> studentAssign(Map<String, dynamic> a, AgentEnv env) async {
   return _done('${_s(s['name'])} moved to ${env.adminName(to)}\'s team.');
 }
 
+/// Makes a student Unassigned: the same server call as dropping the card on the Unassigned column ('' = release). The server enforces who may release
+/// whom (a guide his own and his team's, a HOD anyone's) and the gender rules, exactly as for the board.
+Future<AgentResult> studentUnassign(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _s(a['studentUid']);
+  final s = await env.student(uid);
+  await HierarchyApi.instance.assignStudent(studentId: uid, toGuideId: '');
+  env.invalidate();
+  return _done('${_s(s['name'])} is now unassigned.');
+}
+
 Future<AgentResult> studentDelete(Map<String, dynamic> a, AgentEnv env) async {
   final uid = _s(a['studentUid']);
   final s = await env.student(uid);
@@ -642,6 +652,7 @@ final Map<String, AgentRun> kAgentWritesA = {
   'student_dob_set': studentDobSet,
   'student_add': studentAdd,
   'student_assign': studentAssign,
+  'student_unassign': studentUnassign,
   'student_delete': studentDelete,
   'priority_remove': priorityRemove,
   'priority_restore': priorityRestore,

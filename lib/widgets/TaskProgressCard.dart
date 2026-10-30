@@ -107,7 +107,7 @@ class _TaskProgressCardState extends State<TaskProgressCard> {
     final finished = p.outcome == TaskOutcome.done && p.percent >= 100;
     final accent = failed ? g.danger : cancelled ? g.mutedText : finished ? g.success : g.agent;
     final label = failed
-        ? 'Stopped'
+        ? 'Not done'
         : cancelled
             ? 'Cancelled'
             : finished
