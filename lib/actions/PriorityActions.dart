@@ -136,6 +136,9 @@ Future<PriorityList> loadPriorityList() async {
   for (final student in students) {
     final doc = needs[student.uid];
     if (doc == null) continue;
+    // An UNASSIGNED student's tasks (his interactions needed too) are the owning HOD's: a Guide or an Enabler still sees him on the board and may claim
+    // him, and then his needs are in their list.
+    if (!profile.isHod && (doc['scopeGuide'] ?? '').toString().isEmpty) continue;
     final flags = priorityFlagsFromNeeds(doc);
 
     // No needs means no interaction is due. Such a student is simply absent.

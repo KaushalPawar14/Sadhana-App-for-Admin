@@ -275,9 +275,10 @@ void main() {
       });
     }
 
-    testWidgets('who is on each list is unchanged (scope): Guide sees his team and the unassigned boy, never the girl', (tester) async {
+    testWidgets('who is on each list (scope): Guide sees his team, never the girl and never the unassigned boy (his tasks are the owning HODs)', (tester) async {
       await open(tester, 'G');
-      expect(find.text('5 need an interaction'), findsOneWidget, reason: 'Arjun, Bhima, Chaitanya, the long-named student and the unassigned boy Dhruva');
+      expect(find.text('4 need an interaction'), findsOneWidget, reason: 'Arjun, Bhima, Chaitanya and the long-named student; not the unassigned boy Dhruva');
+      expect(find.text('Dhruva Nair'), findsNothing);
       expect(find.text('out of 5 students'), findsOneWidget);
       expect(find.text('Gauri Devi'), findsNothing);
     });
@@ -288,10 +289,11 @@ void main() {
       expect(listed(), ['Gauri Devi']);
     });
 
-    testWidgets('Male Enabler sees his own student (and the unassigned boy), not the girl', (tester) async {
+    testWidgets('Male Enabler sees his own student, not the unassigned boy (the owning HOD) and not the girl', (tester) async {
       await open(tester, 'M1');
-      expect(find.text('2 need an interaction'), findsOneWidget);
-      expect(listed(), containsAll(['Chaitanya Das', 'Dhruva Nair']));
+      expect(find.text('1 need an interaction'), findsOneWidget);
+      expect(listed(), ['Chaitanya Das']);
+      expect(find.text('Dhruva Nair'), findsNothing);
       expect(find.text('Gauri Devi'), findsNothing);
       expect(find.text('Arjun Kumar'), findsNothing);
     });

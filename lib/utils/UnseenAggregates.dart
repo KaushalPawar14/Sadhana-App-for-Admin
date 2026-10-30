@@ -128,7 +128,8 @@ class UnseenAggregates {
   static Stream<bool> priorityReasonsUnseen(String guide, bool isHod) {
     if (debugDisable) return Stream.value(false);
     return SeenMarkers.unseenFrom(
-      _maxTimestamp(_scope.historyStream('interactionNeeds'), 'changedAt'),
+      // an UNASSIGNED student's tasks are the owning HOD's alone: a Guide or an Enabler is not told of a new reason for him
+      _maxTimestamp(_scope.historyStream('interactionNeeds'), 'changedAt', where: (d) => isHod || (d['scopeGuide'] ?? '').toString().isNotEmpty),
       SeenMarkers.seenAt(guide, 'priorityReasons'),
     );
   }
