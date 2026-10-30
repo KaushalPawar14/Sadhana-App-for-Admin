@@ -15,6 +15,7 @@ import 'package:folk_guide_app/utils/GuideDb.dart';
 /// itself never calls an AI to save a note.
 
 void main() {
+  group('one call and quick reports', quickReportTests);
   late FakeFirebaseFirestore db;
   late List<Map<String, dynamic>> pushes;
   late List<String> calls;
@@ -168,4 +169,75 @@ class _Refusing extends FakeFirebaseFirestore {
     if (path == 'interactionLogs') throw StateError('permission-denied');
     return super.collection(path);
   }
+}
+
+/// ONE AI CALL for a report, and QUICK REPORTS (one tap, no notes, no AI): what is written is the same kind of record the server already
+/// follows up (the plan item ticked, the history line, the Surrender %, the next association).
+void quickReportTests() {
+  late FakeFirebaseFirestore db;
+  late List<Map<String, dynamic>> pushes;
+
+  setUp(() {
+    db = FakeFirebaseFirestore();
+    GuideDb.useForTests(db);
+    pushes = [];
+    HierarchyApi.useForTests((name, args) async {
+      if (name == 'sendStudentNotification') pushes.add(args);
+      return <String, dynamic>{};
+    });
+  });
+  tearDown(() {
+    GuideDb.useForTests(null);
+    HierarchyApi.useForTests(null);
+  });
+
+  Future<Map<String, dynamic>> read(String id) async => (await db.collection('interactionLogs').doc(id).get()).data()!;
+
+  test('ONE CALL: the understanding the assistant already made rides on the log (preAnalysis); the server saves it as it stands', () async {
+    final saved = await saveInteraction(
+      guideId: 'G',
+      studentUid: 's1',
+      studentName: 'Arjun',
+      raw: 'He is keen but has exams',
+      interactionType: 'Call',
+      interactionDate: DateTime(2026, 10, 22, 18),
+      analysis: {'themes': ['exams'], 'studentConcerns': 'Exam stress', 'recommendedNextAction': 'Call after exams'},
+    );
+    final d = await read(saved.id);
+    expect(d['preAnalysis'], {'themes': ['exams'], 'studentConcerns': 'Exam stress', 'recommendedNextAction': 'Call after exams'});
+    expect(d['analysis'], 'queued', reason: 'the server finishes it (without a model call)');
+    // no analysis: exactly the old record (the server reads the notes)
+    final plain = await saveInteraction(guideId: 'G', studentUid: 's1', studentName: 'Arjun', raw: 'x', interactionDate: DateTime(2026, 10, 22));
+    expect((await read(plain.id)).containsKey('preAnalysis'), isFalse);
+  });
+
+  test('QUICK REPORT "Talked": a complete record, no notes, reached him, told the others; the willingness taps carry only the shift', () async {
+    final talked = await saveQuickReport(guideId: 'G', studentUid: 's1', studentName: 'Arjun', outcome: QuickOutcome.talked, mode: 'call', topics: ['His sadhana', 'His doubt']);
+    final d = await read(talked.id);
+    expect(d['rawDictation'], '', reason: 'no notes: the server has nothing to send to a model');
+    expect(d['addressed'], true);
+    expect(d['quick'], 'talked');
+    expect(d['status'], 'approved');
+    expect(d['analysis'], 'queued');
+    expect(d.containsKey('willingnessShift'), isFalse);
+    expect((d['approvedSummary'] as Map)['interactionType'], 'Call');
+    expect((d['approvedSummary'] as Map)['themes'], ['His sadhana', 'His doubt']);
+    expect(pushes.any((p) => p['kind'] == 'interaction_logged' && p['studentUid'] == 's1'), isTrue, reason: 'the same notification as any report');
+    for (final e in {QuickOutcome.moreWilling: 1, QuickOutcome.sameWilling: 0, QuickOutcome.lessWilling: -1}.entries) {
+      final s = await saveQuickReport(guideId: 'G', studentUid: 's1', studentName: 'Arjun', outcome: e.key);
+      final r = await read(s.id);
+      expect(r['willingnessShift'], e.value, reason: '${e.key}');
+      expect(r['addressed'], true);
+      expect((r['approvedSummary'] as Map)['interactionType'], 'Live (in-person)', reason: 'no mode: in person');
+    }
+  });
+
+  test('QUICK REPORT "Not reachable": a report that did not reach him: the interaction stays in the plan; the others are not told', () async {
+    final s = await saveQuickReport(guideId: 'G', studentUid: 's1', studentName: 'Arjun', outcome: QuickOutcome.notReachable, mode: 'call');
+    final d = await read(s.id);
+    expect(d['addressed'], false);
+    expect(d['quick'], 'not_reachable');
+    expect((d['approvedSummary'] as Map)['temporaryCircumstances'], 'Not reachable');
+    expect(pushes, isEmpty);
+  });
 }

@@ -43,6 +43,23 @@ class PlanTopic {
   }
 }
 
+/// One topic on a student's ONE card, as a one-line point ("He has asked to meet: answer him"). [group] is the section it belongs to.
+class PlanPoint {
+  const PlanPoint({required this.text, required this.group, this.kind = '', this.id = ''});
+
+  final String text;
+  final PlanGroup group;
+  final String kind;
+  final String id;
+
+  static PlanPoint? fromMap(Object? raw) {
+    if (raw is! Map) return null;
+    final text = (raw['text'] ?? '').toString();
+    if (text.isEmpty) return null;
+    return PlanPoint(text: text, group: PlanGroup.parse(raw['group']) ?? PlanGroup.followUp, kind: (raw['kind'] ?? '').toString(), id: (raw['id'] ?? '').toString());
+  }
+}
+
 class PlanItem {
   const PlanItem({
     required this.id,
@@ -68,7 +85,20 @@ class PlanItem {
     this.batchRound,
     this.inToday = false,
     this.topicLabels = const [],
+    this.studentUid = '',
+    this.mode = '',
+    this.points = const [],
+    this.cardGroups = const [],
   });
+
+  /// The student this item is about (an interaction, or his one card), and how to meet him (`call` / `inperson`).
+  final String studentUid;
+  final String mode;
+
+  /// ONE CARD PER STUDENT: every topic about him (a worry, a doubt, his sadhana, a target task, a meeting, a book due ...) as a one-line point,
+  /// and the sections ([cardGroups], the most important first) those points belong to.
+  final List<PlanPoint> points;
+  final List<PlanGroup> cardGroups;
 
   final String id;
   final String kind;
@@ -119,17 +149,32 @@ class PlanItem {
 
   bool get isInteraction => kind == 'interaction';
 
+  /// A student's small card (he has no interaction today, but a meeting, a book due or a doubt): kind `student`.
+  bool get isStudentCard => kind == 'student';
+
+  /// Either kind of student card: the interaction (his batch card) and the small one.
+  bool get isCard => isInteraction || isStudentCard;
+
   /// A HOD's summary line for one guide (what is due, who needs attention); it sits BELOW the HOD's own tasks and is never counted as one of them.
   bool get isGuideSummary => kind == 'guideSummary';
 
   /// Which of Today's three groups this is in: a follow-up (an interaction a student needs), a target task (made by the guide's own targets:
   /// an interaction there only because of a target, or a phase / deadline of one), or any other task. Each item is in exactly one.
-  PlanGroup get group {
-    if (kind == 'targetDeadline' || kind == 'phaseTask') return PlanGroup.target;
+  PlanGroup get group => inGroups.first;
+
+  /// Every section this item has something in, the most important first (Worries > Target tasks > Follow-ups > Other). A student's card sits in the
+  /// first and is counted in each of them, without being repeated.
+  List<PlanGroup> get inGroups {
+    if (cardGroups.isNotEmpty) return cardGroups;
+    if (kind == 'targetDeadline' || kind == 'phaseTask' || kind == 'targetTask') return const [PlanGroup.target];
     if (isInteraction) {
-      return reasonSources.isNotEmpty && reasonSources.every((s) => s == 'target') ? PlanGroup.target : PlanGroup.followUp;
+      final set = <PlanGroup>{
+        for (final s in reasonSources) s == 'concern' ? PlanGroup.worry : (s == 'target' ? PlanGroup.target : PlanGroup.followUp),
+      };
+      if (set.isEmpty) set.add(PlanGroup.followUp);
+      return [for (final g in PlanGroup.values) if (set.contains(g)) g];
     }
-    return PlanGroup.other;
+    return const [PlanGroup.other];
   }
 
   static PlanItem fromMap(Map<String, dynamic> m) => PlanItem(
@@ -164,36 +209,77 @@ class PlanItem {
         batchRound: m['batch'] is Map && (m['batch'] as Map)['round'] is num ? ((m['batch'] as Map)['round'] as num).round() : null,
         inToday: m['inToday'] == true,
         topicLabels: PlanTopic._strings(m['topicLabels']),
+        studentUid: (m['studentUid'] ?? '').toString(),
+        mode: (m['mode'] ?? '').toString(),
+        points: [
+          if (m['points'] is List)
+            for (final p in (m['points'] as List))
+              if (PlanPoint.fromMap(p) case final x?) x,
+        ],
+        cardGroups: [
+          if (m['groups'] is List)
+            for (final g in (m['groups'] as List))
+              if (PlanGroup.parse(g) case final x?) x,
+        ],
       );
 }
 
 /// The three groups of Today's tasks (the Home widget's three counts, and the sections of the Plan page's Today tab).
-enum PlanGroup { followUp, target, other }
+enum PlanGroup {
+  worry,
+  target,
+  followUp,
+  other;
+
+  static PlanGroup? parse(Object? v) => switch (v?.toString()) {
+        'worry' => PlanGroup.worry,
+        'target' => PlanGroup.target,
+        'followUp' => PlanGroup.followUp,
+        'other' => PlanGroup.other,
+        _ => null,
+      };
+}
 
 /// How many of Today's tasks are still to do in each group. Done ones (ticked) are not counted: the number goes down as the guide works.
 class PlanCounts {
-  const PlanCounts({required this.followUps, required this.targets, required this.others});
+  const PlanCounts({required this.followUps, required this.targets, required this.others, this.worries = 0, this.students = 0, this.cards = 0, this.tasks = 0, this.followUpsAndWorries = 0});
 
+  /// Cards and tasks with a worry OR a follow-up in them: Home's one "Follow-ups" count (a worry is the most urgent follow-up).
+  final int followUpsAndWorries;
+
+  /// Cards (students) and tasks with something in each section. A student with topics in several sections is counted in each of them, once.
+  /// [followUps] on Home also holds the worries (they are follow-ups with the most urgent first).
+  final int worries;
   final int followUps;
   final int targets;
   final int others;
 
-  int get total => followUps + targets + others;
+  /// How many students have a card today (topics are counted inside the card, not as more cards).
+  final int students;
+
+  /// How many things are to do: students with a card, and tasks that are not about one student.
+  int get total => cards + tasks;
+  final int cards;
+  final int tasks;
 
   static PlanCounts of(PlanDoc? plan) {
-    var f = 0, t = 0, o = 0;
+    var w = 0, f = 0, t = 0, o = 0, s = 0, cards = 0, tasks = 0, fw = 0;
     for (final it in plan?.todayItems ?? const <PlanItem>[]) {
       if (it.done || it.isGuideSummary) continue;
-      switch (it.group) {
-        case PlanGroup.followUp:
-          f++;
-        case PlanGroup.target:
-          t++;
-        case PlanGroup.other:
-          o++;
+      final groups = it.inGroups;
+      if (it.isCard) {
+        s++;
+        cards++;
+      } else {
+        tasks++;
       }
+      if (groups.contains(PlanGroup.worry)) w++;
+      if (groups.contains(PlanGroup.target)) t++;
+      if (groups.contains(PlanGroup.followUp)) f++;
+      if (groups.contains(PlanGroup.other)) o++;
+      if (groups.contains(PlanGroup.worry) || groups.contains(PlanGroup.followUp)) fw++;
     }
-    return PlanCounts(followUps: f, targets: t, others: o);
+    return PlanCounts(worries: w, followUps: f, targets: t, others: o, students: s, cards: cards, tasks: tasks, followUpsAndWorries: fw);
   }
 }
 

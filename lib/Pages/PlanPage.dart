@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../Services/HierarchyApi.dart';
+import '../actions/InteractionActions.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
@@ -77,9 +78,9 @@ String planLastUpdated(PlanDoc plan) {
 String planStatusText(PlanDoc plan, {bool refreshing = false}) => refreshing || plan.status == 'updating' ? 'Refreshing…' : 'Up to date';
 
 /// The names of Today's three groups, as the page's sections.
-const Map<PlanGroup, String> kPlanGroupTitles = {PlanGroup.followUp: 'Follow-ups', PlanGroup.target: 'Target tasks', PlanGroup.other: 'Other tasks'};
+const Map<PlanGroup, String> kPlanGroupTitles = {PlanGroup.worry: 'Worries', PlanGroup.target: 'Target tasks', PlanGroup.followUp: 'Follow-ups', PlanGroup.other: 'Other tasks'};
 
-String _sectionKey(PlanGroup g) => switch (g) { PlanGroup.followUp => 'followups', PlanGroup.target => 'targets', PlanGroup.other => 'other' };
+String _sectionKey(PlanGroup g) => switch (g) { PlanGroup.worry => 'worries', PlanGroup.followUp => 'followups', PlanGroup.target => 'targets', PlanGroup.other => 'other' };
 
 class _PlanPageState extends State<PlanPage> {
   /// Interaction cards whose questions were toggled by the guide (a batch card starts open, any other starts closed).
@@ -109,6 +110,8 @@ class _PlanPageState extends State<PlanPage> {
   String? _refreshError;
 
   /// Opened from a Home count: scroll to that section once the plan is on screen.
+  /// Cards whose one-tap report is being saved (their buttons wait).
+  final Set<String> _quickBusy = {};
   final Map<PlanGroup, GlobalKey> _sectionKeys = {for (final g in PlanGroup.values) g: GlobalKey()};
   bool _scrolled = false;
 
@@ -377,9 +380,10 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
-  /// TODAY: the day's batch, a row of counts, then three sections: Follow-ups (the interactions students need), Target tasks (made by the guide's own
-  /// targets) and Other tasks (everything else for today). EVERYTHING IS ALWAYS THERE: a count with nothing behind it reads "0" and a section with
-  /// nothing in it reads "None yet" (it is never left out).
+  /// TODAY: the day's batch, a row of counts, then four sections: Worries, Target tasks, Follow-ups and Other tasks. ONE CARD PER STUDENT: every topic
+  /// about him is a one-line point on his one card, which sits in the most important section it has a point in; a section's count includes every
+  /// card that has a topic in it. EVERYTHING IS ALWAYS THERE: a count with nothing behind it reads "0" and a section with nothing in it reads
+  /// "None yet" (it is never left out).
   List<Widget> _todayBody(BuildContext context, PlanDoc plan) {
     final t = context.gText;
     // a HOD's own tasks first; the summary line of every guide goes BELOW them
@@ -408,10 +412,16 @@ class _PlanPageState extends State<PlanPage> {
     }
     for (final g in PlanGroup.values) {
       final mine = items.where((i) => i.group == g).toList();
+      // every card with a topic in this section, even when his card sits in a more important one (counted, not repeated)
+      final count = items.where((i) => !i.done && i.inGroups.contains(g)).length;
       out.add(Padding(
         key: _sectionKeys[g],
         padding: const EdgeInsets.only(top: 14),
-        child: GuideSectionTitle(kPlanGroupTitles[g]!, key: ValueKey('plan-section-${_sectionKey(g)}')),
+        child: GuideSectionTitle(
+          kPlanGroupTitles[g]!,
+          key: ValueKey('plan-section-${_sectionKey(g)}'),
+          trailing: Text('$count', key: ValueKey('plan-section-count-${_sectionKey(g)}'), style: t.bodyStrong),
+        ),
       ));
       if (mine.isEmpty) out.add(Padding(padding: const EdgeInsets.only(top: 6), child: Text('None yet', key: ValueKey('plan-section-empty-${_sectionKey(g)}'), style: t.small)));
       for (final it in mine) {
@@ -421,20 +431,25 @@ class _PlanPageState extends State<PlanPage> {
     return [...out, ...guides];
   }
 
-  /// The day at a glance, every number always shown (0 when there is none): interactions done / left today, pending this week, target tasks,
-  /// other tasks, meetings, doubts.
+  /// The day at a glance, every number always shown (0 when there is none): students with a card, interactions done / left, pending this week,
+  /// each section's count, meetings, doubts. A student is ONE card however many topics he has.
   Widget _todayCounts(BuildContext context, List<PlanItem> items, PlanProgress? progress) {
     final t = context.gText;
     final g = context.g;
     final open = items.where((i) => !i.done).toList();
-    final doubts = open.where((i) => i.kind == 'doubtsToAnswer').fold<int>(0, (n, i) => n + (int.tryParse(RegExp(r'^\d+').stringMatch(i.title) ?? '') ?? 1));
+    final doubts = open.where((i) => i.kind == 'doubtsToAnswer').fold<int>(0, (n, i) => n + (int.tryParse(RegExp(r'^\d+').stringMatch(i.title) ?? '') ?? 1)) +
+        open.where((i) => i.points.any((p) => p.kind == 'doubt')).length;
+    int inGroup(PlanGroup grp) => open.where((i) => i.inGroups.contains(grp)).length;
     final counts = <(String, String, int)>[
+      ('students', 'Students today', open.where((i) => i.isCard).length),
       ('interactions-done', 'Interactions done', items.where((i) => i.isInteraction && i.done).length),
       ('interactions-left', 'Interactions left', open.where((i) => i.isInteraction).length),
       ('pending', 'Pending this week', progress?.left ?? 0),
-      ('target-tasks', 'Target tasks', open.where((i) => i.group == PlanGroup.target).length),
-      ('other-tasks', 'Other tasks', open.where((i) => i.group == PlanGroup.other).length),
-      ('meetings', 'Meetings', open.where((i) => i.kind == 'meeting' || i.kind == 'meeting_request').length),
+      ('worries', 'Worries', inGroup(PlanGroup.worry)),
+      ('target-tasks', 'Target tasks', inGroup(PlanGroup.target)),
+      ('follow-ups', 'Follow-ups', inGroup(PlanGroup.followUp)),
+      ('other-tasks', 'Other tasks', inGroup(PlanGroup.other)),
+      ('meetings', 'Meetings', open.where((i) => i.kind == 'meeting' || i.kind == 'meeting_request' || i.points.any((p) => p.kind == 'meeting' || p.kind == 'meeting_request')).length),
       ('doubts', 'Doubts to answer', doubts),
     ];
     return Padding(
@@ -527,6 +542,7 @@ class _PlanPageState extends State<PlanPage> {
   static const _weekBase = [
     ('interactions', 'Students to contact — planned days'),
     ('targets', 'Your targets'),
+    ('targettasks', 'Target tasks this phase'),
     ('ahead', 'Dates ahead'),
     ('calendar', 'How the calendar changes things'),
     ('milestones', 'Well done'),
@@ -596,6 +612,76 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
+  /// ONE-TAP REPORT on a student's card in Today (no notes, no AI): the outcome is recorded, he is ticked (or stays, when he was not reachable),
+  /// his Surrender % and history follow, as for any report. Free text or voice stays optional: tell the assistant (that is the one AI call).
+  Widget _quickButtons(BuildContext context, PlanItem it) {
+    final t = context.gText;
+    final busy = _quickBusy.contains(it.id);
+    Widget btn(String key, String label, QuickOutcome o) => GuideSecondaryButton(
+          key: ValueKey('plan-quick-${it.id}-$key'),
+          label: label,
+          expand: false,
+          onPressed: busy ? null : () => _quick(it, o),
+        );
+    return Padding(
+      key: ValueKey('plan-quick-${it.id}'),
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Report in one tap', style: t.caption),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              btn('talked', 'Talked ✓', QuickOutcome.talked),
+              btn('unreachable', 'Not reachable', QuickOutcome.notReachable),
+              btn('more', 'More willing ↑', QuickOutcome.moreWilling),
+              btn('same', 'Same willing', QuickOutcome.sameWilling),
+              btn('less', 'Less willing ↓', QuickOutcome.lessWilling),
+              GuideSecondaryButton(key: ValueKey('plan-quick-${it.id}-commitment'), label: 'New commitment', expand: false, onPressed: busy ? null : () => _quickCommitment(it)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _quick(PlanItem it, QuickOutcome o, {String? extra}) async {
+    if (_quickBusy.contains(it.id) || it.studentUid.isEmpty) return;
+    setState(() => _quickBusy.add(it.id));
+    try {
+      await quickReportWriter(
+        guideId: _me,
+        studentUid: it.studentUid,
+        studentName: it.studentName,
+        outcome: o,
+        mode: it.mode,
+        topics: [for (final tp in it.topics) tp.label],
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${o.recorded}: ${it.studentName}.${extra == null ? '' : ' $extra'}')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not record that. Please try again.')));
+    }
+    if (mounted) setState(() => _quickBusy.remove(it.id));
+  }
+
+  /// "New commitment": asks for the rounds, saves them for the student (the shared write the assistant uses too) and records that the guide talked.
+  Future<void> _quickCommitment(PlanItem it) async {
+    final rounds = await showDialog<int>(context: context, builder: (_) => _RoundsDialog(studentName: it.studentName));
+    if (rounds == null || rounds < 1 || rounds > 64 || !mounted) return;
+    try {
+      await quickCommitmentWriter(it.studentUid, rounds);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not save that commitment. Please try again.')));
+      return;
+    }
+    await _quick(it, QuickOutcome.talked, extra: 'Commitment: $rounds rounds a day.');
+  }
+
   Widget _itemCard(BuildContext context, PlanItem it, {int total = 0}) {
     final g = context.g;
     final t = context.gText;
@@ -632,9 +718,17 @@ class _PlanPageState extends State<PlanPage> {
               const SizedBox(height: 4),
               Text(it.how, key: ValueKey('plan-how-${it.id}'), style: t.small.copyWith(height: 1.4, fontWeight: FontWeight.w600)),
             ],
-            if (it.detail.isNotEmpty) ...[
+            // ONE CARD PER STUDENT: all his topics as one-line points (the long "Why" sentence is these points)
+            if (it.points.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              for (var i = 0; i < it.points.length; i++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: Text('• ${it.points[i].text}', key: ValueKey('plan-point-${it.id}-$i'), style: t.small.copyWith(height: 1.35)),
+                ),
+            ] else if (it.detail.isNotEmpty) ...[
               const SizedBox(height: 4),
-              Text(it.detail, style: t.small.copyWith(height: 1.4)),
+              Text(it.detail, style: t.small.copyWith(height: 1.35)),
             ],
             if (it.topicLabels.isNotEmpty) ...[
               const SizedBox(height: 4),
@@ -656,6 +750,7 @@ class _PlanPageState extends State<PlanPage> {
               ),
             ],
             if (it.topics.isNotEmpty) _topics(context, it),
+            if (it.isInteraction && !it.done && inBatch && it.studentUid.isNotEmpty) _quickButtons(context, it),
             if (inBatch && it.reportBack.isNotEmpty && !it.done) ...[
               const SizedBox(height: 6),
               Text(it.reportBack, key: ValueKey('plan-report-${it.id}'), style: t.small.copyWith(height: 1.4, fontWeight: FontWeight.w700, color: g.agent)),
@@ -824,6 +919,45 @@ class _PlanToggle extends StatelessWidget implements PreferredSizeWidget {
         decoration: BoxDecoration(color: g.chipBackground, borderRadius: BorderRadius.circular(GuideShape.chipRadius + 2)),
         child: Row(children: [side('TODAY', false, const ValueKey('plan-tab-today')), side('THIS WEEK', true, const ValueKey('plan-tab-week'))]),
       ),
+    );
+  }
+}
+
+/// The small dialog behind "New commitment": the rounds a day. It owns its text field, so the field is disposed only when the dialog is gone.
+class _RoundsDialog extends StatefulWidget {
+  const _RoundsDialog({required this.studentName});
+
+  final String studentName;
+
+  @override
+  State<_RoundsDialog> createState() => _RoundsDialogState();
+}
+
+class _RoundsDialogState extends State<_RoundsDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GuideDialog(
+      title: Text('${widget.studentName}: new commitment', key: const ValueKey('quick-commitment-title')),
+      content: TextField(
+        key: const ValueKey('quick-commitment-rounds'),
+        controller: _controller,
+        autofocus: true,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(labelText: 'Rounds a day'),
+        onSubmitted: (v) => Navigator.pop(context, int.tryParse(v.trim())),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(key: const ValueKey('quick-commitment-save'), onPressed: () => Navigator.pop(context, int.tryParse(_controller.text.trim())), child: const Text('Save')),
+      ],
     );
   }
 }

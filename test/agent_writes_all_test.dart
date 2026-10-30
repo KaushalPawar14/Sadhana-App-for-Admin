@@ -177,6 +177,24 @@ void main() {
       expect(d2.containsKey('topicAnswers'), isFalse);
       expect(d2.containsKey('willingness'), isFalse);
     });
+    test('interaction_add: the ONE call of the assistant also hands over what the report says (analysis): saved on the record as it stands, only what it filled in', () async {
+      final r = await all['interaction_add']!({
+        'studentUid': 'u1',
+        'notes': 'Met Ravi; he has exams',
+        'interactionType': 'Call',
+        'date': '2026-10-22',
+        'analysis': {'themes': ['exams', ' '], 'studentConcerns': 'Worried about exams', 'commitmentsMade': '', 'recommendedNextAction': 'Call after exams', 'durationMinutes': 15},
+      }, env());
+      expect(r.ok, isTrue);
+      final d = (await db.collection('interactionLogs').where('rawDictation', isEqualTo: 'Met Ravi; he has exams').get()).docs.single.data();
+      expect(d['preAnalysis'], {'studentConcerns': 'Worried about exams', 'recommendedNextAction': 'Call after exams', 'themes': ['exams'], 'durationMinutes': 15});
+      expect(d['analysis'], 'queued');
+      expect(calls.any((c) => '${c['_call']}'.contains('gemini') || '${c['_call']}'.contains('analyse')), isFalse, reason: 'the phone calls no AI');
+      // an empty analysis is no analysis: the server reads the notes as before
+      await all['interaction_add']!({'studentUid': 'u1', 'notes': 'No analysis given', 'interactionType': 'Call', 'date': '2026-10-23', 'analysis': {}}, env());
+      final d2 = (await db.collection('interactionLogs').where('rawDictation', isEqualTo: 'No analysis given').get()).docs.single.data();
+      expect(d2.containsKey('preAnalysis'), isFalse);
+    });
     test('interaction_plan_remove: goes through the server, with the guide\'s reason; nothing is deleted on the phone', () async {
       final r = await all['interaction_plan_remove']!({'studentUid': 'u1', 'reason': 'he is away for a month'}, env());
       expect(r.ok, isTrue);

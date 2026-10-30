@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../Services/GuideAi.dart';
 import '../Services/HierarchyApi.dart';
 import '../utils/GuideDb.dart';
+import 'StudentActions.dart' show setStudentCommitments;
 
 /// Interactions — a guide's notes about a conversation with a student — as one
 /// shared write, with no screen in it. `InteractionLoggerPage` and the AI agent
@@ -85,6 +86,7 @@ Future<SavedInteraction> saveInteraction({
   List<Map<String, dynamic>> topicAnswers = const [],
   String? willingness,
   bool addressed = true,
+  Map<String, dynamic>? analysis,
 }) async {
   final initialSummary = {
     'interactionType': interactionType,
@@ -116,6 +118,9 @@ Future<SavedInteraction> saveInteraction({
     if (topicAnswers.isNotEmpty) 'topicAnswers': topicAnswers,
     if (willingness != null && willingness.isNotEmpty) 'willingness': willingness,
     'addressed': addressed,
+    // ONE AI CALL: when the assistant already understood the report (what was said, concerns, commitments, a next step) it hands that over, and the
+    // server saves it as it stands: no second AI pass reads the same words again. Without it the server analyses the notes, as before.
+    if (analysis != null && analysis.isNotEmpty) 'preAnalysis': analysis,
     // the server's background analysis picks it up from here
     'analysis': 'queued',
     'createdAt': FieldValue.serverTimestamp(),
@@ -195,4 +200,105 @@ Future<void> removeInteractionFollowUp(String docId) async {
       .collection('interactionLogs')
       .doc(docId)
       .update({'approvedSummary.followUpDate': FieldValue.delete()});
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// QUICK REPORTS: one tap on a student's card in Today. No notes, no AI.
+
+/// What one tap on a student's card records.
+enum QuickOutcome {
+  talked,
+  notReachable,
+  moreWilling,
+  sameWilling,
+  lessWilling;
+
+  /// The word shown after the tap ("Recorded: Talked ✓").
+  String get recorded => switch (this) {
+        QuickOutcome.talked => 'Recorded, talked ✓',
+        QuickOutcome.notReachable => 'Recorded, not reachable',
+        QuickOutcome.moreWilling => 'Recorded, talked and more willing',
+        QuickOutcome.sameWilling => 'Recorded, talked and just as willing',
+        QuickOutcome.lessWilling => 'Recorded, talked and less willing',
+      };
+
+  /// Whether the guide reached him (a "not reachable" tap leaves the interaction open in the plan).
+  bool get reached => this != QuickOutcome.notReachable;
+
+  /// The willingness shift the server turns into a level from the last one reported: +1, 0, -1 (null when the tap says nothing about it).
+  int? get shift => switch (this) {
+        QuickOutcome.moreWilling => 1,
+        QuickOutcome.sameWilling => 0,
+        QuickOutcome.lessWilling => -1,
+        _ => null,
+      };
+}
+
+/// What [saveQuickReport] needs; tests swap [quickReportWriter] for a recorder.
+typedef QuickReportWriter = Future<SavedInteraction> Function({
+  required String guideId,
+  required String studentUid,
+  required String studentName,
+  required QuickOutcome outcome,
+  String mode,
+  List<String> topics,
+});
+
+QuickReportWriter quickReportWriter = saveQuickReport;
+
+/// Saves the new commitment (rounds a day) for a student from the quick "New commitment" tap; tests swap it.
+Future<void> Function(String studentUid, int rounds) quickCommitmentWriter = (uid, rounds) async {
+  // only the rounds change: his reading commitment stays as it is (the same rule the assistant's commitments tool follows)
+  final snap = await GuideDb.instance.collection('users').doc(uid).get();
+  final reading = snap.data()?['readingCommitmentMinutes'];
+  await setStudentCommitments(uid, rounds: rounds, readingMinutes: reading is num ? reading.toInt() : null);
+};
+
+/// Records one tap as an interaction, the same record (and the same follow-up on the server: the plan item ticked, the history line, the
+/// Surrender %, the next association) as a long report, but with no notes: the server finishes it without a model call. "Not reachable" is a
+/// report that did not reach him ([addressed] false): the interaction stays in the plan.
+Future<SavedInteraction> saveQuickReport({
+  required String guideId,
+  required String studentUid,
+  required String studentName,
+  required QuickOutcome outcome,
+  String mode = '',
+  List<String> topics = const [],
+}) async {
+  final now = DateTime.now();
+  final summary = {
+    'interactionType': mode == 'call' ? 'Call' : 'Live (in-person)',
+    'interactionDateTime': Timestamp.fromDate(now),
+    'durationMinutes': 0,
+    'themes': topics,
+    'studentConcerns': '',
+    'personalRevelation': '',
+    'commitmentsMade': '',
+    'followUpDate': null,
+    'abcdeEvidence': '',
+    'possibleLitEvidence': '',
+    'temporaryCircumstances': outcome.reached ? '' : 'Not reachable',
+    'recommendedNextAction': '',
+    'recommendedReasoning': '',
+    'extractionConfidence': 'high',
+  };
+  final docRef = await GuideDb.instance.collection('interactionLogs').add({
+    'studentUid': studentUid,
+    'studentName': studentName,
+    'guideId': guideId,
+    'interactionDate': Timestamp.fromDate(now),
+    'rawDictation': '',
+    'approvedSummary': summary,
+    'extractedDraft': null,
+    'status': 'approved',
+    'quick': outcome.reached ? 'talked' : 'not_reachable',
+    if (outcome.shift != null) 'willingnessShift': outcome.shift,
+    'addressed': outcome.reached,
+    // no notes: the server's background pass finishes it without a model call
+    'analysis': 'queued',
+    'createdAt': FieldValue.serverTimestamp(),
+    'approvedAt': FieldValue.serverTimestamp(),
+  });
+  if (outcome.reached) await notifyInteractionLogged(studentUid);
+  return SavedInteraction(id: docRef.id);
 }

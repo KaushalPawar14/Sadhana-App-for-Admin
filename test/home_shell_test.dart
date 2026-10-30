@@ -195,8 +195,9 @@ void main() {
       phone(tester, 1.0);
       await pumpShell(tester);
       // homePlan(): Ravi (sadhana), Amit (doubts + target: a follow-up), Sohan (concern, DONE), Mohit (target only), a meeting, a calendar item
+      // a student is ONE card; a section counts every card with a topic in it (Amit's card has a doubt AND a target topic: counted in both)
       expect(count(tester, 'followups'), '2');
-      expect(count(tester, 'targets'), '1');
+      expect(count(tester, 'targets'), '2');
       expect(count(tester, 'other'), '2');
       expect(find.text('Follow-ups'), findsOneWidget);
       expect(find.text('Target tasks'), findsOneWidget);
@@ -225,7 +226,7 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(count(tester, 'followups'), '1');
-      expect(count(tester, 'targets'), '2');
+      expect(count(tester, 'targets'), '3');
       expect(count(tester, 'other'), '3');
       expect(tester.binding.transientCallbackCount, 0, reason: 'a live update replays nothing');
     });
@@ -270,6 +271,30 @@ void main() {
         expect(find.byKey(ValueKey('plan-section-${e.key}')), findsOneWidget);
       });
     }
+
+    testWidgets('HOME COUNTS STUDENTS (cards), topics counted inside: a student with a worry, a doubt and a target task is ONE in each section he has a topic in', (tester) async {
+      phone(tester, 1.0);
+      const ravi = PlanItem(
+        id: 'interaction:u1:2026-10-28',
+        kind: 'interaction',
+        title: 'Interaction with Ravi',
+        studentName: 'Ravi',
+        studentUid: 'u1',
+        points: [
+          PlanPoint(text: 'Sounded worried', group: PlanGroup.worry),
+          PlanPoint(text: 'Doubt waiting', group: PlanGroup.followUp),
+          PlanPoint(text: 'Chanting: 12 → 16 rounds', group: PlanGroup.target),
+        ],
+        cardGroups: [PlanGroup.worry, PlanGroup.target, PlanGroup.followUp],
+      );
+      const amit = PlanItem(id: 'student:u2:2026-10-30', kind: 'student', title: 'Amit', studentName: 'Amit', studentUid: 'u2', points: [PlanPoint(text: 'Meeting with him today', group: PlanGroup.other)], cardGroups: [PlanGroup.other]);
+      await pumpShell(tester, plan: planDoc(left: 1, today: const [ravi, amit]));
+      expect(count(tester, 'followups'), '1', reason: 'Ravi once (his worry and his doubt are inside his card)');
+      expect(count(tester, 'targets'), '1');
+      expect(count(tester, 'other'), '1', reason: 'Amit');
+      final c = PlanCounts.of(planDoc(left: 1, today: const [ravi, amit]));
+      expect([c.students, c.cards, c.tasks, c.total], [2, 2, 0, 2], reason: 'two students: two cards, not five topics');
+    });
 
     testWidgets('PENDING CHANGES: both widgets show the live badge and a line; a tap lists them; none pending: no badge', (tester) async {
       phone(tester, 1.0);
@@ -513,7 +538,7 @@ void main() {
     expect(find.text('Midterm'), findsOneWidget);
   });
 
-  group('the TARGETS CARD: three coloured tiles (Chanting, Reading, FOLK) with a tick or a cross; a Female Enabler has two', () {
+  group('the TARGETS CARD: three plain themed tiles (Chanting, Reading, FOLK) with a tick or a cross; a Female Enabler has two', () {
     Future<void> shell(WidgetTester tester, List<CompoundTarget> targets, {double scale = 1.0, bool dark = false, AdminProfile? me, Size? size}) async {
       phone(tester, scale, size: size ?? const Size(360, 800));
       await pumpShell(tester, data: FakeHomeData(targetList: targets), me: me);
@@ -626,13 +651,56 @@ void main() {
       tester.takeException();
     });
 
-    testWidgets('three coloured tiles: each its own theme colour, the same height', (tester) async {
-      await shell(tester, [chant]);
-      final pastels = [for (final m in ['chanting', 'books', 'folk']) tester.widget<GuidePastelBox>(find.descendant(of: find.byKey(ValueKey('home-target-$m')), matching: find.byType(GuidePastelBox))).pastel];
-      expect(pastels, [GuidePastel.sand, GuidePastel.slate, GuidePastel.sage], reason: 'three different theme colours');
-      final h = [for (final m in ['chanting', 'books', 'folk']) tester.getSize(find.byKey(ValueKey('home-target-$m'))).height];
-      expect(h[0], closeTo(h[1], 0.5));
-      expect(h[1], closeTo(h[2], 0.5));
+    BoxDecoration? tileDecoration(WidgetTester tester, String m) {
+      for (final c in tester.widgetList<Container>(find.descendant(of: find.byKey(ValueKey('home-target-$m')), matching: find.byType(Container)))) {
+        final d = c.decoration;
+        if (d is BoxDecoration && d.gradient is LinearGradient && d.boxShadow != null && d.boxShadow!.isNotEmpty) return d;
+      }
+      return null;
+    }
+
+    for (final dark in [false, true]) {
+      for (final wide in [false, true]) {
+        testWidgets('PLAIN THEMED TILES (${dark ? 'dark: soft grey' : 'light: off-white'}, ${wide ? 'website 1280' : 'phone 360'}): all three alike, raised, the same height', (tester) async {
+          await shell(tester, [chant], dark: dark, size: wide ? const Size(1280, 900) : const Size(360, 800));
+          final want = dark ? GuideColors.targetTileDark : GuideColors.targetTileLight;
+          for (final m in ['chanting', 'books', 'folk']) {
+            final d = tileDecoration(tester, m)!;
+            expect((d.gradient as LinearGradient).colors, want, reason: '$m: one plain colour for every tile (no pastel per target)');
+            expect(d.boxShadow!.length, greaterThanOrEqualTo(2), reason: '$m: a raised edge: a soft shadow and a thin highlight');
+            expect(d.border, isNotNull);
+          }
+          final h = [for (final m in ['chanting', 'books', 'folk']) tester.getSize(find.byKey(ValueKey('home-target-$m'))).height];
+          expect(h[0], closeTo(h[1], 0.5));
+          expect(h[1], closeTo(h[2], 0.5));
+          // no pastel box any more
+          expect(find.descendant(of: find.byKey(const ValueKey('home-targets-card')), matching: find.byType(GuidePastelBox)), findsNothing, reason: 'the old colourful tiles are gone from the targets card');
+        });
+      }
+    }
+
+    testWidgets('the tile text reads: the theme text colour on the tile is 4.5:1 or better on both ends of the shade, in light and dark', (tester) async {
+      for (final dark in [false, true]) {
+        await shell(tester, [chant, books], dark: dark);
+        final want = dark ? GuideColors.targetTileDark : GuideColors.targetTileLight;
+        for (final m in ['chanting', 'books', 'folk']) {
+          for (final tx in tester.widgetList<Text>(find.descendant(of: find.byKey(ValueKey('home-target-$m')), matching: find.byType(Text)))) {
+            final c = tx.style?.color;
+            expect(c, isNotNull, reason: '${tx.data}');
+            for (final bg in want) {
+              expect(contrastRatio(c!, bg), greaterThanOrEqualTo(4.5), reason: '${tx.data} in ${dark ? 'dark' : 'light'} on ${bg.toARGB32().toRadixString(16)}');
+            }
+          }
+        }
+        await tester.pumpWidget(const SizedBox());
+      }
+    });
+
+    test('the tile colours are the theme\'s: off-white light, soft grey dark; the highlight and shadow differ per theme', () {
+      expect(GuideColors.targetTileLight.first.computeLuminance(), greaterThan(0.85));
+      expect(GuideColors.targetTileDark.first.computeLuminance(), lessThan(0.08));
+      expect(GuideColors.targetTileDark.first.computeLuminance(), greaterThan(0.02), reason: 'soft grey, not black');
+      expect(GuideColors.targetTileShadowDark, isNot(GuideColors.targetTileShadowLight));
     });
 
     for (final dark in [false, true]) {

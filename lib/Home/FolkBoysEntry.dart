@@ -274,9 +274,9 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
   }
 
   static const _tileLook = {
-    kMetricChanting: (GuidePastel.sand, 'Chanting'),
-    kMetricBooks: (GuidePastel.slate, 'Reading'),
-    kMetricFolk: (GuidePastel.sage, 'FOLK'),
+    kMetricChanting: 'Chanting',
+    kMetricBooks: 'Reading',
+    kMetricFolk: 'FOLK',
   };
 
   /// THE TARGETS CARD: one rectangle with a small coloured tile for each target the admin may have (CHANTING, READING, and FOLK residents: not for a
@@ -305,14 +305,11 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
       final look = _tileLook[metric]!;
       final x = placeholder ? null : setFor(metric);
       final words = x != null ? _targetWords(x) : 'Not set';
-      final body = GuidePastelBox(
-        pastel: look.$1,
-        padding: const EdgeInsets.all(12),
-        radius: 16,
+      final body = _raisedTile(
         child: stacked
             ? Row(
                 children: [
-                  Expanded(child: _tileText(look.$2, words, t)),
+                  Expanded(child: _tileText(look, words, t)),
                   const SizedBox(width: 10),
                   GuideTargetBadge(key: ValueKey('home-target-badge-$metric'), isSet: x != null),
                 ],
@@ -322,13 +319,13 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
                 children: [
                   Align(alignment: Alignment.centerRight, child: GuideTargetBadge(key: ValueKey('home-target-badge-$metric'), isSet: x != null)),
                   const SizedBox(height: 4),
-                  _tileText(look.$2, words, t),
+                  _tileText(look, words, t),
                 ],
               ),
       );
       return Semantics(
         button: !placeholder,
-        label: '${look.$2}: $words',
+        label: '${look}: $words',
         child: PressScale(
           enabled: !placeholder && guide != null,
           child: GestureDetector(
@@ -384,18 +381,40 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     );
   }
 
+  /// A plain themed tile: off-white (light) or soft grey (dark), a gentle shade and a raised ("bumpy") edge: a soft shadow below and a thin highlight
+  /// above. The same on a phone and on the website.
+  Widget _raisedTile({required Widget child}) {
+    final g = context.g;
+    final dark = g.isDark;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: dark ? GuideColors.targetTileDark : GuideColors.targetTileLight),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: g.border),
+        boxShadow: [
+          BoxShadow(color: dark ? GuideColors.targetTileShadowDark : GuideColors.targetTileShadowLight, blurRadius: 8, offset: const Offset(0, 3)),
+          BoxShadow(color: dark ? GuideColors.targetTileHighlightDark : GuideColors.targetTileHighlightLight, blurRadius: 1, offset: const Offset(0, -1)),
+        ],
+      ),
+      child: child,
+    );
+  }
+
   /// A tile's words: the name, and what it says (two lines are always reserved, so the tiles are the same height).
   Widget _tileText(String name, String words, GuideTypography t) {
-    final line = MediaQuery.textScalerOf(context).scale((t.onPastelSmall.fontSize ?? 13) * 1.3);
+    final g = context.g;
+    final small = t.small.copyWith(color: g.text);
+    final line = MediaQuery.textScalerOf(context).scale((small.fontSize ?? 13) * 1.3);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.onPastelTitle),
+        Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.cardTitleSmall.copyWith(color: g.text)),
         const SizedBox(height: 3),
         ConstrainedBox(
           constraints: BoxConstraints(minHeight: 2 * line),
-          child: Text(words, maxLines: 3, overflow: TextOverflow.ellipsis, style: t.onPastelSmall.copyWith(height: 1.3)),
+          child: Text(words, maxLines: 3, overflow: TextOverflow.ellipsis, style: small.copyWith(height: 1.3)),
         ),
       ],
     );
@@ -527,7 +546,7 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
       onTap: placeholder ? null : () => _openToday(),
       footer: placeholder || _pending.count == 0 ? null : _pendingLine('today'),
       stats: [
-        stat(PlanGroup.followUp, 'followups', 'Follow-ups', counts.followUps),
+        stat(PlanGroup.followUp, 'followups', 'Follow-ups', counts.followUpsAndWorries),
         stat(PlanGroup.target, 'targets', 'Target tasks', counts.targets),
         stat(PlanGroup.other, 'other', 'Other tasks', counts.others),
       ],

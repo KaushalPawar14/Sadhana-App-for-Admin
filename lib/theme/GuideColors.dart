@@ -160,6 +160,15 @@ class GuideColors extends ThemeExtension<GuideColors> {
     end: Alignment.bottomRight,
     colors: [Color(0xFF0E3B2C), Color(0xFF1C5C42)],
   );
+  /// The plain TARGET TILES (Home): off-white in light mode, soft grey in dark, a gentle top-to-bottom shade, raised by a soft shadow and a thin
+  /// highlight. Text on them is the theme's own text colour (well over 4.5:1 on both).
+  static const List<Color> targetTileLight = [Color(0xFFFAF8F3), Color(0xFFEDE9DF)];
+  static const List<Color> targetTileDark = [Color(0xFF3B3F49), Color(0xFF30333C)];
+  static const Color targetTileShadowLight = Color(0x26141A2B);
+  static const Color targetTileShadowDark = Color(0x66000000);
+  static const Color targetTileHighlightLight = Color(0xCCFFFFFF);
+  static const Color targetTileHighlightDark = Color(0x14FFFFFF);
+
   /// The round badge on a target tile (a tick when set, a cross when not): deep discs with a white stroke, the same in both themes.
   static const List<Color> targetSetBadge = [Color(0xFF2E9B63), Color(0xFF16714A)];
   static const List<Color> targetUnsetBadge = [Color(0xFFCB5560), Color(0xFF9E3441)];

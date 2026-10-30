@@ -5,6 +5,7 @@ import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/Pages/PlanPage.dart';
+import 'package:folk_guide_app/actions/InteractionActions.dart';
 import 'package:folk_guide_app/Services/HierarchyApi.dart';
 import 'package:folk_guide_app/utils/AdminProfile.dart';
 import 'package:folk_guide_app/utils/GuideDb.dart';
@@ -222,22 +223,27 @@ void main() {
     });
   });
 
-  group('TODAY is three sections: Follow-ups, Target tasks, Other tasks', () {
-    testWidgets('each task is in exactly one section (an interaction with any non-target reason is a follow-up)', (tester) async {
+  group('TODAY is four sections: Worries, Target tasks, Follow-ups, Other tasks', () {
+    testWidgets('each task is in exactly one section: the student card sits in the most important one it has a topic in (Worries > Target tasks > Follow-ups > Other)', (tester) async {
       await _open(tester, doc: _batchPlan(), size: const Size(360, 3200));
-      for (final k in ['followups', 'targets', 'other']) {
+      for (final k in ['worries', 'followups', 'targets', 'other']) {
         expect(find.byKey(ValueKey('plan-section-$k')), findsOneWidget, reason: k);
       }
-      for (final title in ['Follow-ups', 'Target tasks', 'Other tasks']) {
+      for (final title in ['Worries', 'Follow-ups', 'Target tasks', 'Other tasks']) {
         expect(find.descendant(of: find.byType(Scrollable).first, matching: find.text(title)), findsWidgets, reason: title);
       }
       double y(String key) => tester.getTopLeft(find.byKey(ValueKey(key))).dy;
-      expect(y('plan-section-followups'), lessThan(y('plan-item-interaction:u1:2026-10-28')));
-      expect(y('plan-item-interaction:u1:2026-10-28'), lessThan(y('plan-item-interaction:u2:2026-10-28')), reason: 'Amit (doubt + target) is a follow-up');
-      expect(y('plan-item-interaction:u2:2026-10-28'), lessThan(y('plan-section-targets')));
-      expect(y('plan-section-targets'), lessThan(y('plan-item-interaction:u3:2026-10-28')), reason: 'Mohit (target only) is a target task');
-      expect(y('plan-item-interaction:u3:2026-10-28'), lessThan(y('plan-section-other')));
+      expect(y('plan-section-worries'), lessThan(y('plan-section-targets')), reason: 'the order of the sections');
+      expect(y('plan-section-targets'), lessThan(y('plan-item-interaction:u2:2026-10-28')), reason: 'Amit (doubt + target topics) sits in the more important: Target tasks');
+      expect(y('plan-item-interaction:u2:2026-10-28'), lessThan(y('plan-item-interaction:u3:2026-10-28')), reason: 'Mohit (target only) is a target task too');
+      expect(y('plan-item-interaction:u3:2026-10-28'), lessThan(y('plan-section-followups')));
+      expect(y('plan-section-followups'), lessThan(y('plan-item-interaction:u1:2026-10-28')), reason: 'Ravi (sadhana) is a follow-up');
+      expect(y('plan-item-interaction:u1:2026-10-28'), lessThan(y('plan-section-other')));
       expect(y('plan-section-other'), lessThan(y('plan-item-meeting:u9:2026-10-30')));
+      // Amit is counted in Follow-ups too (his doubt), without a second card
+      expect(tester.widget<Text>(find.byKey(const ValueKey('plan-section-count-followups'))).data, '2');
+      expect(tester.widget<Text>(find.byKey(const ValueKey('plan-section-count-targets'))).data, '2');
+      expect(find.byKey(const ValueKey('plan-item-interaction:u2:2026-10-28')), findsOneWidget, reason: 'one card');
     });
 
     testWidgets('a section with nothing in it is still there: "None yet"', (tester) async {
@@ -246,9 +252,10 @@ void main() {
       expect(find.byKey(const ValueKey('plan-section-targets')), findsOneWidget);
       expect(find.byKey(const ValueKey('plan-section-other')), findsOneWidget);
       expect(find.byKey(const ValueKey('plan-section-empty-followups')), findsNothing);
+      expect(find.byKey(const ValueKey('plan-section-empty-worries')), findsOneWidget);
       expect(find.byKey(const ValueKey('plan-section-empty-targets')), findsOneWidget);
       expect(find.byKey(const ValueKey('plan-section-empty-other')), findsOneWidget);
-      expect(find.text('None yet'), findsNWidgets(2));
+      expect(find.text('None yet'), findsNWidgets(3));
     });
 
     testWidgets('EVERY COUNT IS ALWAYS SHOWN, 0 when there is none: interactions done / left, pending this week, target tasks, other tasks, meetings, doubts', (tester) async {
@@ -264,7 +271,8 @@ void main() {
       expect(c('interactions-done'), '0');
       expect(c('meetings'), '1');
       expect(c('other-tasks'), '2');
-      expect(c('target-tasks'), '1');
+      expect(c('target-tasks'), '2', reason: 'Amit and Mohit: a card is counted in every section it has a topic in');
+      expect(c('students'), '3', reason: 'three students with an interaction (the meeting here is not about a student): cards, not topics');
     });
 
     for (final g in PlanGroup.values) {
@@ -276,7 +284,7 @@ void main() {
         ];
         await _open(tester, doc: planDoc(left: 6, today: items), page: PlanPage(section: g));
         await tester.pumpAndSettle();
-        final key = switch (g) { PlanGroup.followUp => 'followups', PlanGroup.target => 'targets', PlanGroup.other => 'other' };
+        final key = switch (g) { PlanGroup.worry => 'worries', PlanGroup.followUp => 'followups', PlanGroup.target => 'targets', PlanGroup.other => 'other' };
         final top = tester.getTopLeft(find.byKey(ValueKey('plan-section-$key'))).dy;
         expect(top, inInclusiveRange(0, 800), reason: 'the section is on screen');
         if (g != PlanGroup.followUp) {
@@ -514,6 +522,172 @@ void main() {
       final plan = _plan(refreshedAt: DateTime.utc(2026, 10, 30, 3, 30), refreshedBy: 'open');
       expect(planLastUpdated(plan), 'Last updated: Fri 30 Oct, 9:00 AM (first open today)');
     });
+  });
+
+  group('ONE CARD PER STUDENT: all his topics as one-line points; the quick-report buttons', () {
+    const ravi = PlanItem(
+      id: 'interaction:u1:2026-10-28',
+      kind: 'interaction',
+      title: 'Interaction with Ravi',
+      studentName: 'Ravi',
+      studentUid: 'u1',
+      mode: 'call',
+      forYou: true,
+      batchPosition: 1,
+      batchRound: 1,
+      percent: 42,
+      points: [
+        PlanPoint(text: 'Sounded discouraged or worried in his AI chat', group: PlanGroup.worry, kind: 'concern'),
+        PlanPoint(text: 'Unanswered doubt in Bhagavad-gita', group: PlanGroup.followUp, kind: 'doubt'),
+        PlanPoint(text: 'Chanting: 12 → 16 rounds', group: PlanGroup.target, kind: 'target_task'),
+        PlanPoint(text: 'Book due today: ask how far he has read', group: PlanGroup.other, kind: 'bookDue'),
+      ],
+      cardGroups: [PlanGroup.worry, PlanGroup.target, PlanGroup.followUp, PlanGroup.other],
+      reasonSources: ['concern', 'doubt', 'target'],
+    );
+    const amit = PlanItem(
+      id: 'student:u2:2026-10-30',
+      kind: 'student',
+      title: 'Amit',
+      studentName: 'Amit',
+      studentUid: 'u2',
+      forYou: true,
+      points: [PlanPoint(text: 'Meeting with him today', group: PlanGroup.other, kind: 'meeting')],
+      cardGroups: [PlanGroup.other],
+    );
+    PlanDoc doc(List<PlanItem> today) => planDoc(left: 1, today: today);
+
+    testWidgets('a student with a worry, a doubt, a target task and a book due is ONE card with four one-line points, in the Worries section', (tester) async {
+      await _open(tester, doc: doc([ravi, amit]), size: const Size(360, 3200));
+      expect(find.byKey(const ValueKey('plan-item-interaction:u1:2026-10-28')), findsOneWidget, reason: 'one card');
+      for (var i = 0; i < 4; i++) {
+        expect(find.byKey(ValueKey('plan-point-interaction:u1:2026-10-28-$i')), findsOneWidget, reason: 'point $i');
+      }
+      expect(find.text('• Sounded discouraged or worried in his AI chat'), findsOneWidget);
+      expect(find.text('• Chanting: 12 → 16 rounds'), findsOneWidget);
+      double y(String key) => tester.getTopLeft(find.byKey(ValueKey(key))).dy;
+      expect(y('plan-section-worries'), lessThan(y('plan-item-interaction:u1:2026-10-28')));
+      expect(y('plan-item-interaction:u1:2026-10-28'), lessThan(y('plan-section-targets')), reason: 'the card sits in the first section it has a topic in, and is not repeated under the others');
+      // Amit: a small card with his meeting, in Other
+      expect(find.byKey(const ValueKey('plan-item-student:u2:2026-10-30')), findsOneWidget);
+      expect(y('plan-section-other'), lessThan(y('plan-item-student:u2:2026-10-30')));
+      // the sections' counts include Ravi without repeating his card; the count of students is cards, not topics
+      String c(String k) => tester.widget<Text>(find.byKey(ValueKey(k))).data!;
+      expect([c('plan-section-count-worries'), c('plan-section-count-targets'), c('plan-section-count-followups'), c('plan-section-count-other')], ['1', '1', '1', '2']);
+      expect(c('plan-count-students'), '2');
+      expect(c('plan-count-worries'), '1');
+    });
+
+    testWidgets('a card that loses topics after a partial report keeps the open ones and is not ticked; when all close it is done', (tester) async {
+      final data = await _open(tester, doc: doc([ravi]), size: const Size(360, 3200));
+      expect(find.byKey(const ValueKey('plan-point-interaction:u1:2026-10-28-3')), findsOneWidget);
+      const partial = PlanItem(
+        id: 'interaction:u1:2026-10-28',
+        kind: 'interaction',
+        title: 'Interaction with Ravi',
+        studentName: 'Ravi',
+        studentUid: 'u1',
+        batchPosition: 1,
+        points: [PlanPoint(text: 'Unanswered doubt in Bhagavad-gita', group: PlanGroup.followUp, kind: 'doubt'), PlanPoint(text: 'Chanting: 12 → 16 rounds', group: PlanGroup.target, kind: 'target_task')],
+        cardGroups: [PlanGroup.target, PlanGroup.followUp],
+      );
+      await _emit(tester, data, doc([partial]));
+      expect(find.byKey(const ValueKey('plan-point-interaction:u1:2026-10-28-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-point-interaction:u1:2026-10-28-2')), findsNothing, reason: 'the worry and the book were covered');
+      expect(find.byKey(const ValueKey('plan-done-interaction:u1:2026-10-28')), findsNothing, reason: 'topics are left: not ticked');
+      expect(find.byKey(const ValueKey('plan-quick-interaction:u1:2026-10-28')), findsOneWidget, reason: 'he can still be reported');
+      // the section he moved to: the worry section is empty now
+      expect(find.byKey(const ValueKey('plan-section-empty-worries')), findsOneWidget);
+    });
+
+    group('one-tap reports (no notes, no AI)', () {
+      late List<({String uid, String name, QuickOutcome outcome, String mode, List<String> topics})> sent;
+      setUp(() {
+        sent = [];
+        quickReportWriter = ({required guideId, required studentUid, required studentName, required outcome, String mode = '', List<String> topics = const []}) async {
+          sent.add((uid: studentUid, name: studentName, outcome: outcome, mode: mode, topics: topics));
+          return const SavedInteraction(id: 'log1');
+        };
+      });
+      tearDown(() => quickReportWriter = saveQuickReport);
+
+      testWidgets('every outcome is one tap and writes ONE record for that student', (tester) async {
+        await _open(tester, doc: doc([ravi]), size: const Size(360, 3200));
+        for (final e in {
+          'talked': QuickOutcome.talked,
+          'unreachable': QuickOutcome.notReachable,
+          'more': QuickOutcome.moreWilling,
+          'same': QuickOutcome.sameWilling,
+          'less': QuickOutcome.lessWilling,
+        }.entries) {
+          final key = ValueKey('plan-quick-interaction:u1:2026-10-28-${e.key}');
+          expect(find.byKey(key), findsOneWidget, reason: e.key);
+          await tester.ensureVisible(find.byKey(key));
+          await tester.tap(find.byKey(key));
+          await tester.pump();
+          await tester.pump();
+        }
+        expect(sent.map((s) => s.outcome), [QuickOutcome.talked, QuickOutcome.notReachable, QuickOutcome.moreWilling, QuickOutcome.sameWilling, QuickOutcome.lessWilling]);
+        expect(sent.every((s) => s.uid == 'u1' && s.name == 'Ravi' && s.mode == 'call'), isTrue);
+        expect(find.textContaining('Recorded'), findsWidgets);
+      });
+
+      test('the outcomes mean what they say: talked and the three willingness taps reach him; not reachable does not', () {
+        expect(QuickOutcome.talked.reached, isTrue);
+        expect(QuickOutcome.notReachable.reached, isFalse);
+        expect([QuickOutcome.moreWilling.shift, QuickOutcome.sameWilling.shift, QuickOutcome.lessWilling.shift, QuickOutcome.talked.shift, QuickOutcome.notReachable.shift], [1, 0, -1, null, null]);
+        expect([QuickOutcome.moreWilling, QuickOutcome.sameWilling, QuickOutcome.lessWilling].every((o) => o.reached), isTrue);
+      });
+
+      testWidgets('"New commitment" asks for the rounds, saves them for the student, and records that he was talked to', (tester) async {
+        final saved = <String>[];
+        quickCommitmentWriter = (uid, rounds) async => saved.add('$uid:$rounds');
+        addTearDown(() => quickCommitmentWriter = (uid, rounds) async {});
+        await _open(tester, doc: doc([ravi]), size: const Size(360, 3200));
+        const key = ValueKey('plan-quick-interaction:u1:2026-10-28-commitment');
+        await tester.ensureVisible(find.byKey(key));
+        await tester.tap(find.byKey(key));
+        await tester.pumpAndSettle();
+        expect(find.text('Ravi: new commitment'), findsOneWidget);
+        await tester.enterText(find.byKey(const ValueKey('quick-commitment-rounds')), '12');
+        await tester.tap(find.byKey(const ValueKey('quick-commitment-save')));
+        await tester.pumpAndSettle();
+        expect(saved, ['u1:12']);
+        expect(sent.map((s) => s.outcome), [QuickOutcome.talked]);
+        // a silly number saves nothing
+        await tester.tap(find.byKey(key));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byKey(const ValueKey('quick-commitment-rounds')), '99');
+        await tester.tap(find.byKey(const ValueKey('quick-commitment-save')));
+        await tester.pumpAndSettle();
+        expect(saved.length, 1);
+        expect(sent.length, 1);
+      });
+
+      testWidgets('a student already reported (ticked), a student not in the batch and a small card have no quick buttons', (tester) async {
+        const done = PlanItem(id: 'interaction:u3:2026-10-28', kind: 'interaction', title: 'Interaction with Mohit', studentName: 'Mohit', studentUid: 'u3', batchPosition: 2, done: true);
+        await _open(tester, doc: doc([ravi, done, amit]), size: const Size(360, 3600));
+        expect(find.byKey(const ValueKey('plan-quick-interaction:u1:2026-10-28')), findsOneWidget);
+        expect(find.byKey(const ValueKey('plan-quick-interaction:u3:2026-10-28')), findsNothing);
+        expect(find.byKey(const ValueKey('plan-quick-student:u2:2026-10-30')), findsNothing);
+      });
+    });
+
+    for (final dark in [false, true]) {
+      for (final scale in kScales) {
+        testWidgets('${dark ? 'dark' : 'light'}, text scale $scale on 360 dp: the card, its points and the buttons fit', (tester) async {
+          await _open(tester, doc: doc([ravi, amit]), scale: scale, dark: dark, size: const Size(360, 3600));
+          expect(tester.takeException(), isNull);
+          final card = tester.getRect(find.byKey(const ValueKey('plan-item-interaction:u1:2026-10-28')));
+          expect(card.width, lessThanOrEqualTo(360));
+          for (final k in ['talked', 'unreachable', 'more', 'same', 'less', 'commitment']) {
+            final r = tester.getRect(find.byKey(ValueKey('plan-quick-interaction:u1:2026-10-28-$k')));
+            expect(r.right, lessThanOrEqualTo(card.right + 0.5), reason: k);
+            expect(r.height, greaterThanOrEqualTo(44), reason: k);
+          }
+        });
+      }
+    }
   });
 
   group('the REFRESH button', () {

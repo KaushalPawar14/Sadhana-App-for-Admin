@@ -132,6 +132,19 @@ AgentResult _deleteResult(DeleteOutcome out, String noun) {
 // ---------------------------------------------------------------------------
 // Interactions, LIT, comments
 // ---------------------------------------------------------------------------
+/// What the assistant understood from the report, in the keys the server's interaction record uses (only what it filled in).
+Map<String, dynamic>? _analysisOf(Object? raw) {
+  if (raw is! Map) return null;
+  const text = ['studentConcerns', 'personalRevelation', 'commitmentsMade', 'abcdeEvidence', 'possibleLitEvidence', 'temporaryCircumstances', 'recommendedNextAction', 'recommendedReasoning'];
+  final out = <String, dynamic>{
+    for (final k in text)
+      if (_s(raw[k]).trim().isNotEmpty) k: _s(raw[k]).trim(),
+    if (raw['themes'] is List) 'themes': [for (final t in raw['themes'] as List) if (_s(t).trim().isNotEmpty) _s(t).trim()],
+    if (raw['durationMinutes'] is num) 'durationMinutes': (raw['durationMinutes'] as num).toInt(),
+  };
+  return out.isEmpty ? null : out;
+}
+
 Future<AgentResult> interactionAdd(Map<String, dynamic> a, AgentEnv env) async {
   final uid = _s(a['studentUid']);
   final s = await env.student(uid);
@@ -156,6 +169,7 @@ Future<AgentResult> interactionAdd(Map<String, dynamic> a, AgentEnv env) async {
     ],
     willingness: a['willingness'] == null ? null : _s(a['willingness']),
     addressed: a['addressed'] == null ? true : a['addressed'] == true,
+    analysis: _analysisOf(a['analysis']),
   );
   return _done('Interaction with ${_s(s['name'])} recorded for ${_when.format(when)}. ${pronouned('It is saved in his history, the plan item is ticked and his reasons are cleared from Interactions needed.', _s(s['gender']), name: _s(s['name']))}',
       entities: [AgentEntity('interaction', saved.id, 'Interaction with ${_s(s['name'])} on ${_day.format(when)}')]);
