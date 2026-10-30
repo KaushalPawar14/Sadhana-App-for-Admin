@@ -65,6 +65,7 @@ String planLastUpdated(PlanDoc plan) {
       ? ''
       : switch (plan.refreshedBy) {
           'refresh' => ' (by refresh)',
+          'open' => ' (first open today)',
           'daily' => ' (daily update)',
           'weekly' => ' (weekly update)',
           _ => '',
@@ -376,40 +377,91 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
-  /// TODAY: the day's batch, then three sections: Follow-ups (the interactions students need), Target tasks (made by the guide's own targets)
-  /// and Other tasks (everything else for today). A section with nothing in it is left out unless Home sent the guide to it.
+  /// TODAY: the day's batch, a row of counts, then three sections: Follow-ups (the interactions students need), Target tasks (made by the guide's own
+  /// targets) and Other tasks (everything else for today). EVERYTHING IS ALWAYS THERE: a count with nothing behind it reads "0" and a section with
+  /// nothing in it reads "None yet" (it is never left out).
   List<Widget> _todayBody(BuildContext context, PlanDoc plan) {
     final t = context.gText;
-    final items = plan.todayItems;
+    // a HOD's own tasks first; the summary line of every guide goes BELOW them
+    final items = plan.todayItems.where((i) => !i.isGuideSummary).toList();
+    final summaries = plan.todayItems.where((i) => i.isGuideSummary).toList();
     final date = DateTime.tryParse(plan.todayDate);
-    final sectioned = plan.batch != null; // a HOD's summary has no batch, and no sections
     final students = items.where((i) => i.isInteraction).length;
+    final batch = plan.batch ?? const PlanBatch(size: 4, round: 1, members: 0, carried: 0, nextReady: false, done: 0, left: 0);
     final out = <Widget>[
       GuideSectionTitle(date == null ? 'Today' : 'Today — ${DateFormat('EEEE d MMMM').format(date)}'),
       const SizedBox(height: 4),
-      if (plan.batch != null) _batchCard(context, plan.batch!),
+      _batchCard(context, batch),
+      _todayCounts(context, items, plan.progress),
     ];
-    if (items.isEmpty) {
-      out.add(GuideCard(padding: const EdgeInsets.all(16), child: Text('Nothing is planned for today. A quiet day — enjoy it.', key: const ValueKey('plan-today-empty'), style: t.small)));
-      return out;
-    }
     var n = 0;
     Widget card(PlanItem it) => GuideEntry(index: n++, child: _itemCard(context, it, total: it.isInteraction ? (plan.batch?.members ?? students) : 0));
-    if (!sectioned) return [...out, for (final it in items) card(it)];
+    // the summary of every guide, below the HOD's own plan
+    final guides = <Widget>[
+      if (summaries.isNotEmpty) ...[
+        Padding(padding: const EdgeInsets.only(top: 18), child: GuideSectionTitle('Guide by guide', key: const ValueKey('plan-section-guides'))),
+        for (final it in summaries) card(it),
+      ],
+    ];
+    if (items.isEmpty) {
+      out.add(Padding(padding: const EdgeInsets.only(top: 8), child: Text('Nothing is planned for today. A quiet day — enjoy it.', key: const ValueKey('plan-today-empty'), style: t.small)));
+    }
     for (final g in PlanGroup.values) {
       final mine = items.where((i) => i.group == g).toList();
-      if (mine.isEmpty && widget.section != g) continue;
       out.add(Padding(
         key: _sectionKeys[g],
         padding: const EdgeInsets.only(top: 14),
         child: GuideSectionTitle(kPlanGroupTitles[g]!, key: ValueKey('plan-section-${_sectionKey(g)}')),
       ));
-      if (mine.isEmpty) out.add(Padding(padding: const EdgeInsets.only(top: 6), child: Text('Nothing here today.', key: ValueKey('plan-section-empty-${_sectionKey(g)}'), style: t.small)));
+      if (mine.isEmpty) out.add(Padding(padding: const EdgeInsets.only(top: 6), child: Text('None yet', key: ValueKey('plan-section-empty-${_sectionKey(g)}'), style: t.small)));
       for (final it in mine) {
         out.add(card(it));
       }
     }
-    return out;
+    return [...out, ...guides];
+  }
+
+  /// The day at a glance, every number always shown (0 when there is none): interactions done / left today, pending this week, target tasks,
+  /// other tasks, meetings, doubts.
+  Widget _todayCounts(BuildContext context, List<PlanItem> items, PlanProgress? progress) {
+    final t = context.gText;
+    final g = context.g;
+    final open = items.where((i) => !i.done).toList();
+    final doubts = open.where((i) => i.kind == 'doubtsToAnswer').fold<int>(0, (n, i) => n + (int.tryParse(RegExp(r'^\d+').stringMatch(i.title) ?? '') ?? 1));
+    final counts = <(String, String, int)>[
+      ('interactions-done', 'Interactions done', items.where((i) => i.isInteraction && i.done).length),
+      ('interactions-left', 'Interactions left', open.where((i) => i.isInteraction).length),
+      ('pending', 'Pending this week', progress?.left ?? 0),
+      ('target-tasks', 'Target tasks', open.where((i) => i.group == PlanGroup.target).length),
+      ('other-tasks', 'Other tasks', open.where((i) => i.group == PlanGroup.other).length),
+      ('meetings', 'Meetings', open.where((i) => i.kind == 'meeting' || i.kind == 'meeting_request').length),
+      ('doubts', 'Doubts to answer', doubts),
+    ];
+    return Padding(
+      key: const ValueKey('plan-today-counts'),
+      padding: const EdgeInsets.only(top: 8),
+      child: GuideCard(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Wrap(
+          spacing: 18,
+          runSpacing: 10,
+          children: [
+            for (final c in counts)
+              ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 84, maxWidth: 140),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('${c.$3}', key: ValueKey('plan-count-${c.$1}'), style: t.cardTitleSmall.copyWith(fontSize: 20, color: g.agent)),
+                    Text(c.$2, style: t.caption),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   /// The day's batch: how many students, how many done and left, "Next 4 ready", and the guide's own number a day.
@@ -428,7 +480,7 @@ class _PlanPageState extends State<PlanPage> {
             Row(
               children: [
                 Expanded(child: Text("Today's students", style: t.cardTitleSmall)),
-                Text(b.members == 0 ? 'none needed' : 'done ${b.done} · left ${b.left}', key: const ValueKey('plan-batch-counts'), style: t.bodyStrong.copyWith(color: g.agent)),
+                Text('done ${b.done} · left ${b.left}', key: const ValueKey('plan-batch-counts'), style: t.bodyStrong.copyWith(color: g.agent)),
               ],
             ),
             if (b.nextReady) ...[
@@ -470,26 +522,50 @@ class _PlanPageState extends State<PlanPage> {
     if (mounted) setState(() => _savingSize = false);
   }
 
+  /// The sections This week always shows, in this order (every one is there even with nothing in it: "None yet"); any other section the plan
+  /// holds (the habits already discussed, the standard guidance, a HOD's "Guide by guide") follows, in the plan's own order.
+  static const _weekBase = [
+    ('interactions', 'Students to contact — planned days'),
+    ('targets', 'Your targets'),
+    ('ahead', 'Dates ahead'),
+    ('calendar', 'How the calendar changes things'),
+    ('milestones', 'Well done'),
+  ];
+
   List<Widget> _weekBody(BuildContext context, PlanDoc plan) {
     final t = context.gText;
+    PlanSection? held(String id) {
+      for (final s in plan.sections) {
+        if (s.id == id) return s;
+      }
+      return null;
+    }
+
+    final base = {for (final b in _weekBase) b.$1};
+    final shown = <PlanSection>[
+      for (final b in _weekBase) PlanSection(id: b.$1, title: held(b.$1)?.title ?? b.$2, items: held(b.$1)?.items ?? const []),
+      for (final s in plan.sections)
+        if (!base.contains(s.id)) s,
+    ];
     return [
       if (plan.intro.isNotEmpty)
         Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(plan.intro, key: const ValueKey('plan-intro'), style: t.body.copyWith(height: 1.45))),
-      if (plan.progress != null) _progressCard(context, plan.progress!),
-      if (plan.sections.isEmpty)
-        GuideCard(padding: const EdgeInsets.all(16), child: Text('Nothing to plan this week yet.', key: const ValueKey('plan-week-empty'), style: t.small)),
-      for (final s in plan.sections) ...[
-        Padding(padding: const EdgeInsets.only(top: 8), child: GuideSectionTitle(s.title)),
+      _progressCard(context, plan.progress ?? PlanProgress.empty),
+      for (final s in shown) ...[
+        Padding(padding: const EdgeInsets.only(top: 8), child: GuideSectionTitle(s.title, key: ValueKey('plan-week-section-${s.id}'))),
         const SizedBox(height: 4),
+        if (s.items.isEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text('None yet', key: ValueKey('plan-week-empty-${s.id}'), style: t.small)),
         for (final it in s.items) _itemCard(context, it),
       ],
     ];
   }
 
   /// "Interactions needed: 20 · done 4 · left 16", and the same for each source, as bars.
-  Widget _progressCard(BuildContext context, PlanProgress p) {
+  Widget _progressCard(BuildContext context, PlanProgress progress) {
     final g = context.g;
     final t = context.gText;
+    // every source is always listed (0 when it has nothing)
+    final p = progress.bySource.isEmpty ? PlanProgress(needed: progress.needed, done: progress.done, left: progress.left, summary: progress.summary, bySource: PlanProgress.emptySources) : progress;
     return Padding(
       key: const ValueKey('plan-progress'),
       padding: const EdgeInsets.only(top: 4, bottom: 4),

@@ -160,6 +160,9 @@ class GuideColors extends ThemeExtension<GuideColors> {
     end: Alignment.bottomRight,
     colors: [Color(0xFF0E3B2C), Color(0xFF1C5C42)],
   );
+  /// The round badge on a target tile (a tick when set, a cross when not): deep discs with a white stroke, the same in both themes.
+  static const List<Color> targetSetBadge = [Color(0xFF2E9B63), Color(0xFF16714A)];
+  static const List<Color> targetUnsetBadge = [Color(0xFFCB5560), Color(0xFF9E3441)];
   static const Color todayShadow = Color(0x380E3B2C); // rgba(14,59,44,.22)
   static const Color heroText = Color(0xFFF4F1EA);
   static const Color heroMuted = Color(0xB8F4F1EA); // rgba(244,241,234,.72)

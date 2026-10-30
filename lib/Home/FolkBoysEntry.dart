@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../utils/Responsive.dart';
 import 'package:intl/intl.dart';
 
+import '../Pages/CompoundGoalProgressPage.dart';
 import '../Pages/GoalSetup.dart';
 import '../widgets/GuideButtons.dart';
 import '../Pages/GuideCalendarPage.dart';
@@ -15,6 +16,7 @@ import '../theme/GuideColors.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
+import '../Services/HierarchyApi.dart';
 import '../utils/CalendarQueries.dart';
 import '../utils/GoalCompoundQueries.dart';
 import '../utils/GoalMetrics.dart';
@@ -29,7 +31,9 @@ import '../widgets/GuideEntry.dart';
 import '../widgets/GuideGhost.dart';
 import '../widgets/GuideStates.dart';
 import '../widgets/GuideSurface.dart';
+import '../theme/GuideTypography.dart';
 import '../widgets/GuideTiles.dart';
+import '../widgets/PressScale.dart';
 import 'FolkBoysWorkspace.dart';
 
 /// The Home tab: the guide's dashboard.
@@ -57,7 +61,13 @@ import 'FolkBoysWorkspace.dart';
 ///
 /// The guide resolution and FCM re-registration that used to run on the FOLK
 /// Boys tab still run here, on tab entry (the tab is built when first opened).
+/// The day the app last told the server it was opened (once a day).
+String? _openedDay;
+
 class FolkBoysEntryScreen extends StatefulWidget {
+  /// For tests: forget that today's first open was already reported.
+  static void forgetOpenedDay() => _openedDay = null;
+
   final String? selectedGuide;
 
   const FolkBoysEntryScreen({super.key, this.selectedGuide});
@@ -128,16 +138,20 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
   void _listen(String guide) {
     if (_subs.isNotEmpty) return;
     final data = HomeData.instance;
+    // the plan widgets are the signed-in admin's OWN (a HOD's too: his own targets, tasks and students; the guides' summaries are on the Plan page)
+    final me = AdminProfileProvider.current;
+    final planOwner = me != null && me.isHod && me.id.isNotEmpty ? me.id : guide;
+    _openedTheApp(planOwner);
     _subs.add(data.targets(guide).listen((t) {
       if (mounted) setState(() => _targets = t);
     }, onError: (_) {
       if (mounted) setState(() => _targetsFailed = true);
     }));
-    _subs.add(PlanData.instance.pending(guide).listen((p) {
+    _subs.add(PlanData.instance.pending(planOwner).listen((p) {
       if (mounted) setState(() => _pending = p);
     }, onError: (_) {}));
     // the plan the server keeps for this guide: live, so the counts follow every tick and every new item
-    _subs.add(PlanData.instance.plan(guide).listen((p) {
+    _subs.add(PlanData.instance.plan(planOwner).listen((p) {
       if (mounted) {
         setState(() {
           _plan = p;
@@ -158,6 +172,19 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     }).catchError((_) {
       if (mounted) setState(() => _eventsFailed = true);
     });
+  }
+
+  /// The first open of the day tells the server, which then writes the AI questions for Today's students (once a day; see HierarchyApi.openPlan).
+  void _openedTheApp(String planOwner) {
+    final now = DateTime.now();
+    final today = '${now.year}-${now.month}-${now.day}';
+    if (_openedDay == today || planOwner.isEmpty) return;
+    _openedDay = today;
+    try {
+      HierarchyApi.instance.openPlan();
+    } catch (_) {
+      // no server to tell (a test, or signed out): nothing to do
+    }
   }
 
   /// Retry after a failed source: the same listeners, started again.
@@ -233,64 +260,144 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     kMetricFolk: 'FOLK-residents',
   };
 
-  /// The ONE compact targets card. Targets themselves (status, phases, progress) are viewed in the AI assistant.
-  ///   none set -> "You haven't set your chanting, book-reading and FOLK-residents targets" + Set a target
-  ///   some set -> "You haven't set your FOLK-residents target" (or the two missing ones) + Set a target
-  ///   all set  -> "All your targets are set", no button
-  /// (A Female Enabler has two targets: the FOLK-residents one is for boys only.)
+  /// "16 rounds by 31 Dec": what a set target says on its tile.
+  static String _targetWords(CompoundTarget x) {
+    final by = x.endDate == null ? '' : ' by ${DateFormat('d MMM').format(x.endDate!)}';
+    switch (x.metric) {
+      case kMetricChanting:
+        return '${x.perStudentValueGoal} rounds$by';
+      case kMetricBooks:
+        return '${x.perStudentValueGoal} book${x.perStudentValueGoal == 1 ? '' : 's'}$by';
+      default:
+        return '${x.studentCountGoal} FOLK resident${x.studentCountGoal == 1 ? '' : 's'}$by';
+    }
+  }
+
+  static const _tileLook = {
+    kMetricChanting: (GuidePastel.sand, 'Chanting'),
+    kMetricBooks: (GuidePastel.slate, 'Reading'),
+    kMetricFolk: (GuidePastel.sage, 'FOLK'),
+  };
+
+  /// THE TARGETS CARD: one rectangle with a small coloured tile for each target the admin may have (CHANTING, READING, and FOLK residents: not for a
+  /// Female Enabler, it is for boys), each with a curvy tick when it is set (and what it says: "16 rounds by 31 Dec") or a curvy cross and "Not
+  /// set". A tile opens that target, or the create flow when it is not set. Underneath: "Set a target" (the first missing one) while any is
+  /// missing, "View targets" (the targets in the plan) when all are set.
   Widget _targetsCard({bool placeholder = false}) {
     final t = context.gText;
-    final g = context.g;
     final me = AdminProfileProvider.current;
-    final wantedCount = me == null ? 2 : compoundMetricsFor(me).length;
-    final missing = placeholder ? [for (final m in kCompoundMetrics.take(wantedCount)) m] : _targetsMissing;
-    final all = missing.isEmpty;
-    final words = [for (final m in missing) _metricWords[m] ?? m];
-    final String message;
-    if (all) {
-      message = wantedCount == 2 ? 'Both your targets are set' : 'All your targets are set';
-    } else if (missing.length == wantedCount) {
-      message = "You haven't set your ${_joinWords(words)} ${wantedCount == 1 ? 'target' : 'targets'}";
-    } else {
-      message = "You haven't set your ${_joinWords(words)} ${words.length == 1 ? 'target' : 'targets'}";
+    final wanted = me == null ? const [kMetricChanting, kMetricBooks] : compoundMetricsFor(me);
+    final all = _targets ?? const <CompoundTarget>[];
+    CompoundTarget? setFor(String m) {
+      for (final x in all) {
+        if (x.isActive && x.metric == m) return x;
+      }
+      return null;
     }
+
+    final missing = placeholder ? List<String>.of(wanted) : _targetsMissing;
     final guide = _guide;
+    final scale = MediaQuery.textScalerOf(context).scale(1);
+    // narrow (a small phone, or large text): the tiles stack, one under the other, so no word is ever cut
+    final stacked = scale > 1.25 || MediaQuery.sizeOf(context).width < 340;
+
+    Widget tile(String metric) {
+      final look = _tileLook[metric]!;
+      final x = placeholder ? null : setFor(metric);
+      final words = x != null ? _targetWords(x) : 'Not set';
+      final body = GuidePastelBox(
+        pastel: look.$1,
+        padding: const EdgeInsets.all(12),
+        radius: 16,
+        child: stacked
+            ? Row(
+                children: [
+                  Expanded(child: _tileText(look.$2, words, t)),
+                  const SizedBox(width: 10),
+                  GuideTargetBadge(key: ValueKey('home-target-badge-$metric'), isSet: x != null),
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Align(alignment: Alignment.centerRight, child: GuideTargetBadge(key: ValueKey('home-target-badge-$metric'), isSet: x != null)),
+                  const SizedBox(height: 4),
+                  _tileText(look.$2, words, t),
+                ],
+              ),
+      );
+      return Semantics(
+        button: !placeholder,
+        label: '${look.$2}: $words',
+        child: PressScale(
+          enabled: !placeholder && guide != null,
+          child: GestureDetector(
+            key: ValueKey('home-target-$metric'),
+            behavior: HitTestBehavior.opaque,
+            onTap: placeholder || guide == null
+                ? null
+                : () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => x != null ? CompoundGoalProgressPage(guideId: x.guideId, targetId: x.targetId) : CompoundGoalSetupPage(guideId: guide, initialMetric: metric)),
+                    ),
+            child: ExcludeSemantics(child: body),
+          ),
+        ),
+      );
+    }
+
+    final tiles = [for (final m in wanted) tile(m)];
     return GuideCard(
       key: const ValueKey('home-targets-card'),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(all ? Icons.check_circle_outline_rounded : Icons.track_changes_outlined, size: 22, color: all ? g.success : g.mutedText),
-              const SizedBox(width: 12),
-              Expanded(
-                // two lines tall in every state, so the card is the same size as its ghost
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: 2 * MediaQuery.textScalerOf(context).scale((t.bodyStrong.fontSize ?? 15) * 1.3)),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(message, key: const ValueKey('home-targets-text'), style: t.bodyStrong.copyWith(height: 1.3)),
-                  ),
-                ),
+          Text('Your targets', style: t.cardTitleSmall),
+          const SizedBox(height: 10),
+          if (stacked)
+            Column(children: [for (var i = 0; i < tiles.length; i++) ...[if (i > 0) const SizedBox(height: 8), tiles[i]]])
+          else
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [for (var i = 0; i < tiles.length; i++) ...[if (i > 0) const SizedBox(width: 8), Expanded(child: tiles[i])]],
               ),
-            ],
-          ),
-          if (!all && !placeholder && guide != null) ...[
-            const SizedBox(height: 10),
+            ),
+          const SizedBox(height: 12),
+          if (missing.isNotEmpty)
             GuideSecondaryButton(
               key: const ValueKey('home-set-target'),
               label: 'Set a target',
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => CompoundGoalSetupPage(guideId: guide, initialMetric: missing.length == 1 ? missing.first : null)),
-              ),
+              onPressed: placeholder || guide == null
+                  ? null
+                  : () => Navigator.push(context, MaterialPageRoute(builder: (_) => CompoundGoalSetupPage(guideId: guide, initialMetric: missing.first))),
+            )
+          else
+            GuideSecondaryButton(
+              key: const ValueKey('home-view-targets'),
+              label: 'View targets',
+              onPressed: placeholder ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlanPage(initialWeek: true))),
             ),
-          ],
         ],
       ),
+    );
+  }
+
+  /// A tile's words: the name, and what it says (two lines are always reserved, so the tiles are the same height).
+  Widget _tileText(String name, String words, GuideTypography t) {
+    final line = MediaQuery.textScalerOf(context).scale((t.onPastelSmall.fontSize ?? 13) * 1.3);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.onPastelTitle),
+        const SizedBox(height: 3),
+        ConstrainedBox(
+          constraints: BoxConstraints(minHeight: 2 * line),
+          child: Text(words, maxLines: 3, overflow: TextOverflow.ellipsis, style: t.onPastelSmall.copyWith(height: 1.3)),
+        ),
+      ],
     );
   }
 
@@ -346,10 +453,11 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
   bool get _tilesReady =>
       _guide != null && ((_studentCount != null || _countFailed) && (_events != null || _eventsFailed));
 
-  /// THIS WEEK (navy): opens the Plan page on its This week tab (the full plan, target progress, phases and what to do this week).
+  /// THIS WEEK (navy): opens the Plan page on its This week tab (the full plan, target progress, phases and what to do this week). Every count is
+  /// always there: a zero is "0", never a missing number.
   Widget _heroCard(List<CompoundTarget> active, {bool placeholder = false}) {
-    const dash = '–';
     final progress = placeholder ? null : _plan?.progress;
+    String n(int v) => placeholder ? '–' : '$v';
     return GuideHeroCard(
       key: const ValueKey('home-this-week'),
       label: 'This week',
@@ -362,15 +470,19 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
               ),
       footer: placeholder || _pending.count == 0 ? null : _pendingLine('week'),
       stats: [
-        GuideHeroStat(placeholder ? dash : '${active.length}', 'Targets'),
-        if (placeholder || progress != null) GuideHeroStat(placeholder ? dash : '${progress!.left}', 'To contact'),
-        if (placeholder || progress != null) GuideHeroStat(placeholder ? dash : '${progress!.done}', 'Done'),
+        GuideHeroStat(n(active.length), 'Targets', valueKey: const ValueKey('home-week-targets-count')),
+        GuideHeroStat(n(progress?.left ?? 0), 'To contact', valueKey: const ValueKey('home-week-left-count')),
+        GuideHeroStat(n(progress?.done ?? 0), 'Done', valueKey: const ValueKey('home-week-done-count')),
       ],
     );
   }
 
-  /// The two plan widgets stay compact on a wide window (left-aligned, like the tiles); a phone gets the whole width.
-  Widget _compact(Widget child) => Align(alignment: Alignment.centerLeft, child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: kHomeCardMaxWidth), child: child));
+  /// The two plan widgets stay compact on a wide window (left-aligned, like the tiles); a phone gets the whole width. Both fill exactly the same
+  /// width, so THIS WEEK and TODAY'S TASKS are the same size.
+  Widget _compact(Widget child) => Align(
+        alignment: Alignment.centerLeft,
+        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: kHomeCardMaxWidth), child: SizedBox(width: double.infinity, child: child)),
+      );
 
   /// "● 3 changes the AI has not looked at yet" on a dark card: a brass badge and a short line; a tap lists them.
   Widget _pendingLine(String id) {
@@ -394,71 +506,31 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
         MaterialPageRoute(builder: (_) => PlanPage(section: section)),
       );
 
-  /// TODAY'S TASKS: three live counts (Follow-ups, Target tasks, Other tasks). The card, or any one count, opens the Plan page on TODAY
-  /// at that section.
+  /// TODAY'S TASKS: the same card as THIS WEEK (size, shape, layout, texture), in dark green, with three live counts (Follow-ups, Target tasks,
+  /// Other tasks); a zero shows as "0". The card, or any one count, opens the Plan page on TODAY at that section.
   Widget _todayCard({bool placeholder = false}) {
-    final t = context.gText;
     final counts = PlanCounts.of(placeholder ? null : _plan);
-    Widget count(PlanGroup group, String key, String label) {
-      final n = placeholder || _plan == null ? '–' : '${switch (group) { PlanGroup.followUp => counts.followUps, PlanGroup.target => counts.targets, PlanGroup.other => counts.others }}';
-      return Expanded(
-        child: GestureDetector(
-          key: ValueKey('home-today-$key'),
-          behavior: HitTestBehavior.opaque,
+    String n(int v) => placeholder ? '–' : '$v';
+    GuideHeroStat stat(PlanGroup group, String key, String label, int value) => GuideHeroStat(
+          n(value),
+          label,
+          valueKey: ValueKey('home-today-$key-count'),
+          tapKey: ValueKey('home-today-$key'),
           onTap: placeholder ? null : () => _openToday(group),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(n, key: ValueKey('home-today-$key-count'), style: t.heroNumber.copyWith(fontSize: 26)),
-                const SizedBox(height: 2),
-                Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.heroCaption),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Semantics(
-      button: !placeholder,
-      child: GestureDetector(
-        key: const ValueKey('home-today-tasks'),
-        behavior: HitTestBehavior.opaque,
-        onTap: placeholder ? null : () => _openToday(),
-        // the hero card's style in a rich dark green (THIS WEEK next to it stays navy), light text in both themes
-        child: GuideHeroPanel(
-          gradient: GuideColors.todayGradient,
-          shadowColor: GuideColors.todayShadow,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(child: Text("TODAY'S TASKS", style: t.heroLabel)),
-                  const Icon(Icons.chevron_right_rounded, size: 20, color: GuideColors.heroMuted),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  count(PlanGroup.followUp, 'followups', 'Follow-ups'),
-                  count(PlanGroup.target, 'targets', 'Target tasks'),
-                  count(PlanGroup.other, 'other', 'Other tasks'),
-                ],
-              ),
-              if (!placeholder && _pending.count > 0) ...[
-                const SizedBox(height: 8),
-                _pendingLine('today'),
-              ],
-            ],
-          ),
-        ),
-      ),
+        );
+    return GuideHeroCard(
+      key: const ValueKey('home-today-tasks'),
+      label: "Today's tasks",
+      trailing: DateFormat('EEE d MMM').format(DateTime.now()),
+      gradient: GuideColors.todayGradient,
+      shadowColor: GuideColors.todayShadow,
+      onTap: placeholder ? null : () => _openToday(),
+      footer: placeholder || _pending.count == 0 ? null : _pendingLine('today'),
+      stats: [
+        stat(PlanGroup.followUp, 'followups', 'Follow-ups', counts.followUps),
+        stat(PlanGroup.target, 'targets', 'Target tasks', counts.targets),
+        stat(PlanGroup.other, 'other', 'Other tasks', counts.others),
+      ],
     );
   }
 

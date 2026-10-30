@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/Home/FolkBoysEntry.dart';
+import 'package:folk_guide_app/Pages/CompoundGoalProgressPage.dart';
 import 'package:folk_guide_app/Pages/GoalSetup.dart';
 import 'package:folk_guide_app/Pages/PlanPage.dart';
+import 'package:folk_guide_app/Services/HierarchyApi.dart';
 import 'package:folk_guide_app/agent/AgentRoutes.dart';
 import 'package:folk_guide_app/theme/AgentLook.dart' show contrastRatio;
 import 'package:folk_guide_app/theme/GuideColors.dart';
@@ -50,8 +54,9 @@ class FakeHomeData implements HomeData {
   Widget calendarBadge({required Widget child}) => child;
 }
 
-CompoundTarget target(String metric, int students, int value, int phase, int total) =>
+CompoundTarget target(String metric, int students, int value, int phase, int total, {DateTime? end}) =>
     CompoundTarget.from('G', 't$metric', {
+      if (end != null) 'endDate': Timestamp.fromDate(end),
       'metric': metric,
       'studentCountGoal': students,
       'perStudentValueGoal': value,
@@ -145,16 +150,19 @@ void main() {
     expect(find.text('Hare Krishna,'), findsOneWidget);
     expect(find.text('THIS WEEK'), findsOneWidget);
     // THIS WEEK: Targets 2, To contact 6, Done 2
-    final hero = find.byType(GuideHeroCard);
-    expect(find.descendant(of: hero, matching: find.text('2')), findsNWidgets(2), reason: 'targets and done');
-    expect(find.descendant(of: hero, matching: find.text('6')), findsOneWidget);
-    expect(find.text('Targets'), findsOneWidget, reason: 'the hero stat; the target cards are gone');
+    String week(String k) => tester.widget<Text>(find.byKey(ValueKey('home-week-$k-count'))).data!;
+    expect(week('targets'), '2');
+    expect(week('left'), '6');
+    expect(week('done'), '2');
+    expect(find.text('Targets'), findsOneWidget, reason: 'the hero stat');
     expect(find.text('To contact'), findsOneWidget);
     expect(find.text('Overdue'), findsNothing, reason: 'the old hero stats are gone');
     expect(find.text('Follow-ups'), findsOneWidget, reason: "today's tasks: the count's name, once");
-    expect(find.textContaining('Phase 1 of 8'), findsNothing, reason: 'no per-target cards: status and progress are viewed in the assistant');
-    expect(find.textContaining('10 students at 16'), findsNothing);
-    expect(find.text("You haven't set your FOLK-residents target"), findsOneWidget, reason: 'chanting and books are set; the third is asked for');
+    expect(find.textContaining('Phase 1 of 8'), findsNothing, reason: 'no per-target cards: status and progress are viewed in the plan');
+    expect(find.text('Chanting'), findsOneWidget);
+    expect(find.text('Reading'), findsOneWidget);
+    expect(find.text('FOLK'), findsOneWidget);
+    expect(find.text('Not set'), findsOneWidget, reason: 'chanting and books are set; FOLK is not');
     expect(find.text('FOLK Boys Board'), findsOneWidget);
     expect(find.text('20 boys'), findsOneWidget);
     expect(find.text('Calendar'), findsOneWidget);
@@ -301,6 +309,60 @@ void main() {
       expect(find.byKey(const ValueKey('home-pending-today')), findsNothing);
     });
 
+    testWidgets('A HOD\'S HOME counts HIS OWN plan (his id, not the guide he picked); the guides\' summary lines are not tasks', (tester) async {
+      phone(tester, 1.0);
+      final asked = <String>[];
+      final data = RecordingPlanData(FixedPlanData(PlanDoc(
+        todayDate: '2026-10-30',
+        todayItems: [
+          interactionItem('u1', 'Ravi', ['sadhana']),
+          const PlanItem(id: 'guide:G1', kind: 'guideSummary', title: 'Gopal: 3 for today'),
+          const PlanItem(id: 'guide:G2', kind: 'guideSummary', title: 'Govinda: 1 for today'),
+        ],
+        weekOf: '2026-10-26',
+        intro: 'x',
+        sections: const [],
+        generatedAt: DateTime.utc(2026, 10, 30, 4, 10),
+        status: 'upToDate',
+        changedAt: DateTime.utc(2026, 10, 30, 4, 10),
+        batch: const PlanBatch(size: 4, round: 1, members: 1, carried: 0, nextReady: false, done: 0, left: 1),
+        progress: const PlanProgress(needed: 1, done: 0, left: 1, summary: 'Interactions needed: 1 · done 0 · left 1', bySource: []),
+      )), asked);
+      await pumpShell(tester, me: profile('HOD1', 'HOD'), planData: data);
+      expect(asked.toSet(), {'HOD1'}, reason: 'the plan read is the HOD\'s own, not the guide G picked');
+      expect(find.byKey(const ValueKey('home-today-followups-count')), findsWidgets);
+      expect(tester.widget<Text>(find.byKey(const ValueKey('home-today-followups-count'))).data, '1');
+      expect(tester.widget<Text>(find.byKey(const ValueKey('home-today-other-count'))).data, '0', reason: 'two guide summaries are not tasks');
+    });
+
+    testWidgets('the FIRST OPEN OF THE DAY tells the server once (that is what makes it write Today\'s AI questions); never again that day', (tester) async {
+      phone(tester, 1.0);
+      FolkBoysEntryScreen.forgetOpenedDay();
+      final sent = <Map<String, dynamic>>[];
+      HierarchyApi.useForTests((name, data) async {
+        sent.add({'name': name, ...data});
+        return {'ok': true};
+      });
+      addTearDown(() => HierarchyApi.useForTests(null));
+      await pumpShell(tester);
+      expect(sent, [
+        {'name': 'refreshPlan', 'open': true}
+      ]);
+      await tester.pumpWidget(const SizedBox());
+      await pumpShell(tester); // opened again the same day: nothing more
+      expect(sent.length, 1);
+    });
+
+    testWidgets('a failed first-open call is silent: the plan is simply there', (tester) async {
+      phone(tester, 1.0);
+      FolkBoysEntryScreen.forgetOpenedDay();
+      HierarchyApi.useForTests((name, data) async => throw HierarchyException('internal', 'down'));
+      addTearDown(() => HierarchyApi.useForTests(null));
+      await pumpShell(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('home-today-followups-count')), findsWidgets);
+    });
+
     testWidgets('THE OLD WEEKLY PLANNING PAGE IS GONE: no file, no agent route, no helper', (tester) async {
       expect(File('lib/Pages/WeeklyPlanning.dart').existsSync(), isFalse);
       expect(File('lib/utils/WeekData.dart').existsSync(), isFalse);
@@ -326,7 +388,7 @@ void main() {
     for (final wide in [false, true]) {
       for (final dark in [false, true]) {
         for (final scale in kScales) {
-          testWidgets('${wide ? 'website 1280' : 'phone 360'}, ${dark ? 'dark' : 'light'}, text scale $scale: compact, nothing overflows, each count is a 48 dp target', (tester) async {
+          testWidgets('${wide ? 'website 1280' : 'phone 360'}, ${dark ? 'dark' : 'light'}, text scale $scale: THIS WEEK and TODAY\'S TASKS are EXACTLY the same size, nothing overflows, each count is a 48 dp target', (tester) async {
             phone(tester, scale, size: wide ? const Size(1280, 900) : const Size(360, 800));
             await pumpShell(tester);
             if (dark) {
@@ -338,17 +400,35 @@ void main() {
             final week = tester.getRect(find.byKey(const ValueKey('home-this-week')));
             final today = tester.getRect(find.byKey(const ValueKey('home-today-tasks')));
             expect(today.width, closeTo(week.width, 0.5), reason: 'same width, one column');
+            expect(today.height, closeTo(week.height, 0.5), reason: 'same height');
+            expect(today.left, closeTo(week.left, 0.5), reason: 'same left edge');
             if (wide) expect(today.width, lessThan(700), reason: 'a compact column on a wide screen');
             for (final k in ['followups', 'targets', 'other']) {
               final r = tester.getRect(find.byKey(ValueKey('home-today-$k')));
               expect(r.height, greaterThanOrEqualTo(48), reason: k);
-              expect(today.contains(r.topLeft) && today.contains(r.bottomRight), isTrue, reason: '$k inside the card');
+              expect(r.left >= today.left && r.right <= today.right && r.top >= today.top && r.bottom <= today.bottom, isTrue, reason: '$k inside the card');
             }
-            if (scale == 1.0 && !wide) expect(today.height, lessThan(130), reason: 'compact on a phone');
+            if (scale == 1.0 && !wide) expect(today.height, lessThan(170), reason: 'compact on a phone');
           });
         }
       }
     }
+
+    testWidgets('EVERY COUNT IS ALWAYS THERE, "0" when nothing exists: a HOD with one target and no plan numbers at all', (tester) async {
+      phone(tester, 1.0);
+      // no progress block, no items: what a HOD with a single target had (the contact / done counts used to be missing)
+      await pumpShell(tester, me: profile('H', 'HOD'), data: FakeHomeData(targetList: [target('chanting', 10, 16, 1, 8)]), plan: planDoc());
+      String week(String k) => tester.widget<Text>(find.byKey(ValueKey('home-week-$k-count'))).data!;
+      expect([week('targets'), week('left'), week('done')], ['1', '0', '0']);
+      expect([count(tester, 'followups'), count(tester, 'targets'), count(tester, 'other')], ['0', '0', '0']);
+      expect(find.text('To contact'), findsOneWidget);
+      expect(find.text('Done'), findsOneWidget);
+      // and with no target and no plan document at all
+      await tester.pumpWidget(const SizedBox());
+      await pumpShell(tester, data: FakeHomeData(targetList: const []), planData: FixedPlanData(null));
+      expect([week('targets'), week('left'), week('done')], ['0', '0', '0']);
+      expect([count(tester, 'followups'), count(tester, 'targets'), count(tester, 'other')], ['0', '0', '0']);
+    });
   });
 
   group("TODAY'S TASKS IN DARK GREEN (THIS WEEK stays navy)", () {
@@ -433,9 +513,9 @@ void main() {
     expect(find.text('Midterm'), findsOneWidget);
   });
 
-  group('the ONE compact targets card (three targets; a Female Enabler has two)', () {
-    Future<void> shell(WidgetTester tester, List<CompoundTarget> targets, {double scale = 1.0, bool dark = false, AdminProfile? me}) async {
-      phone(tester, scale);
+  group('the TARGETS CARD: three coloured tiles (Chanting, Reading, FOLK) with a tick or a cross; a Female Enabler has two', () {
+    Future<void> shell(WidgetTester tester, List<CompoundTarget> targets, {double scale = 1.0, bool dark = false, AdminProfile? me, Size? size}) async {
+      phone(tester, scale, size: size ?? const Size(360, 800));
       await pumpShell(tester, data: FakeHomeData(targetList: targets), me: me);
       if (dark) {
         tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
@@ -444,85 +524,194 @@ void main() {
       }
     }
 
-    final chant = target('chanting', 10, 16, 1, 8);
-    final books = target('books', 10, 5, 2, 8);
-    final folk = target('folk', 6, 1, 1, 4);
+    final end = DateTime(2026, 12, 31);
+    final chant = target('chanting', 10, 16, 1, 8, end: end);
+    final books = target('books', 10, 5, 2, 8, end: end);
+    final folk = target('folk', 6, 1, 1, 4, end: end);
+    bool isSet(WidgetTester tester, String m) => tester.widget<GuideTargetBadge>(find.byKey(ValueKey('home-target-badge-$m'))).isSet;
 
-    testWidgets('none set: all three are named, with a Set a target button', (tester) async {
+    testWidgets('none set: three tiles, each "Not set" with a cross; a "Set a target" button', (tester) async {
       await shell(tester, const []);
       expect(find.byKey(const ValueKey('home-targets-card')), findsOneWidget);
-      expect(find.text("You haven't set your chanting, book-reading and FOLK-residents targets"), findsOneWidget);
-      expect(find.byKey(const ValueKey('home-set-target')), findsOneWidget);
+      for (final m in ['chanting', 'books', 'folk']) {
+        expect(find.byKey(ValueKey('home-target-$m')), findsOneWidget, reason: m);
+        expect(isSet(tester, m), isFalse, reason: m);
+      }
+      expect(find.text('Chanting'), findsOneWidget);
+      expect(find.text('Reading'), findsOneWidget);
+      expect(find.text('FOLK'), findsOneWidget);
+      expect(find.text('Not set'), findsNWidgets(3));
       expect(find.text('Set a target'), findsOneWidget);
+      expect(find.byKey(const ValueKey('home-view-targets')), findsNothing);
+      expect(find.textContaining("You haven't set"), findsNothing, reason: 'the old text card is gone');
     });
 
-    testWidgets('chanting and books set: the FOLK-residents target is missing', (tester) async {
+    testWidgets('some set: a tick and what it says ("16 rounds by 31 Dec") on the set ones, a cross on the others', (tester) async {
       await shell(tester, [chant, books]);
-      expect(find.text("You haven't set your FOLK-residents target"), findsOneWidget);
+      expect(isSet(tester, 'chanting'), isTrue);
+      expect(isSet(tester, 'books'), isTrue);
+      expect(isSet(tester, 'folk'), isFalse);
+      expect(find.text('16 rounds by 31 Dec'), findsOneWidget);
+      expect(find.text('5 books by 31 Dec'), findsOneWidget);
+      expect(find.text('Not set'), findsOneWidget);
       expect(find.text('Set a target'), findsOneWidget);
-    });
-
-    testWidgets('only chanting set: the other two are missing', (tester) async {
-      await shell(tester, [chant]);
-      expect(find.text("You haven't set your book-reading and FOLK-residents targets"), findsOneWidget);
-    });
-
-    testWidgets('only the FOLK-residents target set: chanting and book-reading are missing', (tester) async {
+      await tester.pumpWidget(const SizedBox());
       await shell(tester, [folk]);
-      expect(find.text("You haven't set your chanting and book-reading targets"), findsOneWidget);
+      expect(isSet(tester, 'folk'), isTrue);
+      expect(find.text('6 FOLK residents by 31 Dec'), findsOneWidget);
+      expect(isSet(tester, 'chanting'), isFalse);
+      expect(find.text('Not set'), findsNWidgets(2));
     });
 
-    testWidgets('all three set: "All your targets are set" and no button', (tester) async {
+    testWidgets('all set: three ticks and "View targets" (no "Set a target"), which opens the targets in the plan', (tester) async {
       await shell(tester, [chant, books, folk]);
-      expect(find.text('All your targets are set'), findsOneWidget);
+      for (final m in ['chanting', 'books', 'folk']) {
+        expect(isSet(tester, m), isTrue, reason: m);
+      }
+      expect(find.text('Not set'), findsNothing);
       expect(find.byKey(const ValueKey('home-set-target')), findsNothing);
-      expect(find.byIcon(Icons.check_circle_outline_rounded), findsWidgets);
+      expect(find.text('View targets'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('home-view-targets')));
+      await tester.pumpAndSettle();
+      expect(tester.widget<PlanPage>(find.byType(PlanPage)).initialWeek, isTrue, reason: 'the targets are on This week');
     });
 
-    testWidgets('a Female Enabler has two targets: the FOLK-residents one is boys only and never asked for', (tester) async {
+    testWidgets('a Female Enabler has two tiles: no FOLK tile (that target is boys only)', (tester) async {
       final fe = profile('F', 'FEMALE_ENABLER');
       await shell(tester, const [], me: fe);
-      expect(find.text("You haven't set your chanting and book-reading targets"), findsOneWidget);
+      expect(find.byKey(const ValueKey('home-target-folk')), findsNothing);
+      expect(find.text('FOLK'), findsNothing);
+      expect(find.text('Not set'), findsNWidgets(2));
       await tester.pumpWidget(const SizedBox());
       await shell(tester, [chant, books], me: fe);
-      expect(find.text('Both your targets are set'), findsOneWidget);
-      expect(find.textContaining('FOLK-residents'), findsNothing);
+      expect(find.byKey(const ValueKey('home-target-folk')), findsNothing);
+      expect(find.text('View targets'), findsOneWidget, reason: 'both of hers are set');
       expect(find.byKey(const ValueKey('home-set-target')), findsNothing);
     });
 
     testWidgets('a finished or abandoned target does not count as set', (tester) async {
       final done = CompoundTarget.from('G', 'old', {'metric': 'chanting', 'status': 'completed', 'currentPhase': 1, 'totalPhases': 1});
       await shell(tester, [done]);
-      expect(find.text("You haven't set your chanting, book-reading and FOLK-residents targets"), findsOneWidget);
+      expect(isSet(tester, 'chanting'), isFalse);
+      expect(find.text('Set a target'), findsOneWidget);
     });
 
-    testWidgets('Set a target opens the create flow, on the missing metric when exactly one is missing', (tester) async {
-      await shell(tester, [target('chanting', 10, 16, 1, 8), target('books', 10, 5, 2, 8)]);
-      await tester.tap(find.byKey(const ValueKey('home-set-target')));
+    testWidgets('"Set a target" opens the create flow on the FIRST missing type', (tester) async {
+      for (final c in [
+        (<CompoundTarget>[chant, books], 'folk'),
+        (<CompoundTarget>[], 'chanting'),
+        (<CompoundTarget>[books], 'chanting'),
+        (<CompoundTarget>[chant], 'books'),
+      ]) {
+        await shell(tester, c.$1);
+        await tester.tap(find.byKey(const ValueKey('home-set-target')));
+        await tester.pumpAndSettle();
+        expect(tester.widget<CompoundGoalSetupPage>(find.byType(CompoundGoalSetupPage)).initialMetric, c.$2, reason: '${c.$1.length} set');
+        await tester.pumpWidget(const SizedBox());
+      }
+    });
+
+    testWidgets('a tile that is not set opens its create flow; a tile that is set opens that target', (tester) async {
+      await shell(tester, [chant]);
+      await tester.tap(find.byKey(const ValueKey('home-target-books')));
       await tester.pumpAndSettle();
-      expect(find.byType(CompoundGoalSetupPage), findsOneWidget);
-      expect(tester.widget<CompoundGoalSetupPage>(find.byType(CompoundGoalSetupPage)).initialMetric, 'folk', reason: 'the one missing target is preselected');
+      expect(tester.widget<CompoundGoalSetupPage>(find.byType(CompoundGoalSetupPage)).initialMetric, 'books');
+      await tester.pumpWidget(const SizedBox());
+      await shell(tester, [chant]);
+      await tester.tap(find.byKey(const ValueKey('home-target-chanting')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(CompoundGoalProgressPage), findsOneWidget);
+      expect(tester.widget<CompoundGoalProgressPage>(find.byType(CompoundGoalProgressPage)).targetId, chant.targetId);
+      tester.takeException();
     });
 
-    testWidgets('no per-target cards, no Targets section any more', (tester) async {
-      await shell(tester, [target('chanting', 10, 16, 1, 8), target('books', 10, 5, 2, 8)]);
-      expect(find.textContaining('Phase '), findsNothing);
-      expect(find.textContaining('students at'), findsNothing);
+    testWidgets('three coloured tiles: each its own theme colour, the same height', (tester) async {
+      await shell(tester, [chant]);
+      final pastels = [for (final m in ['chanting', 'books', 'folk']) tester.widget<GuidePastelBox>(find.descendant(of: find.byKey(ValueKey('home-target-$m')), matching: find.byType(GuidePastelBox))).pastel];
+      expect(pastels, [GuidePastel.sand, GuidePastel.slate, GuidePastel.sage], reason: 'three different theme colours');
+      final h = [for (final m in ['chanting', 'books', 'folk']) tester.getSize(find.byKey(ValueKey('home-target-$m'))).height];
+      expect(h[0], closeTo(h[1], 0.5));
+      expect(h[1], closeTo(h[2], 0.5));
     });
 
     for (final dark in [false, true]) {
       for (final scale in kScales) {
-        testWidgets('${dark ? 'dark' : 'light'}, text scale $scale on 360 dp: the card fits, the button stays a target', (tester) async {
-          await shell(tester, const [], scale: scale, dark: dark);
-          expect(tester.takeException(), isNull);
-          final card = tester.getRect(find.byKey(const ValueKey('home-targets-card')));
-          expect(card.width, lessThanOrEqualTo(360));
-          final button = tester.getRect(find.byKey(const ValueKey('home-set-target')));
-          expect(button.height, greaterThanOrEqualTo(42));
-          expect(button.right, lessThanOrEqualTo(card.right));
-        });
+        for (final wide in [false, true]) {
+          testWidgets('${dark ? 'dark' : 'light'}, text scale $scale on ${wide ? '1280 dp' : '360 dp'}: none / some / all set: the card fits, nothing overflows, the button stays a target', (tester) async {
+            for (final state in [const <CompoundTarget>[], [chant], [chant, books, folk]]) {
+              await shell(tester, state, scale: scale, dark: dark, size: wide ? const Size(1280, 900) : const Size(360, 800));
+              expect(tester.takeException(), isNull, reason: '${state.length} set');
+              final card = tester.getRect(find.byKey(const ValueKey('home-targets-card')));
+              expect(card.width, lessThanOrEqualTo(wide ? 1280 : 360));
+              final button = tester.getRect(find.byKey(ValueKey(state.length == 3 ? 'home-view-targets' : 'home-set-target')));
+              expect(button.height, greaterThanOrEqualTo(42));
+              expect(button.right, lessThanOrEqualTo(card.right));
+              for (final m in ['chanting', 'books', 'folk']) {
+                final r = tester.getRect(find.byKey(ValueKey('home-target-$m')));
+                expect(card.contains(r.topLeft) && card.contains(r.bottomRight), isTrue, reason: '$m inside the card');
+              }
+              await tester.pumpWidget(const SizedBox());
+            }
+          });
+        }
       }
     }
+  });
+
+  group('the TICK and CROSS BADGES are drawn by hand: smooth curves, in both themes', () {
+    Future<List<int>> pixels(WidgetTester tester, bool isSet) async {
+      late List<int> out;
+      await tester.runAsync(() async {
+        final rec = ui.PictureRecorder();
+        GuideTargetBadgePainter(isSet: isSet).paint(Canvas(rec), const Size(60, 60));
+        final img = await rec.endRecording().toImage(60, 60);
+        out = (await img.toByteData(format: ui.ImageByteFormat.rawRgba))!.buffer.asUint8List().toList();
+      });
+      return out;
+    }
+
+    List<int> px(List<int> p, int x, int y) => p.sublist((y * 60 + x) * 4, (y * 60 + x) * 4 + 4);
+    int whites(List<int> p) {
+      var n = 0;
+      for (var i = 0; i < p.length; i += 4) {
+        if (p[i] > 235 && p[i + 1] > 235 && p[i + 2] > 235 && p[i + 3] > 235) n++;
+      }
+      return n;
+    }
+
+    testWidgets('a round disc with a white stroke; the tick and the cross are different drawings', (tester) async {
+      final tick = await pixels(tester, true);
+      final cross = await pixels(tester, false);
+      expect(px(tick, 0, 0)[3], 0, reason: 'round: the corner is transparent');
+      expect(px(cross, 0, 0)[3], 0);
+      expect(whites(tick), greaterThan(60), reason: 'a white tick is drawn');
+      expect(whites(cross), greaterThan(60), reason: 'a white cross is drawn');
+      expect(tick, isNot(cross));
+      // the disc is green for set and red for not set (a pixel near the top of the disc, away from the stroke)
+      final g = px(tick, 30, 6);
+      final r = px(cross, 30, 6);
+      expect(g[1], greaterThan(g[0]), reason: 'set: the green channel leads');
+      expect(r[0], greaterThan(r[1]), reason: 'not set: the red channel leads');
+    });
+
+    test('the stroke reads on the disc in both themes (3:1 or better for a graphic), and the colours live in the theme', () {
+      for (final c in [...GuideColors.targetSetBadge, ...GuideColors.targetUnsetBadge]) {
+        expect(contrastRatio(Colors.white, c), greaterThanOrEqualTo(3.0), reason: '${c.toARGB32().toRadixString(16)}');
+      }
+    });
+
+    testWidgets('the badge is the same, and labelled "Set" / "Not set", in light and dark', (tester) async {
+      for (final dark in [false, true]) {
+        for (final set in [true, false]) {
+          phone(tester, 1.0);
+          await tester.pumpWidget(guideHost(Scaffold(body: Center(child: GuideTargetBadge(isSet: set))), dark: dark));
+          expect(find.bySemanticsLabel(set ? 'Set' : 'Not set'), findsOneWidget, reason: '$dark $set');
+          expect(tester.getSize(find.byType(GuideTargetBadge)), const Size(30, 30));
+          expect(tester.takeException(), isNull);
+        }
+      }
+    });
   });
 
   testWidgets('a Female Enabler sees girls, the HOD sees students', (tester) async {

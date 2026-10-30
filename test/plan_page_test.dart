@@ -207,7 +207,12 @@ void main() {
       expect(find.byKey(const ValueKey('plan-today-empty')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('plan-week-empty')), findsOneWidget);
+      // nothing is hidden: the counts are 0 and every section says "None yet"
+      expect(find.byKey(const ValueKey('plan-progress')), findsOneWidget);
+      expect(find.text('Interactions needed: 0 · done 0 · left 0'), findsOneWidget);
+      for (final id in ['interactions', 'targets', 'ahead', 'calendar', 'milestones']) {
+        expect(find.byKey(ValueKey('plan-week-empty-$id')), findsOneWidget, reason: id);
+      }
     });
 
     testWidgets('opened for THIS WEEK (from Home) it starts on that tab', (tester) async {
@@ -223,9 +228,9 @@ void main() {
       for (final k in ['followups', 'targets', 'other']) {
         expect(find.byKey(ValueKey('plan-section-$k')), findsOneWidget, reason: k);
       }
-      expect(find.text('Follow-ups'), findsOneWidget);
-      expect(find.text('Target tasks'), findsOneWidget);
-      expect(find.text('Other tasks'), findsOneWidget);
+      for (final title in ['Follow-ups', 'Target tasks', 'Other tasks']) {
+        expect(find.descendant(of: find.byType(Scrollable).first, matching: find.text(title)), findsWidgets, reason: title);
+      }
       double y(String key) => tester.getTopLeft(find.byKey(ValueKey(key))).dy;
       expect(y('plan-section-followups'), lessThan(y('plan-item-interaction:u1:2026-10-28')));
       expect(y('plan-item-interaction:u1:2026-10-28'), lessThan(y('plan-item-interaction:u2:2026-10-28')), reason: 'Amit (doubt + target) is a follow-up');
@@ -235,11 +240,31 @@ void main() {
       expect(y('plan-section-other'), lessThan(y('plan-item-meeting:u9:2026-10-30')));
     });
 
-    testWidgets('a section with nothing in it is left out', (tester) async {
+    testWidgets('a section with nothing in it is still there: "None yet"', (tester) async {
       await _open(tester, doc: planDoc(left: 1, today: [interactionItem('u1', 'Ravi', ['sadhana'])]), size: const Size(360, 3200));
       expect(find.byKey(const ValueKey('plan-section-followups')), findsOneWidget);
-      expect(find.byKey(const ValueKey('plan-section-targets')), findsNothing);
-      expect(find.byKey(const ValueKey('plan-section-other')), findsNothing);
+      expect(find.byKey(const ValueKey('plan-section-targets')), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-section-other')), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-section-empty-followups')), findsNothing);
+      expect(find.byKey(const ValueKey('plan-section-empty-targets')), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-section-empty-other')), findsOneWidget);
+      expect(find.text('None yet'), findsNWidgets(2));
+    });
+
+    testWidgets('EVERY COUNT IS ALWAYS SHOWN, 0 when there is none: interactions done / left, pending this week, target tasks, other tasks, meetings, doubts', (tester) async {
+      await _open(tester, doc: planDoc(), size: const Size(360, 3200));
+      String c(String k) => tester.widget<Text>(find.byKey(ValueKey('plan-count-$k'))).data!;
+      for (final k in ['interactions-done', 'interactions-left', 'pending', 'target-tasks', 'other-tasks', 'meetings', 'doubts']) {
+        expect(c(k), '0', reason: k);
+      }
+      expect(find.textContaining('done 0 · left'), findsOneWidget, reason: "the batch card shows counts");
+      await tester.pumpWidget(const SizedBox());
+      await _open(tester, doc: _batchPlan(), size: const Size(360, 3200));
+      expect(c('interactions-left'), '3');
+      expect(c('interactions-done'), '0');
+      expect(c('meetings'), '1');
+      expect(c('other-tasks'), '2');
+      expect(c('target-tasks'), '1');
     });
 
     for (final g in PlanGroup.values) {
@@ -267,9 +292,10 @@ void main() {
       expect(find.byKey(const ValueKey('plan-section-empty-targets')), findsOneWidget);
     });
 
-    testWidgets('a HOD\'s summary (no batch) is a flat list with no sections', (tester) async {
+    testWidgets('a plan with no batch block (an old HOD plan) still shows every section and zero counts', (tester) async {
       await _open(tester, role: 'HOD', doc: _plan());
-      expect(find.byKey(const ValueKey('plan-section-other')), findsNothing);
+      expect(find.byKey(const ValueKey('plan-section-other')), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-today-counts')), findsOneWidget);
       expect(find.text('Meet Harsh'), findsOneWidget);
     });
   });
@@ -408,6 +434,85 @@ void main() {
       expect(p.count, 2);
       expect(p.summary, '2 changes: newer; older');
       expect(PendingChanges.none.summary, '');
+    });
+  });
+
+  group('A HOD\'s OWN plan first, the guides\' summaries below', () {
+    PlanDoc hodDoc() => PlanDoc(
+          todayDate: '2026-10-30',
+          todayItems: [
+            interactionItem('u1', 'Ravi', ['sadhana']),
+            interactionItem('u2', 'Amit', ['doubts']),
+            const PlanItem(id: 'meeting:u9:2026-10-30', kind: 'meeting', title: 'Meet Harsh', forYou: true),
+            const PlanItem(id: 'phase_end:HOD:t1_1', kind: 'phaseTask', title: 'Phase 1 of your chanting target ends'),
+            const PlanItem(id: 'guide:G1', kind: 'guideSummary', title: 'Gopal: 3 for today, 5 interactions needed'),
+            const PlanItem(id: 'guide:G2', kind: 'guideSummary', title: 'Govinda: 1 for today, 2 interactions needed'),
+          ],
+          weekOf: '2026-10-26',
+          intro: 'Hare Krishna Hari!',
+          sections: const [
+            PlanSection(id: 'interactions', title: 'Students to contact — planned days', items: [PlanItem(id: 'interaction:u3:2026-10-28', kind: 'interaction', title: 'Interaction with Mohit', studentName: 'Mohit')]),
+            PlanSection(id: 'guides', title: 'Guide by guide', items: [PlanItem(id: 'guide:G1', kind: 'guideSummary', title: 'Gopal: 3 for today, 5 interactions needed')]),
+          ],
+          generatedAt: _now,
+          status: 'upToDate',
+          changedAt: _now,
+          batch: const PlanBatch(size: 4, round: 1, members: 2, carried: 0, nextReady: false, done: 0, left: 2),
+          progress: const PlanProgress(needed: 3, done: 0, left: 3, summary: 'Interactions needed: 3 · done 0 · left 3', bySource: []),
+        );
+
+    testWidgets('Today: his own batch card, students and tasks in the three sections, THEN "Guide by guide" with one line per guide', (tester) async {
+      await _open(tester, role: 'HOD', doc: hodDoc(), size: const Size(360, 3200));
+      expect(find.byKey(const ValueKey('plan-batch')), findsOneWidget);
+      expect(find.text('Interaction with Ravi'), findsOneWidget);
+      expect(find.text('Interaction with Amit'), findsOneWidget);
+      expect(find.text('Meet Harsh'), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-section-followups')), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-section-targets')), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-section-other')), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-section-guides')), findsOneWidget);
+      expect(find.text('Gopal: 3 for today, 5 interactions needed'), findsOneWidget);
+      expect(find.text('Govinda: 1 for today, 2 interactions needed'), findsOneWidget);
+      // the order on the page: his own tasks, then the guides
+      double y(Finder f) => tester.getTopLeft(f).dy;
+      expect(y(find.text('Interaction with Ravi')), lessThan(y(find.byKey(const ValueKey('plan-section-guides')))));
+      expect(y(find.text('Meet Harsh')), lessThan(y(find.byKey(const ValueKey('plan-section-guides')))));
+      expect(y(find.byKey(const ValueKey('plan-section-guides'))), lessThan(y(find.text('Gopal: 3 for today, 5 interactions needed'))));
+    });
+
+    testWidgets('This week: his own progress and planned students first, "Guide by guide" last', (tester) async {
+      await _open(tester, role: 'HOD', doc: hodDoc(), size: const Size(360, 3200));
+      await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('plan-progress')), findsOneWidget);
+      expect(find.text('Interaction with Mohit'), findsOneWidget);
+      expect(find.text('Guide by guide'), findsOneWidget);
+      double y(Finder f) => tester.getTopLeft(f).dy;
+      expect(y(find.text('Interaction with Mohit')), lessThan(y(find.text('Guide by guide'))));
+    });
+
+    test('the Home counts are his OWN tasks: the guides\' summary lines are never counted', () {
+      final c = PlanCounts.of(hodDoc());
+      expect(c.followUps, 2);
+      expect(c.targets, 1);
+      expect(c.others, 1);
+      expect(c.total, 4);
+      expect(hodDoc().todayItems.last.isGuideSummary, isTrue);
+    });
+
+    testWidgets('no overflow in light and dark at every text size', (tester) async {
+      for (final dark in [false, true]) {
+        for (final scale in kScales) {
+          await _open(tester, role: 'HOD', doc: hodDoc(), scale: scale, dark: dark, size: const Size(360, 3200));
+          expect(tester.takeException(), isNull, reason: '$dark $scale');
+          await tester.pumpWidget(const SizedBox());
+        }
+      }
+    });
+
+    testWidgets('"Last updated" says when the AI wrote it: "(first open today)"', (tester) async {
+      final plan = _plan(refreshedAt: DateTime.utc(2026, 10, 30, 3, 30), refreshedBy: 'open');
+      expect(planLastUpdated(plan), 'Last updated: Fri 30 Oct, 9:00 AM (first open today)');
     });
   });
 

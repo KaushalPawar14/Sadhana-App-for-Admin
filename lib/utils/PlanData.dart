@@ -119,6 +119,9 @@ class PlanItem {
 
   bool get isInteraction => kind == 'interaction';
 
+  /// A HOD's summary line for one guide (what is due, who needs attention); it sits BELOW the HOD's own tasks and is never counted as one of them.
+  bool get isGuideSummary => kind == 'guideSummary';
+
   /// Which of Today's three groups this is in: a follow-up (an interaction a student needs), a target task (made by the guide's own targets:
   /// an interaction there only because of a target, or a phase / deadline of one), or any other task. Each item is in exactly one.
   PlanGroup get group {
@@ -180,7 +183,7 @@ class PlanCounts {
   static PlanCounts of(PlanDoc? plan) {
     var f = 0, t = 0, o = 0;
     for (final it in plan?.todayItems ?? const <PlanItem>[]) {
-      if (it.done) continue;
+      if (it.done || it.isGuideSummary) continue;
       switch (it.group) {
         case PlanGroup.followUp:
           f++;
@@ -234,6 +237,16 @@ class PlanProgress {
   final int left;
   final String summary;
   final List<PlanSourceProgress> bySource;
+
+  /// The four sources of an interaction, all zero: what This week shows while the server has written no counts yet.
+  static const List<PlanSourceProgress> emptySources = [
+    PlanSourceProgress(id: 'target', label: 'Targets', needed: 0, done: 0, left: 0),
+    PlanSourceProgress(id: 'sadhana', label: 'Sadhana', needed: 0, done: 0, left: 0),
+    PlanSourceProgress(id: 'doubts', label: 'Doubts and concerns', needed: 0, done: 0, left: 0),
+    PlanSourceProgress(id: 'surrender', label: 'Surrender steps', needed: 0, done: 0, left: 0),
+  ];
+
+  static const PlanProgress empty = PlanProgress(needed: 0, done: 0, left: 0, summary: 'Interactions needed: 0 · done 0 · left 0', bySource: emptySources);
 
   static int _n(Object? v) => v is num ? v.round() : 0;
 

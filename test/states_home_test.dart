@@ -61,6 +61,8 @@ AdminProfile me() => AdminProfile.fromMap({
     });
 
 /// The real (loaded) widgets, not the invisible placeholders a ghost is built from.
+/// THIS WEEK, the real card (not the ghost's placeholder of it).
+final Finder loadedWeek = find.descendant(of: find.byKey(const ValueKey('content')), matching: find.byKey(const ValueKey('home-this-week')));
 Finder loaded(Type type) => find.descendant(of: find.byKey(const ValueKey('content')), matching: find.byType(type));
 
 void main() {
@@ -77,7 +79,8 @@ void main() {
   });
 
   Future<ManualHomeData> pumpHome(WidgetTester tester, {double scale = 1.0, bool dark = false}) async {
-    phone(tester, scale);
+    // tall, so the whole Home (the targets card is three tiles and a button now) is built and measured
+    phone(tester, scale, size: const Size(360, 3000));
     AdminProfileProvider.instance.debugSet(me());
     final data = ManualHomeData();
     HomeData.instance = data;
@@ -124,11 +127,11 @@ void main() {
       // During the cross-fade nothing moves.
       for (var i = 0; i < 6; i++) {
         await tester.pump(const Duration(milliseconds: 50));
-        expect(tester.getRect(loaded(GuideHeroCard)).top, heroGhost.top);
-        expect(tester.getRect(loaded(GuideHeroCard)).height, heroGhost.height);
+        expect(tester.getRect(loadedWeek).top, heroGhost.top);
+        expect(tester.getRect(loadedWeek).height, heroGhost.height);
       }
       await tester.pumpAndSettle();
-      expect(tester.getRect(loaded(GuideHeroCard)), heroGhost);
+      expect(tester.getRect(loadedWeek), heroGhost);
       expect(tester.getRect(find.byKey(const ValueKey('home-today-tasks'))), todayGhost, reason: "today's tasks card has the ghost's size and place");
       // the tiles keep their size; they sit under the targets card, whose height depends on the message it shows (one line when both
       // targets are set, two when one is missing), so their top may differ from the ghost's by that difference only
@@ -170,7 +173,7 @@ void main() {
     data.countC.add(0);
     data.eventsC.complete(<CalendarEvent>[]);
     await tester.pumpAndSettle();
-    expect(find.text("You haven't set your chanting, book-reading and FOLK-residents targets"), findsOneWidget);
+    expect(find.text('Not set'), findsNWidgets(3), reason: 'three tiles, none set');
     expect(find.text('Set a target'), findsOneWidget);
     expect(tester.binding.transientCallbackCount, 0, reason: 'a still ghost holds no ticker');
   });
@@ -192,7 +195,7 @@ void main() {
     data.plan.c.add(planDoc());
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    expect(loaded(GuideHeroCard), findsOneWidget);
+    expect(loadedWeek, findsOneWidget);
   });
 
   testWidgets('the shell: Home ghosts breathe only while Home is the tab on screen', (tester) async {

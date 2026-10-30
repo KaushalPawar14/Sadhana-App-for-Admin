@@ -89,7 +89,8 @@ PlanDoc _plan({bool done = false, String source = 'ai'}) => PlanDoc(
 AdminProfile _me() => AdminProfile.fromMap({'id': 'G', 'displayName': 'Gopal', 'role': 'GUIDE', 'teamGuide': '', 'email': 'g@x.org', 'notificationPrefs': {}, 'notificationTypes': [], 'admins': []});
 
 Future<void> _openPlan(WidgetTester tester, {double scale = 1.0, bool dark = false, PlanDoc? doc}) async {
-  phone(tester, scale);
+  // tall, so the batch card and the counts above Today's cards do not push a card off the screen
+  phone(tester, scale, size: const Size(360, 2400));
   AdminProfileProvider.instance.debugSet(_me());
   final data = _FakePlanData();
   PlanData.instance = data;

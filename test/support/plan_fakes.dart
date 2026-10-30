@@ -21,6 +21,25 @@ class ManualPlanData extends PlanData {
   DateTime now() => DateTime.utc(2026, 10, 30, 4, 30);
 }
 
+/// Wraps another [PlanData] and remembers whose plan was asked for.
+class RecordingPlanData extends PlanData {
+  RecordingPlanData(this.inner, this.asked);
+  final PlanData inner;
+  final List<String> asked;
+
+  @override
+  Stream<PlanDoc?> plan(String adminId) {
+    asked.add(adminId);
+    return inner.plan(adminId);
+  }
+
+  @override
+  Stream<PendingChanges> pending(String adminId) => inner.pending(adminId);
+
+  @override
+  DateTime now() => inner.now();
+}
+
 /// A plan that is already there.
 class FixedPlanData extends PlanData {
   FixedPlanData(this.doc, {this.changes = PendingChanges.none});

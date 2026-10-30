@@ -357,15 +357,21 @@ class GuideHeroPanel extends StatelessWidget {
   }
 }
 
-/// One of the numbers in the hero card.
+/// One of the numbers in the hero card. [valueKey] / [tapKey] / [onTap] make the number a button of its own (Today's counts each open their
+/// section of the Plan page).
 class GuideHeroStat {
-  const GuideHeroStat(this.value, this.label);
+  const GuideHeroStat(this.value, this.label, {this.valueKey, this.tapKey, this.onTap});
   final String value;
   final String label;
+  final Key? valueKey;
+  final Key? tapKey;
+  final VoidCallback? onTap;
 }
 
 /// The hero card: a label and date range, then [stats] as equal columns with
-/// hairline dividers. The whole card is tappable when [onTap] is given.
+/// hairline dividers. The whole card is tappable when [onTap] is given. THIS WEEK (navy) and TODAY'S TASKS (dark green) are both this card: the
+/// same size, shape, layout and texture, only [gradient] / [shadowColor] differ. A label reserves two lines in every column, so two cards with
+/// different words are still exactly the same height at any text size.
 class GuideHeroCard extends StatelessWidget {
   const GuideHeroCard({
     super.key,
@@ -374,6 +380,8 @@ class GuideHeroCard extends StatelessWidget {
     required this.stats,
     this.onTap,
     this.footer,
+    this.gradient = GuideColors.heroGradient,
+    this.shadowColor = GuideColors.heroShadow,
   });
 
   final String label;
@@ -381,11 +389,17 @@ class GuideHeroCard extends StatelessWidget {
   final List<GuideHeroStat> stats;
   final VoidCallback? onTap;
   final Widget? footer;
+  final Gradient gradient;
+  final Color shadowColor;
 
   @override
   Widget build(BuildContext context) {
     final t = context.gText;
+    final captionStyle = t.heroCaption;
+    final twoLines = 2 * MediaQuery.textScalerOf(context).scale((captionStyle.fontSize ?? 12) * (captionStyle.height ?? 1.2));
     final card = GuideHeroPanel(
+      gradient: gradient,
+      shadowColor: shadowColor,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -409,21 +423,7 @@ class GuideHeroCard extends StatelessWidget {
                 for (var i = 0; i < stats.length; i++) ...[
                   if (i > 0)
                     const VerticalDivider(width: 1, thickness: 1, color: GuideColors.heroDivider),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          GuideCountUp(stats[i].value, style: t.heroNumber),
-                          const SizedBox(height: 7),
-                          Text(stats[i].label,
-                              maxLines: 2, overflow: TextOverflow.ellipsis, style: t.heroCaption),
-                        ],
-                      ),
-                    ),
-                  ),
+                  Expanded(child: _stat(context, stats[i], twoLines)),
                 ],
               ],
             ),
@@ -441,6 +441,97 @@ class GuideHeroCard extends StatelessWidget {
       ),
     );
   }
+
+  Widget _stat(BuildContext context, GuideHeroStat s, double labelHeight) {
+    final t = context.gText;
+    final column = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          s.valueKey != null ? Text(s.value, key: s.valueKey, style: t.heroNumber) : GuideCountUp(s.value, style: t.heroNumber),
+          const SizedBox(height: 7),
+          ConstrainedBox(
+            constraints: BoxConstraints(minHeight: labelHeight),
+            child: Text(s.label, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.heroCaption),
+          ),
+        ],
+      ),
+    );
+    if (s.onTap == null) return column;
+    return GestureDetector(
+      key: s.tapKey,
+      behavior: HitTestBehavior.opaque,
+      onTap: s.onTap,
+      child: ConstrainedBox(constraints: const BoxConstraints(minHeight: GuideShape.touchTarget), child: column),
+    );
+  }
+}
+
+/// The round badge on a target tile: a smooth, curvy tick when the target is set, a curvy cross when it is not. Drawn by hand (no icon font): a
+/// filled disc in a deep theme colour with a white stroke, readable on every pastel tile in both themes.
+class GuideTargetBadge extends StatelessWidget {
+  const GuideTargetBadge({super.key, required this.isSet, this.size = 30});
+
+  final bool isSet;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: isSet ? 'Set' : 'Not set',
+      excludeSemantics: true,
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: CustomPaint(painter: GuideTargetBadgePainter(isSet: isSet)),
+      ),
+    );
+  }
+}
+
+class GuideTargetBadgePainter extends CustomPainter {
+  const GuideTargetBadgePainter({required this.isSet});
+
+  final bool isSet;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width;
+    final disc = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: isSet ? GuideColors.targetSetBadge : GuideColors.targetUnsetBadge,
+      ).createShader(Offset.zero & size);
+    canvas.drawCircle(Offset(s / 2, s / 2), s / 2, disc);
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..strokeWidth = s * 0.105
+      ..color = Colors.white;
+    final path = Path();
+    if (isSet) {
+      // a soft, flowing tick: a gentle curve down into the corner, then a longer sweep up
+      path
+        ..moveTo(s * 0.27, s * 0.52)
+        ..cubicTo(s * 0.33, s * 0.55, s * 0.40, s * 0.62, s * 0.43, s * 0.69)
+        ..cubicTo(s * 0.50, s * 0.54, s * 0.62, s * 0.38, s * 0.76, s * 0.30);
+    } else {
+      // two gently bowed strokes crossing in the middle
+      path
+        ..moveTo(s * 0.30, s * 0.31)
+        ..cubicTo(s * 0.45, s * 0.42, s * 0.55, s * 0.58, s * 0.70, s * 0.69)
+        ..moveTo(s * 0.70, s * 0.31)
+        ..cubicTo(s * 0.55, s * 0.42, s * 0.45, s * 0.58, s * 0.30, s * 0.69);
+    }
+    canvas.drawPath(path, stroke);
+  }
+
+  @override
+  bool shouldRepaint(covariant GuideTargetBadgePainter old) => old.isSet != isSet;
 }
 
 class _RingsPainter extends CustomPainter {

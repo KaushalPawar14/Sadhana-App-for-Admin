@@ -179,7 +179,7 @@ void main() {
     expect(find.text('Next 4 ready'), findsOneWidget);
     expect(find.text('done 4 · left 4'), findsOneWidget);
     await _open(tester, doc: _plan(today: const [], batch: const PlanBatch(size: 4, round: 1, members: 0, carried: 0, nextReady: false, done: 0, left: 0)));
-    expect(find.text('none needed'), findsOneWidget);
+    expect(find.text('done 0 · left 0'), findsOneWidget, reason: 'a count, never a missing number');
     expect(find.byKey(const ValueKey('plan-today-empty')), findsOneWidget);
   });
 
@@ -238,13 +238,15 @@ void main() {
     expect(find.textContaining('How are you'), findsNothing, reason: 'no questions in the week list: they are in Today');
   });
 
-  testWidgets('a HOD plan (no batch, no progress) still shows as before', (tester) async {
+  testWidgets('a HOD plan (no batch, no progress) still shows: with zero counts, never missing ones', (tester) async {
     await _open(tester, doc: PlanDoc(todayDate: '2026-10-30', todayItems: const [PlanItem(id: 'guide:G', kind: 'guideSummary', title: 'Gopal: 0 for today, 3 interactions needed')], weekOf: '2026-10-26', intro: 'Hare Krishna', sections: const [], generatedAt: _now, status: 'upToDate', changedAt: _now));
-    expect(find.byKey(const ValueKey('plan-batch')), findsNothing);
+    expect(find.byKey(const ValueKey('plan-batch')), findsOneWidget);
+    expect(find.text('done 0 · left 0'), findsOneWidget);
     expect(find.text('Gopal: 0 for today, 3 interactions needed'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('plan-progress')), findsNothing);
+    expect(find.byKey(const ValueKey('plan-progress')), findsOneWidget);
+    expect(find.text('Interactions needed: 0 · done 0 · left 0'), findsOneWidget);
   });
 
   group('every state: light and dark, text scale 1.0 / 1.3 / 1.6, no overflow', () {

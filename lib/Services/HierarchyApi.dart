@@ -206,6 +206,16 @@ class HierarchyApi {
     return (ok: r['ok'] != false, retryInSec: r['retryInSec'] is num ? (r['retryInSec'] as num).round() : 0);
   }
 
+  /// The admin opened the app: the FIRST call of the day makes the server write the AI questions for Today's students (his batch, and whoever joined it);
+  /// every other call that day, and a day he never opens the app, costs nothing. Never throws: the plan simply stays as it is.
+  Future<void> openPlan() async {
+    try {
+      await _call('refreshPlan', {'open': true});
+    } catch (_) {
+      // nothing to tell the guide: the plan is still there, with the plain questions
+    }
+  }
+
   /// The monthly budget (₹) of the guides' AI (HOD only; the server checks).
   Future<void> setAiBudget({required double monthlyInr}) => _call('setAiBudget', {'monthlyInr': monthlyInr});
 
