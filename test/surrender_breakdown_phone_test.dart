@@ -1,0 +1,141 @@
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:folk_guide_app/Services/HierarchyApi.dart';
+import 'package:folk_guide_app/utils/AdminProfile.dart';
+import 'package:folk_guide_app/utils/BoardData.dart';
+import 'package:folk_guide_app/utils/SeenMarkers.dart';
+import 'package:folk_guide_app/utils/SurrenderData.dart';
+
+import 'board_test.dart' show FakeBoardData, openBoard, roster;
+import 'support/guide_test_support.dart';
+
+// The Surrender % breakdown (tap the bar in a board card's drop-down) must open FULLY on every phone: scrollable when long, with its Close button reachable, light and dark,
+// text scale 1.0 / 1.3 / 1.6, and the same on a computer.
+
+SurrenderInfo info({bool long = false, String? cap}) => SurrenderInfo(
+      percent: 42,
+      trend: 6,
+      cap: cap,
+      complete: false,
+      residence: 'hostel',
+      gender: 'male',
+      name: 'Arjun Kumar',
+      parts: [
+        SurrenderPart(key: 'commitment', label: 'Commitment', weight: 10, score: 0.6, points: 6, reason: long ? 'Committed to 12 rounds and 30 min of reading a day. ' * 6 : 'Committed to 12 rounds and 30 min of reading a day.'),
+        SurrenderPart(key: 'sadhana', label: 'Sadhana actually done', weight: 40, score: 0.5, points: 20, reason: long ? 'Last 30 days: rounds 70% of 16, reading 20 minutes on average, early rising 12 of 30 days. ' * 6 : 'Last 30 days: rounds 70% of 16.'),
+        SurrenderPart(key: 'association', label: 'Association with his guide', weight: 20, score: 0.8, points: 16, reason: '2 interactions in the last 30 days.'),
+        SurrenderPart(key: 'attitude', label: 'Attitude and willingness', weight: 10, score: 0, points: 0, missing: true, reason: 'No attitude observed yet → 0 of 10'),
+        SurrenderPart(key: 'lit', label: 'LIT', weight: 20, score: 0, points: 0, missing: true, reason: 'No LIT yet → 0 of 20'),
+      ],
+    );
+
+const sizes = {'360': Size(360, 640), '393': Size(393, 851), '412': Size(412, 915), 'desktop': Size(1400, 900)};
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async {
+    await loadGuideFonts();
+    SeenMarkers.debugDisable = true;
+  });
+  tearDownAll(() => SeenMarkers.debugDisable = false);
+  tearDown(() {
+    HierarchyApi.useForTests(null);
+    BoardData.instance = const FirestoreBoardData();
+    AdminProfileProvider.instance.debugSet(null);
+  });
+
+  for (final s in sizes.entries) {
+    for (final scale in kScales) {
+      for (final dark in [false, true]) {
+        for (final long in [false, true]) {
+          testWidgets('${s.key} · ×$scale · ${dark ? 'dark' : 'light'}${long ? ' · long reasons' : ''}: the breakdown opens, shows its parts and can be closed', (tester) async {
+            final data = FakeBoardData(users: roster)..surrenders['sg1'] = info(long: long, cap: long ? 'residence' : null);
+            await openBoard(tester, data: data, size: s.value, scale: scale, dark: dark, reduce: false);
+            await tester.tap(find.text('Arjun Kumar').first);
+            await tester.pumpAndSettle();
+            final bar = find.byKey(const ValueKey('surrender-bar'));
+            await tester.ensureVisible(bar);
+            await tester.pumpAndSettle();
+            await tester.tap(bar);
+            await tester.pump();
+            await tester.pump(const Duration(milliseconds: 400));
+            await tester.pumpAndSettle();
+            expect(tester.takeException(), isNull, reason: 'no exception while it builds');
+            final title = find.byKey(const ValueKey('surrender-dialog-title'));
+            expect(title, findsOneWidget, reason: 'the dialog is there, not only the dimmed screen');
+            // really on screen: inside the window, with a size
+            final screen = Offset.zero & s.value;
+            final box = tester.getRect(title);
+            expect(box.height, greaterThan(0));
+            expect(screen.contains(box.topLeft) && screen.contains(box.bottomRight), isTrue, reason: 'the title is inside the window: $box');
+            // the dialog's card is opaque (fully faded in) and its parts can be reached by scrolling
+            final first = find.byKey(const ValueKey('surrender-part-commitment'));
+            expect(first, findsOneWidget);
+            final opacity = tester.widgetList<FadeTransition>(find.ancestor(of: title, matching: find.byType(FadeTransition))).map((f) => f.opacity.value);
+            expect(opacity.every((o) => o == 1.0), isTrue, reason: 'faded in all the way: $opacity');
+            await tester.scrollUntilVisible(find.text('Close'), 200, scrollable: find.byType(Scrollable).last);
+            await tester.pumpAndSettle();
+            final close = tester.getRect(find.text('Close'));
+            expect(screen.contains(close.center), isTrue, reason: 'Close is on screen: $close');
+            await tester.tap(find.text('Close'));
+            await tester.pumpAndSettle();
+            expect(title, findsNothing);
+            await tester.pump(const Duration(seconds: 4));
+          });
+        }
+      }
+    }
+  }
+
+  // ---- every OTHER dialog the board card opens, at phone widths (the same IntrinsicWidth path a phone's AlertDialog takes)
+  for (final s in sizes.entries.where((e) => e.key != 'desktop')) {
+    for (final scale in kScales) {
+      for (final dark in [false, true]) {
+        testWidgets('${s.key} · ×$scale · ${dark ? 'dark' : 'light'}: a history line opens its details; Close reaches', (tester) async {
+          final data = FakeBoardData(users: roster)..surrenders['sg1'] = info();
+          await openBoard(tester, data: data, size: s.value, scale: scale, dark: dark, reduce: false);
+          await tester.tap(find.text('Arjun Kumar').first);
+          await tester.pumpAndSettle();
+          final line = find.textContaining('Plan advice: a rather long line').first;
+          await tester.ensureVisible(line);
+          await tester.pumpAndSettle();
+          await tester.tap(line);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          expect(find.byKey(const ValueKey('history-dialog-title')), findsOneWidget);
+          await tester.scrollUntilVisible(find.text('Close'), 200, scrollable: find.byType(Scrollable).last);
+          await tester.tap(find.text('Close'));
+          await tester.pumpAndSettle();
+          expect(find.byKey(const ValueKey('history-dialog-title')), findsNothing);
+          await tester.pump(const Duration(seconds: 4));
+        });
+      }
+    }
+  }
+
+  for (final scale in kScales) {
+    for (final dark in [false, true]) {
+      testWidgets('599 · ×$scale · ${dark ? 'dark' : 'light'}: the drop dialog (reassign) opens and answers at the widest phone width', (tester) async {
+        final api = <List<Object?>>[];
+        await openBoard(tester, api: api, size: const Size(599, 900), scale: scale, dark: dark, reduce: false);
+        final from = tester.getCenter(find.text('Arjun Kumar').first);
+        final colX = tester.getCenter(find.text('M1 Das').first);
+        final g = await tester.startGesture(from);
+        await tester.pump(kLongPressTimeout + const Duration(milliseconds: 100));
+        await g.moveTo(from + const Offset(10, 10));
+        await tester.pump();
+        await g.moveTo(Offset(colX.dx, colX.dy + 120));
+        await tester.pump();
+        await g.up();
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: 'no exception');
+        expect(find.text('Reassign this boy?'), findsOneWidget, reason: 'the confirmation is really there');
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+        expect(api.where((c) => c[0] == 'assignStudent'), isEmpty);
+        await tester.pump(const Duration(seconds: 4));
+      });
+    }
+  }
+}

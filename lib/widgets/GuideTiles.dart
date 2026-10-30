@@ -36,6 +36,9 @@ class GuideIconTile extends StatelessWidget {
   }
 }
 
+/// The smallest share of the track the fill is ever given (see [GuideProgressBar]): invisible, but not zero.
+const double kMinBarFactor = 0.001;
+
 /// The brass progress bar: 5 dp, radius 3, a brass-gradient fill that grows from
 /// 0 to its value the first time it appears (400 ms; no animation under "reduce
 /// animations"). [onPastel] draws the track in ink (the theme's dark-mode track
@@ -67,8 +70,10 @@ class GuideProgressBar extends StatelessWidget {
               curve: GuideMotion.out,
               builder: (context, value, _) => Align(
                 alignment: Alignment.centerLeft,
+                // never a width factor of exactly 0: a dialog on a PHONE (an AlertDialog without a width) asks its content for its intrinsic width, and a
+                // FractionallySizedBox divides it by the factor: 0 / 0 is NaN, the layout fails and the dialog never appears (only the dimmed screen does)
                 child: FractionallySizedBox(
-                  widthFactor: value,
+                  widthFactor: value < kMinBarFactor ? kMinBarFactor : value,
                   heightFactor: 1,
                   child: DecoratedBox(
                     decoration: BoxDecoration(

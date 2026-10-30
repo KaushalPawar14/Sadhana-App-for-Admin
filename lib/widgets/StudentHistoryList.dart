@@ -8,17 +8,14 @@ import '../utils/StudentHistory.dart';
 import 'GuideDialog.dart';
 import 'GuideWait.dart';
 
-/// The board card's drop-down: ONE LINE per MEANINGFUL thing that happened with this student (interactions, doubts and worries, meetings,
-/// books, trips, the guide's notes, commitment / residence changes, Surrender steps), newest first, the last 30, GROUPED BY DAY under a
-/// small day heading (so a line carries no date of its own). A tap opens a dialog with the full details. Updated live by the server,
-/// which never writes status re-checks or repeats.
+/// The board card's drop-down: ONE LINE per MEANINGFUL thing that happened with this student, in SEVEN COLLAPSIBLE SECTIONS ([kHistoryCategories]: Interactions &
+/// meetings, Surrender & targets, Sadhana, Books, Trips & services, Worries, Doubts), each header with its count and the date of its latest line. A tap on a
+/// header opens it: its lines newest first (at most 30), GROUPED BY DAY under a small day heading. A tap on a line opens a dialog with the full details.
+/// All are closed to begin with, except the first when it has lines. Updated live by the server, which never writes status re-checks or repeats.
 class StudentHistoryList extends StatefulWidget {
-  const StudentHistoryList({super.key, required this.studentUid, this.firstShown = 8});
+  const StudentHistoryList({super.key, required this.studentUid});
 
   final String studentUid;
-
-  /// How many lines show before "Show more".
-  final int firstShown;
 
   @override
   State<StudentHistoryList> createState() => _StudentHistoryListState();
@@ -61,11 +58,12 @@ String historyDay(DateTime d, [DateTime? now]) {
 
 class _StudentHistoryListState extends State<StudentHistoryList> {
   late final Stream<List<HistoryLine>> _stream = BoardData.instance.history(widget.studentUid);
-  bool _all = false;
+
+  /// The sections the guide opened or closed himself; until he does, the first one is open when it has lines.
+  final Map<String, bool> _open = {};
 
   @override
   Widget build(BuildContext context) {
-    final g = context.g;
     final t = context.gText;
     return StreamBuilder<List<HistoryLine>>(
       stream: _stream,
@@ -80,29 +78,73 @@ class _StudentHistoryListState extends State<StudentHistoryList> {
             child: Text('Nothing yet. Interactions, doubts, meetings, books and notes about this student appear here.', style: t.caption),
           );
         }
-        final shown = _all ? lines : lines.take(widget.firstShown).toList();
-        final hidden = lines.length - shown.length;
         return Column(
           key: const ValueKey('history-list'),
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (var i = 0; i < shown.length; i++) ...[
-              if (i == 0 || !_sameDay(shown[i - 1].at, shown[i].at)) _dayHeading(context, shown[i].at),
-              _line(context, shown[i]),
-            ],
-            if (hidden > 0)
-              GestureDetector(
-                key: const ValueKey('history-more'),
-                behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() => _all = true),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
-                  child: Align(alignment: Alignment.centerLeft, child: Text('Show $hidden more', style: t.bodyStrong.copyWith(color: g.brass))),
-                ),
-              ),
+            // (the stream gives the lines newest first; each section is sorted again so it never depends on that)
+            for (final c in kHistoryCategories)
+              _section(context, c.key, c.label, [for (final l in lines) if (l.category == c.key) l]..sort((a, b) => (b.at ?? DateTime(2000)).compareTo(a.at ?? DateTime(2000)))),
           ],
         );
       },
+    );
+  }
+
+  /// One category: its header (name, count, date of the latest line) and, open, its lines.
+  Widget _section(BuildContext context, String key, String label, List<HistoryLine> lines) {
+    final g = context.g;
+    final t = context.gText;
+    final open = lines.isNotEmpty && (_open[key] ?? (key == kHistoryCategories.first.key));
+    final latest = lines.isEmpty ? null : lines.first.at;
+    final duration = GuideMotion.of(context, GuideMotion.expand);
+    return Column(
+      key: ValueKey('history-cat-$key'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          key: ValueKey('history-cat-header-$key'),
+          behavior: HitTestBehavior.opaque,
+          onTap: lines.isEmpty ? null : () => setState(() => _open[key] = !open),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.bodyStrong.copyWith(color: lines.isEmpty ? g.mutedText : null)),
+                  ),
+                  const SizedBox(width: 8),
+                  Text('${lines.length}', key: ValueKey('history-cat-count-$key'), style: t.bodyStrong.copyWith(color: lines.isEmpty ? g.mutedText : g.brass)),
+                  if (latest != null) ...[
+                    const SizedBox(width: 8),
+                    Text(historyDay(latest), key: ValueKey('history-cat-latest-$key'), style: t.caption),
+                  ],
+                  const SizedBox(width: 4),
+                  AnimatedRotation(
+                    turns: open ? .5 : 0,
+                    duration: duration,
+                    child: Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: lines.isEmpty ? g.border : g.mutedText),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (open)
+          Column(
+            key: ValueKey('history-cat-lines-$key'),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var i = 0; i < lines.length; i++) ...[
+                if (i == 0 || !_sameDay(lines[i - 1].at, lines[i].at)) _dayHeading(context, lines[i].at),
+                _line(context, lines[i]),
+              ],
+            ],
+          ),
+        Divider(height: 1, color: g.border),
+      ],
     );
   }
 

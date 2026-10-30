@@ -8,6 +8,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/Home/FolkBoysWorkspace.dart';
 import 'package:folk_guide_app/theme/GuideTheme.dart';
 
+/// Opens every closed history section of a student's board card that has lines (the card shows seven collapsible categories).
+Future<void> openAllHistorySections(WidgetTester tester) async {
+  for (final k in ['interactions', 'surrender', 'sadhana', 'books', 'trips', 'worries', 'doubts']) {
+    final header = find.byKey(ValueKey('history-cat-header-$k'));
+    if (header.evaluate().isEmpty || find.byKey(ValueKey('history-cat-lines-$k')).evaluate().isNotEmpty) continue;
+    if (tester.widget<Text>(find.byKey(ValueKey('history-cat-count-$k'))).data == '0') continue;
+    await tester.ensureVisible(header);
+    await tester.pumpAndSettle();
+    await tester.tap(header);
+    await tester.pumpAndSettle();
+  }
+}
+
 /// The text scales every new / changed widget is checked at.
 const List<double> kScales = [1.0, 1.3, 1.6];
 

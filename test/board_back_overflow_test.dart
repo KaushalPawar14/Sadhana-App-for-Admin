@@ -49,7 +49,7 @@ void main() {
       });
       await tester.tap(find.text('Arjun Kumar'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('history-more')));
+      await openAllHistorySections(tester);
       await tester.pumpAndSettle();
       expect(overflowIn(tester), isNull, reason: 'before shrinking');
 
@@ -83,7 +83,7 @@ void main() {
         });
         await tester.tap(find.text('Arjun Kumar'));
         await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const ValueKey('history-more')));
+        await openAllHistorySections(tester);
         await tester.pumpAndSettle();
         expect(overflowIn(tester), isNull, reason: 'before shrinking');
 
@@ -105,7 +105,7 @@ void main() {
     });
     await tester.tap(find.text('Arjun Kumar'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('history-more')));
+    await openAllHistorySections(tester);
     await tester.pumpAndSettle();
     expect(overflowIn(tester), isNull);
   });

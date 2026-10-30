@@ -331,7 +331,7 @@ class _GuideBandGrowState extends State<GuideBandGrow> with SingleTickerProvider
       child: widget.child,
       builder: (context, child) => Align(
         alignment: Alignment.centerLeft,
-        child: FractionallySizedBox(widthFactor: _curve.value.clamp(0.0, 1.0), child: child),
+        child: FractionallySizedBox(widthFactor: _curve.value.clamp(0.001, 1.0), child: child),
       ),
     );
   }
