@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../Home/Calendar.dart';
 import '../Pages/AssociationManager.dart';
+import '../Pages/LitAssessment.dart';
 import '../Pages/StudentDoubtsPage.dart';
 import '../Pages/StudentProfilePage.dart';
 import '../widgets/RecordInteractionDialog.dart';
@@ -11,7 +12,7 @@ import 'PlanData.dart';
 /// TODAY'S ACTION BUTTONS: every open topic on a student's card has ONE button that opens the exact place where the guide does it by hand. The
 /// button never ticks anything: the topic is ticked by itself ONLY when the real record has been saved there (the interaction, the book, the
 /// commitment, the answer, the meeting) and the server has seen it.
-enum TopicAction { updateBook, assignBook, changeCommitment, openProfile, answerDoubt, openMeeting, recordInteraction }
+enum TopicAction { updateBook, assignBook, changeCommitment, openProfile, answerDoubt, openMeeting, recordInteraction, setLit }
 
 const Map<TopicAction, String> kTopicActionLabels = {
   TopicAction.updateBook: 'Update book',
@@ -21,7 +22,16 @@ const Map<TopicAction, String> kTopicActionLabels = {
   TopicAction.answerDoubt: 'Answer doubt',
   TopicAction.openMeeting: 'Open meeting',
   TopicAction.recordInteraction: 'Record interaction',
+  TopicAction.setLit: 'Set LIT',
 };
+
+/// The button of one line inside the Surrender check: a missing LIT -> Set LIT; no interaction / attitude yet -> Record interaction; none for "no reports" (he has to
+/// file them). Null for a point to discuss.
+TopicAction? subActionOf(PlanSub x) => switch (x.kind) {
+      'gap_lit' => TopicAction.setLit,
+      'gap_interaction' || 'gap_attitude' => TopicAction.recordInteraction,
+      _ => null,
+    };
 
 /// The one button of a topic, by what the topic is about.
 TopicAction topicActionOf(PlanPoint p) {
@@ -90,6 +100,7 @@ TopicDestination? destinationFor(TopicAction action, {required String uid, requi
       return TopicDestination('topic:openMeeting', AssociationManagerPage(highlightAssociationId: assocId.isEmpty ? null : assocId));
     case TopicAction.changeCommitment:
     case TopicAction.recordInteraction:
+    case TopicAction.setLit:
       return null;
   }
 }
@@ -107,6 +118,10 @@ Future<void> runStudentAction(BuildContext context, TopicAction action, {require
   }
   if (action == TopicAction.changeCommitment) {
     await editStudentCommitments(context, studentUid: uid, studentName: name);
+    return;
+  }
+  if (action == TopicAction.setLit) {
+    await openLitAssessmentSheet(context: context, studentUid: uid, studentName: name);
     return;
   }
   await showRecordInteractionFor(context, studentUid: uid, studentName: name, topics: topics);

@@ -93,13 +93,13 @@ void main() {
     }
   }
 
-  testWidgets('EVERY ACTION LABEL fits on a phone width, and each of the seven is a raised button', (tester) async {
+  testWidgets('EVERY ACTION LABEL fits on a phone width, and every action is a raised button', (tester) async {
     await _pump(
       tester,
       SingleChildScrollView(child: Column(children: [for (final a in TopicAction.values) Guide3dButton(label: kTopicActionLabels[a]!, onPressed: () {})])),
       size: const Size(320, 900),
     );
     expect(tester.takeException(), isNull);
-    expect(find.byType(Guide3dButton), findsNWidgets(7));
+    expect(find.byType(Guide3dButton), findsNWidgets(TopicAction.values.length));
   });
 }

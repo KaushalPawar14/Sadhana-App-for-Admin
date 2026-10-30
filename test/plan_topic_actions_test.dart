@@ -124,7 +124,7 @@ void main() {
       for (final i in [0, 7, 8]) {
         expect(topicActionOf(_topics[i]), TopicAction.recordInteraction, reason: _topics[i].kind);
       }
-      expect({for (final a in TopicAction.values) kTopicActionLabels[a]}, {'Update book', 'Assign book', 'Change commitment', 'Open profile', 'Answer doubt', 'Open meeting', 'Record interaction'});
+      expect({for (final a in TopicAction.values) kTopicActionLabels[a]}, {'Update book', 'Assign book', 'Change commitment', 'Open profile', 'Answer doubt', 'Open meeting', 'Record interaction', 'Set LIT'});
     });
 
     test('the Record-interaction topics of a card are its OPEN interaction topics only (not the doubt, the book, the meeting, the target steps, nor a done one)', () {

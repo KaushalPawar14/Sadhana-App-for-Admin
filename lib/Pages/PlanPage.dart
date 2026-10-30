@@ -903,6 +903,52 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
+  /// "28 Oct" for a yyyy-MM-dd.
+  static String _sinceWords(String day) {
+    final d = DateTime.tryParse(day);
+    return d == null ? day : DateFormat('d MMM').format(d);
+  }
+
+  /// One line inside the Surrender check: a point to discuss (a bullet) or a gap (its circle, ticked by itself when the data is there, and its button).
+  Widget _subLine(BuildContext context, PlanItem it, PlanPoint p, int i, int j) {
+    final g = context.g;
+    final t = context.gText;
+    final x = p.sub[j];
+    final action = x.isGap && !x.done && !p.done ? subActionOf(x) : null;
+    TextStyle struck(TextStyle base) => (x.done || p.done) && x.isGap ? base.copyWith(decoration: TextDecoration.lineThrough, color: g.mutedText) : base;
+    return Padding(
+      key: ValueKey('plan-sub-${it.id}-$i-$j'),
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: x.isGap ? planCircle(context, x.done || p.done, key: ValueKey('plan-sub-circle-${it.id}-$i-$j'), size: 16) : Icon(Icons.circle, size: 6, color: g.mutedText),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(x.text, key: ValueKey('plan-sub-text-${it.id}-$i-$j'), style: struck(t.small.copyWith(height: 1.35))),
+                if (action != null && it.isCard && it.studentUid.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Guide3dButton(
+                      key: ValueKey('plan-sub-action-${it.id}-$i-$j'),
+                      label: kTopicActionLabels[action]!,
+                      onPressed: () => runStudentAction(context, action, uid: it.studentUid, name: it.studentName, topics: recordTopicsOf(it)),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// One topic of a task: its circle, its title (struck through when done, with a tick and "done"), its one line and, while open, its 3D action button.
   Widget _topicLine(BuildContext context, PlanItem it, int i) {
     final g = context.g;
@@ -933,6 +979,11 @@ class _PlanPageState extends State<PlanPage> {
                   ],
                 ),
                 Text(p.text, key: ValueKey('plan-point-text-${it.id}-$i'), style: struck(t.small.copyWith(height: 1.35))),
+                // a topic carried over from an earlier day says since when
+                if (p.carriedOver && !p.done)
+                  Padding(padding: const EdgeInsets.only(top: 4), child: _tag(context, 'Carried over since ${_sinceWords(p.since)}', key: ValueKey('plan-point-carried-${it.id}-$i'))),
+                // THE SURRENDER CHECK: what to discuss (the AI's points, prepared once for the crossing) and the data gaps to fill, each with its own button
+                for (var j = 0; j < p.sub.length; j++) _subLine(context, it, p, i, j),
                 // ONE 3D button per open topic: it opens the place to do it by hand; it never ticks (the topic ticks when the real record is saved there)
                 if (!p.done && it.isCard && it.studentUid.isNotEmpty)
                   Padding(

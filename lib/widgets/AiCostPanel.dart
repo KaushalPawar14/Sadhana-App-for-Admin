@@ -22,6 +22,7 @@ const Map<String, String> kAiTypes = {
   'voice': 'Voice to text',
   'analysis': 'Interaction analysis',
   'targetPlan': 'Target plans',
+  'surrenderCheck': 'Surrender checks',
   'other': 'Other',
 };
 

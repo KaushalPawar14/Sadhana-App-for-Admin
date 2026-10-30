@@ -256,6 +256,15 @@ Future<AgentResult> studentReportIgnoreSet(Map<String, dynamic> a, AgentEnv env)
   });
 }
 
+/// Skips (dismisses) a student's SURRENDER CHECK on the guide's word ("skip the surrender check for Amit"): noted in his history, never ticked as done
+/// (the server: `studentGuideNote`, kind surrender_check_skip).
+Future<AgentResult> surrenderCheckSkip(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _s(a['studentUid']);
+  final s = await env.student(uid);
+  final message = await HierarchyApi.instance.studentGuideNote(studentUid: uid, kind: 'surrender_check_skip');
+  return _done('$message (${_s(s['name'])})');
+}
+
 /// Changes how many students the daily batch holds (1 to 12; 4 unless changed). Only the guide asking changes it: the number is not shown in the app.
 Future<AgentResult> planBatchSizeSet(Map<String, dynamic> a, AgentEnv env) async {
   final n = a['size'] is num ? (a['size'] as num).round() : 0;
@@ -655,6 +664,7 @@ final Map<String, AgentRun> kAgentWritesB = {
   'student_advice_set': studentAdviceSet,
   'student_report_reason_add': studentReportReasonAdd,
   'student_report_ignore_set': studentReportIgnoreSet,
+  'surrender_check_skip': surrenderCheckSkip,
   'plan_batch_size_set': planBatchSizeSet,
   'interaction_plan_remove': interactionPlanRemove,
   'plan_item_skip': planItemSkip,

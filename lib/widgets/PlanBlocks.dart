@@ -132,6 +132,7 @@ Color planChipColor(GuideColors g, String kind) {
     case 'target_task':
       return g.eventTarget;
     case 'surrender':
+    case 'surrender_check':
     case 'good_sadhana':
       return g.eventFollowUp;
     case 'sadhana_slip':
