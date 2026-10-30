@@ -222,6 +222,16 @@ class HierarchyApi {
   /// Resumes the guides' AI for the rest of this month after the budget was used up (HOD only; the server checks).
   Future<void> resumeAiForMonth() => _call('resumeAiForMonth');
 
+  /// A top-up of the OpenAI account: the [date] (`yyyy-MM-dd`), the amount in US$ and in ₹ ([inr] left out: worked out from the rate). HOD only.
+  Future<void> addAiTopup({required String date, required double usd, double? inr}) => _call('addAiTopup', {'date': date, 'usd': usd, if (inr != null) 'inr': inr});
+
+  /// Removes a top-up entered by mistake (HOD only).
+  Future<void> deleteAiTopup(String id) => _call('deleteAiTopup', {'id': id});
+
+  /// The estimated remaining credit = the top-ups minus everything the AI has cost since the first one (guides and students), with the days left at
+  /// the current rate (HOD only; the server works it out).
+  Future<Map<String, dynamic>> aiCreditView() => _call('aiCreditView');
+
   /// Is this mobile number already on any user document? (Replaces the app's
   /// own `users where mobileNumber ==` query, which strict rules forbid.)
   /// `name` is the existing student's name when taken.
