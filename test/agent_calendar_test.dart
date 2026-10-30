@@ -70,6 +70,7 @@ Future<void> _seed(FakeFirebaseFirestore db) async {
 }
 
 void main() {
+  masterCCalendarReads();
   late FakeFirebaseFirestore db;
   setUp(() async {
     db = FakeFirebaseFirestore();
@@ -153,5 +154,61 @@ void main() {
     await expectLater(calendarEditEvent({'eventId': 'e_mand', 'date': '2026-11-11', 'type': 'program', 'title': 'Camp'}, env), throwsA(anything));
     // an automatic event's id is not a calendar event: nothing to edit
     await expectLater(calendarEditEvent({'eventId': 'followUp_l1', 'date': '2026-11-11', 'type': 'other', 'title': 'x'}, env), throwsA(anything));
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// MASTER C: the assistant sees what the calendar shows now (book due dates, every meeting state) and who each event is for
+
+void masterCCalendarReads() {
+  group('the assistant\'s calendar read: new sources and who an event is for', () {
+    late FakeFirebaseFirestore db;
+    setUp(() async {
+      db = FakeFirebaseFirestore();
+      GuideDb.useForTests(db);
+      await _seed(db);
+      Map<String, Object?> stamp(String g, String t) => {'scopeGuide': g, 'scopeTeam': t, 'scopeGender': 'male'};
+      await db.collection('booksRead').doc('u_own_l1_b1').set({'uid': 'u_own', 'bookTitle': 'Gita', 'commitmentDate': '2026-11-10', ...stamp('G', 'G')});
+      await db.collection('booksRead').doc('u_other_l1_b1').set({'uid': 'u_other', 'bookTitle': 'Other book', 'commitmentDate': '2026-11-11', ...stamp('G2', 'G2')});
+      await db.collection('associations').doc('a_pend').set({'studentUid': 'u_own', 'studentName': 'Own', 'status': 'pending', 'preferredDate': ts(2026, 11, 6), ...stamp('G', 'G')});
+      await db.collection('calendarEvents').doc('e_hostel').set({
+        'eventDate': ts(2026, 11, 14), 'type': 'exam', 'title': 'Hostel exams', 'note': '', 'sourceTextBlockId': 'b2', 'scope': 'personal', 'ownerGuideId': 'G',
+        'createdAt': ts(2026, 10, 1), 'notifyOffsets': ['oneWeekBefore'], 'forCategories': ['hostel'], 'forStudents': ['u_own'],
+      });
+    });
+    tearDown(() => GuideDb.useForTests(null));
+
+    AgentEnv env(String id, String role) => AgentEnv(profile: _profile(id, role), db: db, clock: () => DateTime(2026, 10, 30, 12));
+
+    test('a Guide hears of his own students\' book due dates and meeting requests, not another guide\'s; an event says who it is for', () async {
+      final r = await kAgentReads['list_calendar']!({'fromDate': '2026-10-30', 'toDate': '2026-12-31'}, env('G', 'GUIDE'));
+      final events = [for (final e in ((r.data as Map)['events'] as List)) Map<String, dynamic>.from(e as Map)];
+      final titles = events.map((e) => e['title']).toList();
+      expect(titles, contains('Book due: Own'));
+      expect(titles, isNot(contains('Book due: Other')), reason: 'another guide\'s student');
+      expect(titles, contains('Meeting request: Own'));
+      final hostel = events.firstWhere((e) => e['title'] == 'Hostel exams');
+      expect(hostel['forCategories'], ['hostel']);
+      expect(hostel['forStudents'], ['u_own']);
+      final diwali = events.firstWhere((e) => e['title'] == 'Diwali');
+      expect(diwali.containsKey('forCategories'), isFalse, reason: 'for everyone: nothing to say');
+    });
+
+    test('the HOD hears of every guide\'s book due dates', () async {
+      final r = await kAgentReads['list_calendar']!({'fromDate': '2026-10-30', 'toDate': '2026-12-31'}, env('H', 'HOD'));
+      final titles = [for (final e in ((r.data as Map)['events'] as List)) (e as Map)['title']];
+      expect(titles, containsAll(['Book due: Own', 'Book due: Other']));
+    });
+
+    test('adding an event for named students through the assistant saves who it is for', () async {
+      await calendarAddNotes({
+        'text': 'Exams for Own',
+        'events': [
+          {'date': '2026-12-20', 'endDate': '2026-12-28', 'type': 'exam', 'title': 'Own exams', 'forStudents': ['u_own'], 'forCategories': ['folk']},
+        ],
+      }, env('G', 'GUIDE'));
+      final d = (await db.collection('calendarEvents').where('title', isEqualTo: 'Own exams').get()).docs.single.data();
+      expect([d['forStudents'], d['forCategories']], [['u_own'], ['folk']]);
+    });
   });
 }

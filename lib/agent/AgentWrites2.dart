@@ -148,6 +148,8 @@ List<ParsedCalendarEvent> _events(Object? raw) => [
           title: _s(e['title']),
           note: _s(e['note']),
           notifyOffsets: e['notifyOffsets'] == null ? null : [for (final o in (e['notifyOffsets'] as List)) _s(o)],
+          forCategories: [for (final c in (e['forCategories'] as List? ?? const [])) _s(c)],
+          forStudents: [for (final c in (e['forStudents'] as List? ?? const [])) _s(c)],
         ),
     ];
 
@@ -350,6 +352,8 @@ Future<AgentResult> calendarEditEvent(Map<String, dynamic> a, AgentEnv env) asyn
       editedBy: env.me.id,
       actingIsHod: env.me.isHod,
       notifyOffsets: a['notifyOffsets'] == null ? (current.isEmpty ? List<String>.from(kDefaultNotifyOffsets) : current) : [for (final o in (a['notifyOffsets'] as List)) _s(o)],
+      forCategories: a['forCategories'] == null ? null : [for (final c in (a['forCategories'] as List)) _s(c)],
+      forStudents: a['forStudents'] == null ? null : [for (final c in (a['forStudents'] as List)) _s(c)],
     );
   } on MandatoryEventPermissionError catch (e) {
     throw AgentFailure(e.toString());

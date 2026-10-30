@@ -24,6 +24,10 @@ GuideEventType guideEventTypeOf(CalendarEvent e) {
       return GuideEventType.interaction;
     case kSourceMeeting:
       return GuideEventType.meeting;
+    case kSourcePlan:
+      return switch (e.section) { 'followups' => GuideEventType.followUp, 'targets' => GuideEventType.target, _ => GuideEventType.interaction };
+    case kSourceBook:
+      return GuideEventType.other;
     case kSourceTrip:
       return GuideEventType.trip;
     case kSourceCompetition:
@@ -424,10 +428,17 @@ class GuideEventRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(event.title.isEmpty ? '(untitled)' : event.title,
-                      style: t.cardTitleSmall),
+                  Row(
+                    children: [
+                      if (event.done) ...[Icon(Icons.check_circle, key: ValueKey('cal-done-${event.id}'), size: 16, color: g.success), const SizedBox(width: 6)],
+                      Expanded(
+                        child: Text(event.title.isEmpty ? '(untitled)' : event.title,
+                            style: t.cardTitleSmall.copyWith(decoration: event.done ? TextDecoration.lineThrough : null, color: event.done ? g.mutedText : null)),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 2),
-                  Text('${guideEventTypeLabel(event)} · $range', style: t.caption),
+                  Text('${guideEventTypeLabel(event)} · $range${event.isAutomatic || (event.forCategories.isEmpty && event.forStudents.isEmpty) ? '' : ' · ${event.audienceLabel}'}', style: t.caption),
                   if (event.note.isNotEmpty) ...[
                     const SizedBox(height: 2),
                     Text(event.note, style: t.caption.copyWith(color: g.text.withValues(alpha: .75))),

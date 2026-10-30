@@ -10,6 +10,8 @@ import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/AutoCalendar.dart';
+import '../utils/PlanCalendar.dart';
+import '../widgets/GuideMeta.dart';
 import '../utils/CalendarData.dart';
 import '../utils/CalendarQueries.dart';
 import '../utils/SeenMarkers.dart';
@@ -22,9 +24,9 @@ import '../widgets/GuideGhost.dart';
 import '../widgets/GuideStates.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideAppBar.dart';
+import '../widgets/EventAudiencePicker.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
-import '../widgets/GuideMeta.dart';
 
 /// Guide Calendar — text-to-dates, mandatory + personal layers (Part 5,
 /// management UI). GUIDE APP ONLY; the Student app has no read path to
@@ -62,8 +64,15 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
   StreamSubscription<List<CalendarEvent>>? _autoSub;
   List<CalendarTextBlock> _textBlocks = [];
 
-  /// The guide's own events plus the automatic ones (live from their sources).
-  List<CalendarEvent> get _events => [..._manual, ..._auto];
+  /// A HOD sees his OWN items by default (his plan, his students, his trips, his events); "All guides" adds everyone else's. Everyone else sees his own scope.
+  bool _allGuides = false;
+
+  /// The guide's own events plus the automatic ones (live from their sources), filtered for a HOD who has not asked for all guides.
+  List<CalendarEvent> get _events {
+    final all = [..._manual, ..._auto];
+    if (!_isHod || _allGuides) return all;
+    return [for (final e in all) if (e.guideId.isEmpty || e.guideId == widget.selectedGuide) e];
+  }
 
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
@@ -197,6 +206,9 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
     // (already defaulted to `kDefaultNotifyOffsets` by
     // `CalendarEvent.fromDoc` if it predates this field).
     List<String> notifyOffsets = List<String>.from(event.notifyOffsets);
+    // who the event is for (empty = everyone): the plans and the assistant apply it to these students only
+    var forCategories = List<String>.from(event.forCategories);
+    var forStudents = List<String>.from(event.forStudents);
 
     final result = await showDialog<bool>(
       context: context,
@@ -294,6 +306,15 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
                           setDialogState(() => type = updated),
                     ),
                     const SizedBox(height: 12),
+                    EventAudiencePicker(
+                      categories: forCategories,
+                      students: forStudents,
+                      onChanged: (c, st) => setDialogState(() {
+                        forCategories = c;
+                        forStudents = st;
+                      }),
+                    ),
+                    const SizedBox(height: 12),
                     _NotifyOffsetsPicker(
                       selected: notifyOffsets,
                       onChanged: (updated) =>
@@ -331,6 +352,8 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
         editedBy: widget.selectedGuide,
         actingIsHod: _isHod,
         notifyOffsets: notifyOffsets,
+        forCategories: forCategories,
+        forStudents: forStudents,
       );
       await _loadAll();
       if (!mounted) return;
@@ -597,6 +620,17 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (_isHod)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Wrap(
+              spacing: 8,
+              children: [
+                GuideChoiceChip(key: const ValueKey('cal-only-mine'), label: 'My items', selected: !_allGuides, onSelected: (_) => setState(() => _allGuides = false)),
+                GuideChoiceChip(key: const ValueKey('cal-all-guides'), label: 'All guides', selected: _allGuides, onSelected: (_) => setState(() => _allGuides = true)),
+              ],
+            ),
+          ),
         Row(
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
@@ -626,18 +660,31 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
             ),
           )
         else
-          for (var i = 0; i < events.length; i++)
-            GuideEntry(
-              // A new day replays the rise: the key carries the day.
-              key: ValueKey('${DateFormat('yyyyMMdd').format(day)}-${events[i].id}'),
-              index: i,
-              child: GuideEventRow(
-                event: events[i],
-                onTap: events[i].isAutomatic
-                    ? (autoEventPage(events[i]) == null ? null : () => _openSource(events[i]))
-                    : (_canMutate(events[i]) ? () => _openEditEventDialog(events[i]) : null),
-              ),
-            ),
+          // GROUPED LIKE TODAY: Follow-ups, Target tasks, Other tasks, Meetings, Events; what is still to do first, the done ones after; each row opens its screen
+          for (final group in kCalendarGroups)
+            ...(() {
+              final inGroup = [for (final e in events) if (calendarGroupOf(e) == group.$1) e]..sort((a, b) => a.done == b.done ? 0 : (a.done ? 1 : -1));
+              if (inGroup.isEmpty) return const <Widget>[];
+              return <Widget>[
+                Padding(
+                  key: ValueKey('cal-group-${group.$1}'),
+                  padding: const EdgeInsets.only(top: 14),
+                  child: Text('${group.$2} (${inGroup.length})', style: t.bodyStrong.copyWith(color: context.g.agent)),
+                ),
+                for (var i = 0; i < inGroup.length; i++)
+                  GuideEntry(
+                    // A new day replays the rise: the key carries the day.
+                    key: ValueKey('${DateFormat('yyyyMMdd').format(day)}-${inGroup[i].id}'),
+                    index: i,
+                    child: GuideEventRow(
+                      event: inGroup[i],
+                      onTap: inGroup[i].isAutomatic
+                          ? (autoEventPage(inGroup[i]) == null ? null : () => _openSource(inGroup[i]))
+                          : (_canMutate(inGroup[i]) ? () => _openEditEventDialog(inGroup[i]) : null),
+                    ),
+                  ),
+              ];
+            })(),
       ],
     );
   }
@@ -700,6 +747,10 @@ class _CalendarTextEntryPageState extends State<_CalendarTextEntryPage> {
   // `kDefaultNotifyOffsets` by its own constructor default when first
   // parsed), so this just starts them all in sync.
   List<String> _sharedNotifyOffsets = List<String>.from(kDefaultNotifyOffsets);
+
+  /// Who the events of this paste are for (one shared control, like the reminders): empty = everyone.
+  List<String> _sharedCategories = [];
+  List<String> _sharedStudents = [];
 
   @override
   void initState() {
@@ -864,7 +915,7 @@ class _CalendarTextEntryPageState extends State<_CalendarTextEntryPage> {
               const Center(
                   child: Padding(
                 padding: EdgeInsets.symmetric(vertical: 8),
-                child: const GuideBusyDot(),
+                child: GuideBusyDot(),
               ))
             else
               GuidePrimaryButton(
@@ -993,6 +1044,24 @@ class _CalendarTextEntryPageState extends State<_CalendarTextEntryPage> {
         // than needing per-event edits afterward (per-event fine-tuning is
         // still available later from the calendar view's own edit dialog).
         // Applies immediately to every event currently in `_events`.
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+          child: EventAudiencePicker(
+            categories: _sharedCategories,
+            students: _sharedStudents,
+            onChanged: (c, st) {
+              setState(() {
+                _sharedCategories = c;
+                _sharedStudents = st;
+                for (final e in _events) {
+                  e.forCategories = List<String>.from(c);
+                  e.forStudents = List<String>.from(st);
+                }
+              });
+            },
+          ),
+        ),
         Container(
           width: double.infinity,
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),

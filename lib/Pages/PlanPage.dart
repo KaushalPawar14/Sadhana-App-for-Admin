@@ -843,6 +843,16 @@ class _PlanPageState extends State<PlanPage> {
                                 ],
                               ),
                               if (chips.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(key: ValueKey('plan-chips-${it.id}'), spacing: 6, runSpacing: 6, children: chips)),
+                              // the calendar event that shapes this item ("Exams 31 Dec–17 Jan")
+                              if (it.calNote.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Row(children: [
+                                    Icon(Icons.event_outlined, size: 14, color: g.mutedText),
+                                    const SizedBox(width: 4),
+                                    Flexible(child: Text(it.calNote, key: ValueKey('plan-calnote-${it.id}'), style: t.caption)),
+                                  ]),
+                                ),
                             ],
                           ),
                         ),

@@ -776,6 +776,9 @@ Future<AgentResult> listCalendar(Map<String, dynamic> a, AgentEnv env) async {
             } else ...{
               'type': e.type,
               'forEveryone': e.scope == kScopeMandatory,
+              // which STUDENTS it is about (empty = all of them)
+              if (e.forCategories.isNotEmpty) 'forCategories': e.forCategories,
+              if (e.forStudents.isNotEmpty) 'forStudents': e.forStudents,
               'blockId': e.sourceTextBlockId,
               'eventsInItsBlock': perBlock[e.sourceTextBlockId] ?? 1,
             },

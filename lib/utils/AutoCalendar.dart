@@ -20,7 +20,10 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../Home/Calendar.dart';
 import '../Pages/AssociationManager.dart';
+import '../Pages/PlanPage.dart';
+import '../Pages/StudentProfilePage.dart';
 import '../Pages/ChantingChallengeManager.dart';
 import '../Pages/ExpeditionManager.dart';
 import '../Pages/GoalHomePage.dart';
@@ -29,6 +32,8 @@ import 'AdminProfile.dart';
 import 'CalendarQueries.dart';
 import 'GoalCompoundQueries.dart';
 import 'GuideDb.dart';
+import 'PlanCalendar.dart';
+import 'PlanData.dart';
 import 'StudentScope.dart';
 
 const String kSourceTarget = 'target';
@@ -38,6 +43,13 @@ const String kSourceInteraction = 'interaction';
 const String kSourceMeeting = 'meeting';
 const String kSourceTrip = 'trip';
 const String kSourceCompetition = 'competition';
+
+/// A task of the guide's PLAN (Today's and This week's: an interaction, a follow-up, a surrender check, a worry, a doubt, a book due, a target step ...), drawn on
+/// its day with the same done state as the plan. See [planCalendarEvents].
+const String kSourcePlan = 'plan';
+
+/// A book's due date (an unfinished book with a finish-by date).
+const String kSourceBook = 'book';
 
 /// Every automatic kind, in the order the legend lists them.
 const List<String> kAutoSources = [
@@ -56,6 +68,8 @@ const Map<String, String> kAutoSourceLabels = {
   kSourceFollowUp: 'Follow-up',
   kSourceInteraction: 'Interaction',
   kSourceMeeting: 'Meeting',
+  kSourcePlan: 'Task',
+  kSourceBook: 'Book due',
   kSourceTrip: 'Trip',
   kSourceCompetition: 'Competition',
 };
@@ -64,9 +78,12 @@ DateTime? _ts(Object? v) => v is Timestamp ? v.toDate() : null;
 DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
 String _s(Object? v) => (v ?? '').toString().trim();
 
-CalendarEvent _auto({
+/// An automatic calendar event (read from the app's own data, never edited here). Public so the plan's tasks can be drawn too.
+CalendarEvent autoCalendarEvent({
   required String id,
   required String source,
+  bool done = false,
+  String section = '',
   required DateTime start,
   DateTime? end,
   required String title,
@@ -94,6 +111,8 @@ CalendarEvent _auto({
     studentUid: studentUid,
     studentName: studentName,
     guideId: guideId,
+    done: done,
+    section: section,
   );
 }
 
@@ -108,7 +127,7 @@ List<CalendarEvent> followUpEvents(Iterable<QueryDocumentSnapshot<Map<String, dy
     final when = _ts(sum['followUpDate']);
     if (when == null) continue;
     final who = _s(m['studentName']).isEmpty ? 'a student' : _s(m['studentName']);
-    out.add(_auto(
+    out.add(autoCalendarEvent(
       id: 'followUp_${d.id}',
       source: kSourceFollowUp,
       start: when,
@@ -117,6 +136,7 @@ List<CalendarEvent> followUpEvents(Iterable<QueryDocumentSnapshot<Map<String, dy
       refId: d.id,
       studentUid: _s(m['studentUid']),
       studentName: _s(m['studentName']),
+      guideId: _s(m['scopeGuide']).isNotEmpty ? _s(m['scopeGuide']) : _s(m['guideId']),
     ));
   }
   return out;
@@ -134,7 +154,7 @@ List<CalendarEvent> plannedInteractionEvents(Iterable<QueryDocumentSnapshot<Map<
     final planned = made != null ? _day(when).isAfter(_day(made)) : _day(when).isAfter(today);
     if (!planned) continue;
     final who = _s(m['studentName']).isEmpty ? 'a student' : _s(m['studentName']);
-    out.add(_auto(
+    out.add(autoCalendarEvent(
       id: 'interaction_${d.id}',
       source: kSourceInteraction,
       start: when,
@@ -143,29 +163,62 @@ List<CalendarEvent> plannedInteractionEvents(Iterable<QueryDocumentSnapshot<Map<
       refId: d.id,
       studentUid: _s(m['studentUid']),
       studentName: _s(m['studentName']),
+      guideId: _s(m['scopeGuide']).isNotEmpty ? _s(m['scopeGuide']) : _s(m['guideId']),
     ));
   }
   return out;
 }
 
-/// Confirmed meetings (the day they are confirmed for).
+/// Meetings, in every state: a REQUEST waiting for the guide (on the day asked for), a CONFIRMED one (its day) and a HELD one (its day, ticked). A cancelled
+/// one is not shown.
 List<CalendarEvent> meetingEvents(Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> meetings) {
   final out = <CalendarEvent>[];
   for (final d in meetings) {
     final m = d.data();
-    if (m['status'] != 'confirmed') continue;
-    final when = _ts(m['confirmedDate']) ?? _ts(m['preferredDate']);
+    final status = _s(m['status']);
+    if (status != 'confirmed' && status != 'pending' && status != 'completed') continue;
+    final when = status == 'pending' ? (_ts(m['preferredDate']) ?? _ts(m['confirmedDate'])) : (_ts(m['confirmedDate']) ?? _ts(m['preferredDate']));
     if (when == null) continue;
     final who = _s(m['studentName']).isEmpty ? 'a student' : _s(m['studentName']);
-    out.add(_auto(
+    out.add(autoCalendarEvent(
       id: 'meeting_${d.id}',
       source: kSourceMeeting,
       start: when,
-      title: 'Meeting: $who',
-      note: '',
+      title: switch (status) { 'pending' => 'Meeting request: $who', 'completed' => 'Meeting held: $who', _ => 'Meeting: $who' },
+      note: status == 'pending' ? _s(m['studentNotes']) : '',
       refId: d.id,
       studentUid: _s(m['studentUid']),
       studentName: _s(m['studentName']),
+      guideId: _s(m['scopeGuide']).isNotEmpty ? _s(m['scopeGuide']) : _s(m['guideId']),
+      done: status == 'completed',
+      section: 'meetings',
+    ));
+  }
+  return out;
+}
+
+/// Book due dates: every unfinished book that has a finish-by date, on that date ([names] gives the students' names by uid).
+List<CalendarEvent> bookDueEvents(Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> books, Map<String, String> names) {
+  final out = <CalendarEvent>[];
+  for (final d in books) {
+    final m = d.data();
+    if (_s(m['endDate']).isNotEmpty) continue;
+    final due = DateTime.tryParse(_s(m['commitmentDate']));
+    if (due == null) continue;
+    final uid = _s(m['uid']);
+    final who = names[uid] ?? 'a student';
+    final title = _s(m['bookTitle']).isEmpty ? 'a book' : _s(m['bookTitle']);
+    out.add(autoCalendarEvent(
+      id: 'book_${d.id}',
+      source: kSourceBook,
+      start: due,
+      title: 'Book due: $who',
+      note: title,
+      refId: d.id,
+      studentUid: uid,
+      studentName: who,
+      guideId: _s(m['scopeGuide']),
+      section: 'others',
     ));
   }
   return out;
@@ -180,7 +233,7 @@ List<CalendarEvent> tripEvents(Iterable<QueryDocumentSnapshot<Map<String, dynami
     final start = _ts(m['tripDate']);
     if (start == null) continue;
     final name = _s(m['title']).isNotEmpty ? _s(m['title']) : (_s(m['location']).isNotEmpty ? _s(m['location']) : 'a trip');
-    out.add(_auto(
+    out.add(autoCalendarEvent(
       id: 'trip_${d.id}',
       source: kSourceTrip,
       start: start,
@@ -210,7 +263,7 @@ List<CalendarEvent> competitionEvents(Iterable<QueryDocumentSnapshot<Map<String,
     final start = _ts(m['startDate']) ?? _dateOfKey(m['startDateKey']) ?? _ts(m['targetDate']) ?? _dateOfKey(m['targetDateKey']);
     final end = _ts(m['endDate']) ?? _dateOfKey(m['endDateKey']) ?? _ts(m['targetDate']) ?? _dateOfKey(m['targetDateKey']);
     if (start == null) continue;
-    out.add(_auto(
+    out.add(autoCalendarEvent(
       id: 'competition_${d.id}',
       source: kSourceCompetition,
       start: start,
@@ -230,13 +283,13 @@ List<CalendarEvent> targetEvents(String guideId, CompoundTarget t, CompoundPhase
   final out = <CalendarEvent>[];
   final deadline = t.endDate;
   if (deadline != null) {
-    out.add(_auto(id: 'target_${guideId}_${t.targetId}', source: kSourceTarget, start: deadline, title: 'Target deadline: $label', refId: t.targetId, guideId: guideId));
+    out.add(autoCalendarEvent(id: 'target_${guideId}_${t.targetId}', source: kSourceTarget, start: deadline, title: 'Target deadline: $label', refId: t.targetId, guideId: guideId));
   }
   final started = running?.startedAt;
   if (running != null && started != null && running.status == kCompoundPhaseActive) {
     var end = _day(started).add(const Duration(days: 6));
     if (deadline != null && end.isAfter(_day(deadline))) end = _day(deadline);
-    out.add(_auto(
+    out.add(autoCalendarEvent(
       id: 'phase_${guideId}_${t.targetId}_${running.phaseNumber}',
       source: kSourcePhase,
       start: end,
@@ -258,7 +311,11 @@ Widget? autoEventPage(CalendarEvent e) {
     case kSourceInteraction:
       return e.studentUid.isEmpty ? null : InteractionLoggerPage(studentUid: e.studentUid, studentName: e.studentName);
     case kSourceMeeting:
-      return const AssociationManagerPage();
+      return AssociationManagerPage(highlightAssociationId: e.refId.isEmpty ? null : e.refId);
+    case kSourceBook:
+      return e.studentUid.isEmpty ? null : CalendarPage(username: e.studentName, role: '', studentUid: e.studentUid, startOnBooks: true, focusBookDocId: e.refId, booksHint: 'Mark it finished, or tap the book to set a new due date.');
+    case kSourcePlan:
+      return e.studentUid.isEmpty ? const PlanPage() : StudentProfilePage(studentUid: e.studentUid);
     case kSourceTrip:
       return const ExpeditionManagerPage();
     case kSourceCompetition:
@@ -295,6 +352,11 @@ class AutoCalendarFeed {
     });
     await part(() async => meetingEvents((await scope.historyGet('associations')).docs));
     await part(() async {
+      final names = {for (final d in (await scope.studentsGet()).docs) d.id: _s(d.data()['name'])};
+      return bookDueEvents((await scope.historyGet('booksRead')).docs, names);
+    });
+    await part(() async => planCalendarEvents(await PlanData.instance.plan(profile.id).first.timeout(const Duration(seconds: 4))));
+    await part(() async {
       final trips = db.collection('expeditions');
       return tripEvents((await (profile.isHod ? trips : trips.where('createdBy', isEqualTo: profile.id)).get()).docs);
     });
@@ -327,6 +389,8 @@ class AutoCalendarFeed {
     final parts = <String, List<CalendarEvent>>{};
     // per-target phase subscriptions, rebuilt when the targets change
     final phaseSubs = <String, StreamSubscription<Object?>>{};
+    var studentNames = <String, String>{};
+    List<QueryDocumentSnapshot<Map<String, dynamic>>>? lastBooks;
 
     void emit() {
       if (controller.isClosed) return;
@@ -354,6 +418,24 @@ class AutoCalendarFeed {
         listen('followUps', scope.historyStream('interactionLogs'), (s) => followUpEvents(s.docs));
         listen('interactions', scope.historyStream('interactionLogs'), (s) => plannedInteractionEvents(s.docs, now: _clock()));
         listen('meetings', scope.historyStream('associations'), (s) => meetingEvents(s.docs));
+        // EVERYTHING I HAVE TO DO: the plan's own tasks (Today and This week), live with the plan
+        listen('plan', PlanData.instance.plan(profile.id), planCalendarEvents);
+        // every book's due date, with the students' names (read once; the books stream live)
+        subs.add(Stream.fromFuture(scope.studentsGet()).listen((snap) {
+          studentNames = {for (final d in snap.docs) d.id: _s(d.data()['name'])};
+          if (lastBooks != null) {
+            parts['books'] = bookDueEvents(lastBooks!, studentNames);
+            emit();
+          }
+        }, onError: (_) {}));
+        subs.add(scope.historyStream('booksRead').listen((s) {
+          lastBooks = s.docs.cast<QueryDocumentSnapshot<Map<String, dynamic>>>();
+          parts['books'] = bookDueEvents(lastBooks!, studentNames);
+          emit();
+        }, onError: (_) {
+          parts['books'] = const [];
+          emit();
+        }));
 
         final trips = db.collection('expeditions');
         listen('trips', (profile.isHod ? trips : trips.where('createdBy', isEqualTo: profile.id)).snapshots(), (s) => tripEvents(s.docs));

@@ -213,7 +213,7 @@ void main() {
       expect(e.keys.toSet(), {
         'followUp_l_own', 'followUp_l_team', 'followUp_l_unboy', // own, his Male Enabler's, the unassigned boys'
         'interaction_l_plan',
-        'meeting_a_conf',
+        'meeting_a_conf', 'meeting_a_pend', 'meeting_a_done', // every state of a meeting: a request, a confirmed one, a held one
         'trip_t_mine',
         'competition_c_mine', 'competition_c_keys',
         'target_G_tg1', 'phase_G_tg1_2',
@@ -237,11 +237,21 @@ void main() {
       expect(e['phase_G_tg1_2']!.title, 'Phase 2 ends: chanting');
     });
 
-    test('what is not an event: a pending follow-up, an interaction logged today, a pending / completed meeting, an archived trip, a missed competition, a finished target', () async {
+    test('what is not an event: a pending follow-up, an interaction logged today, an archived trip, a missed competition, a finished target', () async {
       final e = await feedFor(_profile('G', 'GUIDE'));
-      for (final id in ['followUp_l_pending', 'interaction_l_logged_today', 'meeting_a_pend', 'meeting_a_done', 'trip_t_old', 'competition_c_missed', 'target_G_tg_done']) {
+      for (final id in ['followUp_l_pending', 'interaction_l_logged_today', 'trip_t_old', 'competition_c_missed', 'target_G_tg_done']) {
         expect(e.containsKey(id), isFalse, reason: id);
       }
+    });
+
+    test('MEETINGS IN EVERY STATE: a request on the day asked for, a confirmed one, a held one ticked; a cancelled one is not shown', () async {
+      final e = await feedFor(_profile('G', 'GUIDE'));
+      expect(e['meeting_a_pend']!.title, 'Meeting request: Pend');
+      expect(e['meeting_a_pend']!.done, isFalse);
+      expect(e['meeting_a_conf']!.title, 'Meeting: Bhima');
+      expect(e['meeting_a_done']!.title, 'Meeting held: Done');
+      expect(e['meeting_a_done']!.done, isTrue, reason: 'ticked');
+      expect(e['meeting_a_conf']!.guideId, 'G', reason: 'the student guide, for the HOD filter');
     });
 
     test('scope: a Guide never sees another Guide\'s student, trip, competition or target', () async {
@@ -302,7 +312,7 @@ void main() {
       expect(e.containsKey('trip_t_mine'), isFalse);
       expect(_day(e['target_G_tg1']!.eventDate), '2027-01-05');
       expect(e.containsKey('competition_c_mine'), isFalse);
-      expect(e.containsKey('meeting_a_conf'), isFalse);
+      expect(e['meeting_a_conf']!.done, isTrue, reason: 'a completed meeting stays on its day, ticked');
 
       // a phase that ends earlier than a short deadline is capped at the deadline
       await db.collection('guideTargets').doc('G').collection('targets').doc('tg1').update({'endDate': ts(2026, 10, 30)});

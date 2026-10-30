@@ -151,7 +151,11 @@ class PlanItem {
     this.cardGroups = const [],
     this.steps = const [],
     this.also = '',
+    this.calNote = '',
   });
+
+  /// The calendar event that shapes this interaction ("Exams 31 Dec–17 Jan"): shown as a small note on the item.
+  final String calNote;
 
   /// "Also: no report since 20 Oct": extra information on his card (a missing report is never an item of its own).
   final String also;
@@ -285,6 +289,7 @@ class PlanItem {
               if (PlanPoint.fromMap(p) case final x?) x,
         ],
         also: (m['also'] ?? '').toString(),
+        calNote: (m['calNote'] ?? '').toString(),
         steps: [
           if (m['steps'] is List)
             for (final e in (m['steps'] as List))

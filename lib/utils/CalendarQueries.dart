@@ -350,6 +350,16 @@ class CalendarEvent {
   final String studentName;
   final String guideId;
 
+  /// WHO THE EVENT IS FOR: empty lists = everyone; otherwise the categories (`folk` | `hostel` | `localite`) and / or the named students (uids). The plans and the
+  /// AI apply an exam / festival / program only to these students.
+  final List<String> forCategories;
+  final List<String> forStudents;
+
+  /// Plan items and tasks drawn on the calendar (source [kSourcePlan]): whether the task is done, and the Today block it is grouped in
+  /// (`followups` | `targets` | `others`), so the day's list reads like Today.
+  final bool done;
+  final String section;
+
   CalendarEvent({
     required this.id,
     required this.eventDate,
@@ -366,7 +376,22 @@ class CalendarEvent {
     this.studentUid = '',
     this.studentName = '',
     this.guideId = '',
+    this.forCategories = const [],
+    this.forStudents = const [],
+    this.done = false,
+    this.section = '',
   });
+
+  /// "For everyone", "For FOLK, Hostel", "For 3 students" ...
+  String get audienceLabel {
+    if (forCategories.isEmpty && forStudents.isEmpty) return 'For everyone';
+    const names = {'folk': 'FOLK', 'hostel': 'Hostel', 'localite': 'Localite'};
+    final parts = [
+      for (final c in forCategories) names[c] ?? c,
+      if (forStudents.isNotEmpty) '${forStudents.length} student${forStudents.length == 1 ? '' : 's'}',
+    ];
+    return 'For ${parts.join(', ')}';
+  }
 
   bool get isMandatory => scope == kScopeMandatory;
 
@@ -408,6 +433,8 @@ class CalendarEvent {
       notifyOffsets: rawOffsets is List && rawOffsets.isNotEmpty
           ? rawOffsets.map((e) => e.toString()).toList()
           : List<String>.from(kDefaultNotifyOffsets),
+      forCategories: [for (final c in (d['forCategories'] as List? ?? const [])) c.toString()],
+      forStudents: [for (final c in (d['forStudents'] as List? ?? const [])) c.toString()],
     );
   }
 }
@@ -549,6 +576,10 @@ class ParsedCalendarEvent {
   // event's offsets must never accidentally toggle another's.
   List<String> notifyOffsets;
 
+  /// Who the event is for (empty = everyone): categories and / or named students (see [CalendarEvent.forCategories]).
+  List<String> forCategories;
+  List<String> forStudents;
+
   ParsedCalendarEvent({
     required this.date,
     this.endDate,
@@ -557,10 +588,14 @@ class ParsedCalendarEvent {
     required this.note,
     this.include = true,
     List<String>? notifyOffsets,
+    List<String>? forCategories,
+    List<String>? forStudents,
   })  : type = (type != null && kEventTypes.contains(type))
             ? type
             : kDefaultEventType,
-        notifyOffsets = notifyOffsets ?? List<String>.from(kDefaultNotifyOffsets);
+        notifyOffsets = notifyOffsets ?? List<String>.from(kDefaultNotifyOffsets),
+        forCategories = forCategories ?? <String>[],
+        forStudents = forStudents ?? <String>[];
 }
 
 /// Calls the `extractCalendarEvents` Cloud Function (Part 3) — writes
@@ -661,6 +696,8 @@ Future<void> saveTextBlockWithEvents({
       'notifyOffsets': e.notifyOffsets.isNotEmpty
           ? e.notifyOffsets
           : kDefaultNotifyOffsets,
+      'forCategories': e.forCategories,
+      'forStudents': e.forStudents,
     });
   }
 
@@ -736,6 +773,8 @@ Future<void> updateTextBlockWithEvents({
       'notifyOffsets': e.notifyOffsets.isNotEmpty
           ? e.notifyOffsets
           : kDefaultNotifyOffsets,
+      'forCategories': e.forCategories,
+      'forStudents': e.forStudents,
     });
   }
 
@@ -816,6 +855,8 @@ Future<void> editEvent({
   required String editedBy,
   required bool actingIsHod,
   required List<String> notifyOffsets,
+  List<String>? forCategories,
+  List<String>? forStudents,
 }) async {
   _assertValidRange(eventDate, endDate);
 
@@ -838,6 +879,9 @@ Future<void> editEvent({
     // Part 8 item 2 — same never-write-empty rule as the create paths.
     'notifyOffsets':
         notifyOffsets.isNotEmpty ? notifyOffsets : kDefaultNotifyOffsets,
+    // who it is for: left as it is when not given
+    if (forCategories != null) 'forCategories': forCategories,
+    if (forStudents != null) 'forStudents': forStudents,
   });
 }
 
