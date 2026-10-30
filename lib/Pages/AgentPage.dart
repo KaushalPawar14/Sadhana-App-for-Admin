@@ -343,7 +343,7 @@ class _AgentPageState extends State<AgentPage> {
           ),
         );
       case ProposalEntry():
-        return _ProposalCard(entry: e, busy: _c.busy, onConfirm: () => _confirm(e), onCancel: () => _c.cancel(e));
+        return _ProposalCard(entry: e, busy: _c.busy, onConfirm: () => _confirm(e), onCancel: () => _c.cancel(e), onUndo: () => _c.undo(e));
       case ProgressEntry():
         return TaskProgressCard(key: ObjectKey(e), entry: e);
       case QuestionEntry():
@@ -453,12 +453,13 @@ class _AgentPageState extends State<AgentPage> {
 // The confirmation card
 // ---------------------------------------------------------------------------
 class _ProposalCard extends StatelessWidget {
-  const _ProposalCard({required this.entry, required this.busy, required this.onConfirm, required this.onCancel});
+  const _ProposalCard({required this.entry, required this.busy, required this.onConfirm, required this.onCancel, required this.onUndo});
 
   final ProposalEntry entry;
   final bool busy;
   final VoidCallback onConfirm;
   final VoidCallback onCancel;
+  final VoidCallback onUndo;
 
   @override
   Widget build(BuildContext context) {
@@ -556,7 +557,8 @@ class _ProposalCard extends StatelessWidget {
   String _doneTitle() {
     final total = entry.proposal.actions.length;
     final ok = entry.results.values.where((r) => r.$1).length;
-    if (total <= 1 || ok == total) return 'Done';
+    if (entry.undone) return 'Undone';
+    if (total <= 1 || ok == total) return 'Done: ${plainAiText(entry.proposal.actions.map((a) => a.title).take(2).join(', '))}${total > 2 ? ' and ${total - 2} more' : ''}';
     return ok == 0 ? 'None of these went through' : '$ok of $total done';
   }
 
@@ -666,6 +668,19 @@ class _ProposalCard extends StatelessWidget {
           Text('Working…', style: context.gText.small),
         ]);
       case ProposalState.done:
+        // UNDO, for a few minutes, when the change can be taken back
+        if (entry.canUndo || entry.undoing) {
+          return Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              key: const ValueKey('agent-undo'),
+              onPressed: entry.undoing || busy ? null : onUndo,
+              icon: const Icon(Icons.undo, size: 18),
+              label: Text(entry.undoing ? 'Undoing…' : 'Undo'),
+            ),
+          );
+        }
+        return const SizedBox.shrink();
       case ProposalState.cancelled:
       case ProposalState.expired:
         return const SizedBox.shrink();

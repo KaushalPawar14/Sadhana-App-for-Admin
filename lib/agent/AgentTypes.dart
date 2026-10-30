@@ -28,7 +28,7 @@ class AgentEntity {
 
 /// What a tool run on the phone came to.
 class AgentResult {
-  const AgentResult.ok(this.data, {this.entities = const []})
+  const AgentResult.ok(this.data, {this.entities = const [], this.undo})
       : ok = true,
         error = null;
 
@@ -36,7 +36,11 @@ class AgentResult {
   const AgentResult.failed(String this.error)
       : ok = false,
         data = null,
-        entities = const [];
+        entities = const [],
+        undo = null;
+
+  /// How to take this change back (the Undo button, for a few minutes); null when it cannot be undone (a message already sent ...).
+  final Future<void> Function()? undo;
 
   final bool ok;
   final Object? data;
@@ -126,7 +130,11 @@ class AgentProposal {
     required this.actions,
     required this.headsUp,
     required this.tainted,
+    this.auto = false,
   });
+
+  /// The server says it runs at once (with an Undo afterwards): nothing in it is a deletion and nothing came from what a student wrote.
+  final bool auto;
 
   final String id;
   final List<AgentAction> actions;
@@ -143,6 +151,7 @@ class AgentProposal {
         id: (m['id'] ?? '').toString(),
         actions: [for (final a in (m['actions'] as List? ?? const [])) AgentAction.fromMap(a as Map)],
         headsUp: [for (final h in (m['headsUp'] as List? ?? const [])) h.toString()],
+        auto: m['auto'] == true,
         tainted: m['tainted'] == true,
       );
 }
@@ -196,7 +205,11 @@ class AgentReply {
     this.questionLimit,
     this.question,
     this.choices = const [],
+    this.executed,
   });
+
+  /// Changes the SERVER ran by itself (so they finish even if the app is closed): shown as a card that is already done, with its Undo.
+  final ExecutedByServer? executed;
 
   final String? sessionId;
   final AgentStatus status;
@@ -241,6 +254,30 @@ class AgentReply {
       questionLimit: (m['questionLimit'] as num?)?.toInt(),
       question: m['question']?.toString(),
       choices: [for (final c in (m['choices'] as List? ?? const []).whereType<Map>()) AgentChoice.fromMap(c)],
+      executed: m['executed'] is Map ? ExecutedByServer.fromMap(m['executed'] as Map) : null,
     );
   }
+}
+
+/// What the server did on its own: the proposal, what each action came to, and the server calls that take each back.
+class ExecutedByServer {
+  const ExecutedByServer({required this.proposal, required this.results, required this.undo});
+
+  final AgentProposal proposal;
+
+  /// callId → (ok, the sentence).
+  final Map<String, (bool, String)> results;
+
+  /// The callable and data of each Undo.
+  final List<({String name, Map<String, dynamic> data})> undo;
+
+  factory ExecutedByServer.fromMap(Map m) => ExecutedByServer(
+        proposal: AgentProposal.fromMap(m['proposal'] as Map),
+        results: {
+          for (final r in (m['results'] as List? ?? const []).whereType<Map>()) (r['callId'] ?? '').toString(): (r['ok'] != false, (r['text'] ?? '').toString()),
+        },
+        undo: [
+          for (final u in (m['undo'] as List? ?? const []).whereType<Map>()) (name: (u['name'] ?? '').toString(), data: Map<String, dynamic>.from((u['data'] as Map?) ?? const {})),
+        ],
+      );
 }

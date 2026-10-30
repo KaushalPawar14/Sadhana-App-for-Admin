@@ -118,6 +118,14 @@ class ProposalEntry extends ChatEntry {
 
   /// What happened to each action, once run: callId → (ok, message).
   final Map<String, (bool, String)> results = {};
+
+  /// How to take each change back, and until when (a few minutes after it was done).
+  final List<Future<void> Function()> undos = [];
+  DateTime? undoUntil;
+  bool undoing = false;
+  bool undone = false;
+
+  bool get canUndo => state == ProposalState.done && !undone && !undoing && undos.isNotEmpty && undoUntil != null && DateTime.now().isBefore(undoUntil!);
 }
 
 /// Runs the conversation with the server: sends what the guide says, answers the look-ups it asks
@@ -313,6 +321,8 @@ class AgentController extends ChangeNotifier {
       switch (reply.status) {
         case AgentStatus.message:
           _task?.progress.finish();
+          // changes the server ran by itself: shown as done, with their Undo, before the assistant's closing words
+          if (reply.executed != null) _addExecuted(reply.executed!);
           if (reply.text != null || reply.links.isNotEmpty) _add(AssistantEntry(reply.text ?? '', reply.links));
           return;
 
@@ -337,8 +347,14 @@ class AgentController extends ChangeNotifier {
           if (reply.text != null) _add(AssistantEntry(reply.text!, const []));
           final p = reply.proposal!;
           final advice = await adviseFor(p, env);
+          final entry = ProposalEntry(p, [...p.headsUp, ...advice], task: _task);
+          _add(entry);
+          // NO CONFIRMATION except for a deletion: the change runs now and shows "Done" with an Undo (a deletion still waits for its card)
+          if (p.auto && !p.needsSecondConfirmation) {
+            await _execute(entry, 1);
+            return;
+          }
           _task?.progress.enter(TaskStep.confirming);
-          _add(ProposalEntry(p, [...p.headsUp, ...advice], task: _task));
           return;
 
         case AgentStatus.needReads:
@@ -351,6 +367,27 @@ class AgentController extends ChangeNotifier {
     const tooMany = 'That took too many steps, so I stopped. Please say it again more simply.';
     _task?.progress.fail(tooMany);
     _add(ErrorEntry(tooMany));
+  }
+
+  /// A card for what the server did on its own: already done, with the server calls that take it back.
+  void _addExecuted(ExecutedByServer x) {
+    final entry = ProposalEntry(x.proposal, const [], task: _task);
+    entry.state = ProposalState.done;
+    entry.results.addAll(x.results);
+    for (final u in x.undo) {
+      entry.undos.add(() async {
+        await HierarchyApi.instance.call(u.name, u.data);
+      });
+    }
+    if (entry.undos.isNotEmpty) {
+      entry.undoUntil = DateTime.now().add(undoWindow);
+      Future<void>.delayed(undoWindow + const Duration(seconds: 1), () {
+        try {
+          notifyListeners();
+        } catch (_) {/* the chat is gone */}
+      });
+    }
+    _add(entry);
   }
 
   Future<Map<String, dynamic>> _runTool(AgentRead read) async => (await _run(read.tool, read.args)).toWire(read.callId);
@@ -383,6 +420,19 @@ class AgentController extends ChangeNotifier {
       throw StateError('A deletion needs two confirmations.');
     }
     _busy = true;
+    try {
+      await _execute(entry, confirmations);
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
+  /// How long a change can be undone.
+  static const Duration undoWindow = Duration(minutes: 5);
+
+  /// Runs what a card holds (confirmed by the guide, or at once when nothing in it is a deletion) and tells the server.
+  Future<void> _execute(ProposalEntry entry, int confirmations) async {
     entry.state = ProposalState.running;
     _task = entry.task;
     _task?.progress.enter(TaskStep.saving);
@@ -393,8 +443,18 @@ class AgentController extends ChangeNotifier {
         final r = await _run(action.tool, action.args);
         env.invalidate(); // the next look sees this change
         entry.results[action.callId] = (r.ok, r.ok ? _sentence(r.data) : (r.error ?? 'failed'));
+        if (r.ok && r.undo != null) entry.undos.add(r.undo!);
         results.add(r.toWire(action.callId));
         notifyListeners();
+      }
+      if (entry.undos.isNotEmpty) entry.undoUntil = DateTime.now().add(undoWindow);
+      if (entry.undos.isNotEmpty) {
+        // the Undo button goes away when its time is up
+        Future<void>.delayed(undoWindow + const Duration(seconds: 1), () {
+          try {
+            notifyListeners();
+          } catch (_) {/* the chat is gone */}
+        });
       }
       entry.state = ProposalState.done;
       // a change that did not go through stops the card, with the reason; finishing is only for what truly worked
@@ -412,8 +472,25 @@ class AgentController extends ChangeNotifier {
       final message = agentFailureMessage(e);
       _task?.progress.fail(message);
       _add(ErrorEntry(message));
+    }
+  }
+
+  /// UNDO: takes the changes of a card back (the last one first). Available for a few minutes; a change that cannot be taken back has no Undo.
+  Future<void> undo(ProposalEntry entry) async {
+    if (!entry.canUndo || _busy) return;
+    entry.undoing = true;
+    notifyListeners();
+    try {
+      for (final back in entry.undos.reversed) {
+        await back();
+      }
+      env.invalidate();
+      entry.undone = true;
+      _add(AssistantEntry('Undone — it is back as it was.', const []));
+    } catch (e) {
+      _add(ErrorEntry(agentFailureMessage(e)));
     } finally {
-      _busy = false;
+      entry.undoing = false;
       notifyListeners();
     }
   }

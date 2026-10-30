@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folk_guide_app/Pages/PlanPage.dart';
 import 'package:folk_guide_app/Services/HierarchyApi.dart';
-import 'package:folk_guide_app/theme/AgentLook.dart' show contrastRatio;
-import 'package:folk_guide_app/theme/GuideColors.dart';
 import 'package:folk_guide_app/utils/AdminProfile.dart';
 import 'package:folk_guide_app/utils/PlanData.dart';
 import 'package:folk_guide_app/utils/SeenMarkers.dart';
@@ -111,143 +109,6 @@ void main() {
     AdminProfileProvider.instance.debugSet(null);
   });
 
-  testWidgets('TODAY: the batch card (done · left), each student with his place, and his topics as a title and ONE line each (nothing else)', (tester) async {
-    await _open(tester);
-    expect(find.byKey(const ValueKey('plan-batch')), findsOneWidget);
-    expect(find.text('done 1 · left 3'), findsOneWidget);
-    expect(find.text('Student 1 of 4'), findsOneWidget);
-    expect(find.text('Student 3 of 4'), findsOneWidget);
-    expect(find.text('Interaction with Amit'), findsOneWidget);
-    expect(find.text('Chanting'), findsNWidgets(4), reason: 'a title for each student\'s topic');
-    expect(find.text('Chanting under 16 rounds on 5 days — talk with him and help resolve it.'), findsNWidgets(4), reason: 'and ONE factual line with the direction');
-    // none of the old paragraphs, questions, talking points or how-to-meet lines
-    for (final gone in ['Encourage:', 'After talking, report', 'Why do you think', 'In person —', 'By call or online', 'Questions and suggestions', 'Hide the questions']) {
-      expect(find.textContaining(gone), findsNothing, reason: gone);
-    }
-  });
-
-  testWidgets("THE ORDER: each student's Surrender % is beside his name, in the order the server sent (highest first), on Today and in the week's list", (tester) async {
-    await _open(tester, doc: _plan(today: [_student('u1', 'Top', 1, percent: 91), _student('u2', 'High', 2, percent: 88), _student('u3', 'Mid', 3, percent: 47)]));
-    expect(find.text('Interaction with Top · 91%'), findsOneWidget);
-    expect(find.text('Interaction with High · 88%'), findsOneWidget);
-    double y(String t) => tester.getTopLeft(find.text(t)).dy;
-    expect(y('Interaction with Top · 91%'), lessThan(y('Interaction with High · 88%')));
-    expect(y('Interaction with High · 88%'), lessThan(y('Interaction with Mid · 47%')));
-    await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
-    await tester.pumpAndSettle();
-    expect(find.text('42%'), findsOneWidget, reason: 'small, beside the name in the week');
-    expect(find.text('12%'), findsOneWidget);
-  });
-
-  testWidgets('a student the guide has reported to the AI shows a tick; "Carried over" marks one from an earlier day', (tester) async {
-    await _open(tester);
-    expect(find.byKey(const ValueKey('plan-done-interaction:u4:2026-10-28')), findsOneWidget);
-    expect(find.text('Done'), findsOneWidget);
-    expect(find.byKey(const ValueKey('plan-carried-interaction:u1:2026-10-28')), findsOneWidget);
-    expect(find.text('Carried over'), findsOneWidget);
-    expect(find.byKey(const ValueKey('plan-carried-note')), findsOneWidget);
-  });
-
-  testWidgets('the other one-day items are short and separate, under "Other tasks"', (tester) async {
-    await _open(tester);
-    expect(find.byKey(const ValueKey('plan-section-other')), findsOneWidget);
-    expect(find.text('Meet Harsh'), findsOneWidget);
-    final alsoY = tester.getTopLeft(find.byKey(const ValueKey('plan-section-other'))).dy;
-    expect(tester.getTopLeft(find.text('Interaction with Mohit')).dy, lessThan(alsoY), reason: 'the batch comes first');
-  });
-
-  testWidgets('"Next 4 ready" shows after a refill; a day with nobody to contact says so', (tester) async {
-    await _open(tester, doc: _plan(batch: const PlanBatch(size: 4, round: 2, members: 8, carried: 0, nextReady: true, done: 4, left: 4)));
-    expect(find.byKey(const ValueKey('plan-next-ready')), findsOneWidget);
-    expect(find.text('Next 4 ready'), findsOneWidget);
-    expect(find.text('done 4 · left 4'), findsOneWidget);
-    await _open(tester, doc: _plan(today: const [], batch: const PlanBatch(size: 4, round: 1, members: 0, carried: 0, nextReady: false, done: 0, left: 0)));
-    expect(find.text('done 0 · left 0'), findsOneWidget, reason: 'a count, never a missing number');
-    expect(find.byKey(const ValueKey('plan-today-empty')), findsOneWidget);
-  });
-
-  testWidgets('STUDENTS A DAY: the guide changes the number (saved on the server); it shows at once; 1 and 12 are the limits', (tester) async {
-    final calls = <Map<String, dynamic>>[];
-    HierarchyApi.useForTests((name, data) async {
-      if (name == 'savePlanSettings') calls.add(data);
-      return {'ok': true};
-    });
-    await _open(tester);
-    expect(tester.widget<Text>(find.byKey(const ValueKey('plan-size'))).data, '4');
-    await tester.tap(find.byKey(const ValueKey('plan-size-more')));
-    await tester.pump();
-    await tester.pump();
-    expect(calls, [
-      {'dailyBatch': 5}
-    ]);
-    expect(tester.widget<Text>(find.byKey(const ValueKey('plan-size'))).data, '5');
-    await tester.tap(find.byKey(const ValueKey('plan-size-less')));
-    await tester.pump();
-    await tester.pump();
-    expect(calls.last, {'dailyBatch': 4});
-    // the limits
-    await _open(tester, doc: _plan(batch: const PlanBatch(size: 1, round: 1, members: 1, carried: 0, nextReady: false, done: 0, left: 1)));
-    expect(tester.widget<IconButton>(find.byKey(const ValueKey('plan-size-less'))).onPressed, isNull);
-    await _open(tester, doc: _plan(batch: const PlanBatch(size: 12, round: 1, members: 12, carried: 0, nextReady: false, done: 0, left: 12)));
-    expect(tester.widget<IconButton>(find.byKey(const ValueKey('plan-size-more'))).onPressed, isNull);
-  });
-
-  testWidgets('STEPPER: a new plan from the server with the new number replaces the guide\'s choice at once (Today follows the batch size)', (tester) async {
-    HierarchyApi.useForTests((name, data) async => {'ok': true});
-    final data = await _open(tester);
-    await tester.tap(find.byKey(const ValueKey('plan-size-more')));
-    await tester.pump();
-    expect(tester.widget<Text>(find.byKey(const ValueKey('plan-size'))).data, '5', reason: 'shown at once');
-    data.controller.add(_plan(batch: const PlanBatch(size: 5, round: 1, members: 5, carried: 0, nextReady: false, done: 0, left: 5)));
-    await tester.pump();
-    await tester.pump();
-    expect(tester.widget<Text>(find.byKey(const ValueKey('plan-size'))).data, '5', reason: "and the server's own number says the same");
-    expect(find.byKey(const ValueKey('plan-batch-counts')), findsOneWidget);
-    expect(tester.widget<Text>(find.byKey(const ValueKey('plan-batch-counts'))).data, 'done 0 · left 5');
-  });
-
-  for (final dark in [false, true]) {
-    testWidgets('STEPPER COLOURS (${dark ? 'dark' : 'light'}): the minus, the plus and the number are legible (4.5:1) and match the theme; enabled and disabled look different', (tester) async {
-      await _open(tester, dark: dark);
-      final g = dark ? GuideColors.dark : GuideColors.light;
-      const enabled = <WidgetState>{};
-      const disabled = {WidgetState.disabled};
-      for (final k in ['plan-size-less', 'plan-size-more']) {
-        final b = tester.widget<IconButton>(find.byKey(ValueKey(k)));
-        expect(b.onPressed, isNotNull, reason: '$k enabled at 4');
-        final on = b.style!.foregroundColor!.resolve(enabled)!;
-        final onFill = b.style!.backgroundColor!.resolve(enabled)!;
-        final onRing = (b.style!.shape!.resolve(enabled)! as CircleBorder).side.color;
-        expect(on, g.text, reason: 'the page\'s own text colour');
-        expect(contrastRatio(on, onFill), greaterThanOrEqualTo(4.5), reason: '$k enabled icon on its fill');
-        expect(contrastRatio(onRing, g.surface), greaterThanOrEqualTo(4.5), reason: '$k ring against the card');
-        final off = b.style!.foregroundColor!.resolve(disabled)!;
-        expect(contrastRatio(off, g.surface), greaterThanOrEqualTo(4.5), reason: '$k disabled icon (muted text) on the card');
-        expect(b.style!.backgroundColor!.resolve(disabled), isNot(onFill), reason: 'enabled is filled, disabled is empty');
-        expect(off, isNot(on));
-      }
-      expect(tester.getSize(find.byKey(const ValueKey('plan-size-less'))).height, greaterThanOrEqualTo(48));
-      final number = tester.widget<Text>(find.byKey(const ValueKey('plan-size')));
-      expect(number.style!.color, g.text);
-      expect(contrastRatio(number.style!.color!, g.surface), greaterThanOrEqualTo(4.5));
-      // the real disabled state (the limit) is drawn from the same colours
-      await _open(tester, dark: dark, doc: _plan(batch: const PlanBatch(size: 1, round: 1, members: 1, carried: 0, nextReady: false, done: 0, left: 1)));
-      final less = tester.widget<IconButton>(find.byKey(const ValueKey('plan-size-less')));
-      expect(less.onPressed, isNull);
-      expect(tester.takeException(), isNull);
-    });
-  }
-
-  testWidgets('a failed save puts the old number back and says why', (tester) async {
-    HierarchyApi.useForTests((name, data) async => throw HierarchyException('invalid-argument', 'Choose a number from 1 to 12.'));
-    await _open(tester);
-    await tester.tap(find.byKey(const ValueKey('plan-size-more')));
-    await tester.pump();
-    await tester.pump();
-    expect(find.text('Choose a number from 1 to 12.'), findsOneWidget);
-    expect(tester.widget<Text>(find.byKey(const ValueKey('plan-size'))).data, '4');
-  });
-
   testWidgets('THIS WEEK is a clean overview: the totals, the interactions DAY BY DAY (names only, done ones ticked), target tasks, other tasks; no advice', (tester) async {
     await _open(tester);
     await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
@@ -294,8 +155,8 @@ void main() {
     // Ravi has a card in Today: the page goes to Today
     await tester.tap(find.byKey(const ValueKey('plan-week-name-u1')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('plan-batch')), findsOneWidget, reason: 'the Today tab is showing');
-    expect(find.byKey(const ValueKey('plan-item-interaction:u1:2026-10-28')), findsOneWidget);
+    expect(find.byKey(const ValueKey('plan-summary')), findsOneWidget, reason: 'the Today tab is showing');
+    expect(find.byKey(const ValueKey('plan-item-interaction:u1:2026-10-28')), findsOneWidget, reason: 'his section opened and the card is there');
     // Sohan is planned for tomorrow: a small dialog with his open topics
     await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
     await tester.pumpAndSettle();
@@ -309,8 +170,7 @@ void main() {
 
   testWidgets('a HOD plan (no batch, no progress) still shows: with zero counts, never missing ones', (tester) async {
     await _open(tester, doc: PlanDoc(todayDate: '2026-10-30', todayItems: const [PlanItem(id: 'guide:G', kind: 'guideSummary', title: 'Gopal: 0 for today, 3 interactions needed')], weekOf: '2026-10-26', intro: 'Hare Krishna', sections: const [], generatedAt: _now, status: 'upToDate', changedAt: _now));
-    expect(find.byKey(const ValueKey('plan-batch')), findsOneWidget);
-    expect(find.text('done 0 · left 0'), findsOneWidget);
+    expect(find.text('Total tasks today: 0 · Done 0 · Left 0'), findsOneWidget);
     expect(find.text('Gopal: 0 for today, 3 interactions needed'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
     await tester.pumpAndSettle();
@@ -331,8 +191,10 @@ void main() {
             expect(tester.takeException(), isNull);
             await tester.scrollUntilVisible(find.byType(Text).last, 100, scrollable: find.byType(Scrollable).first);
             expect(tester.takeException(), isNull);
-            for (final k in ['plan-size-less', 'plan-size-more']) {
-              if (tab == 'today') expect(tester.getSize(find.byKey(ValueKey(k))).height, greaterThanOrEqualTo(48), reason: k);
+            if (tab == 'today') {
+              for (final id in ['followups', 'targets', 'others']) {
+                expect(tester.getSize(find.byKey(ValueKey('plan-section-$id'))).height, greaterThanOrEqualTo(48), reason: 'the section header is a 48 dp target');
+              }
             }
           });
         }

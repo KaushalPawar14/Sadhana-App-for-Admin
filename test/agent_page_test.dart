@@ -672,7 +672,7 @@ void main() {
         await tester.pump();
       }
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('Done'), findsOneWidget);
+      expect(find.textContaining('Done'), findsOneWidget);
       final summary = find.byKey(const ValueKey('agent-batch-summary'));
       expect(find.descendant(of: summary, matching: find.text('3 done')), findsOneWidget);
       expect(find.descendant(of: summary, matching: find.textContaining('failed')), findsNothing);

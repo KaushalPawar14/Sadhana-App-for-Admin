@@ -6,7 +6,9 @@ import '../utils/GoalCompoundQueries.dart';
 import '../utils/GoalMetrics.dart';
 import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
+import '../utils/Snackbar.dart';
 import '../widgets/GuideAppBar.dart';
+import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
 
 /// Per-target progress page — Part 7 of the compound-target task, updated
@@ -79,6 +81,41 @@ class _CompoundGoalProgressPageState extends State<CompoundGoalProgressPage> {
         .catchError((_) => false);
   }
 
+  bool _deleting = false;
+
+  /// Deletes this target for good — everything of it (phases, tasks, plan
+  /// items) goes, because the server removes the phases and the plan drops
+  /// the items of a target that no longer exists. Asks first.
+  Future<void> _confirmDelete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => GuideDialog(
+        title: const Text('Delete this target?'),
+        content: const Text('The target, all its phases and its tasks go for good. You can create a new one straight away.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          ElevatedButton(
+            key: const ValueKey('confirm-delete-target'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _deleting = true);
+    try {
+      await callDeleteCompoundTarget(guideId: guideId, targetId: targetId);
+      if (!mounted) return;
+      showSnackbar(context, 'Target deleted', Colors.green, Icons.check_circle);
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      showSnackbar(context, deleteFailureMessage(e), Colors.red, Icons.error);
+      setState(() => _deleting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<ColorProvider>(
@@ -89,6 +126,14 @@ class _CompoundGoalProgressPageState extends State<CompoundGoalProgressPage> {
               icon: Icon(Icons.arrow_back, color: colorProvider.secondColor),
               onPressed: () => Navigator.pop(context),
             ),
+            actions: [
+              IconButton(
+                key: const ValueKey('target-delete'),
+                tooltip: 'Delete target',
+                icon: Icon(Icons.delete_outline, color: colorProvider.secondColor),
+                onPressed: _deleting ? null : _confirmDelete,
+              ),
+            ],
             title: Text(
               "Target progress",
               style: TextStyle(

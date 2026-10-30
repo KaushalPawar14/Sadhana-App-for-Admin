@@ -59,9 +59,34 @@ class AgentRouteVisibility extends NavigatorObserver {
 
 /// Whether the MAIN SHELL (Home and the other main tabs) is on screen. The assistant's button shows only then: never on the splash, the sign-in,
 /// a loading screen, "update required" or anything else before Home. The shell sets it when it appears and clears it when it goes.
+///
+/// THE SHELL IS COUNTED, NOT FLIPPED: a shell that is replaced by another one in the SAME frame (a sign-in again, a profile switch, a restart of the
+/// app's flow) used to clear the flag after the new one had set it, and the button stayed hidden for good. Every shell [attach]es itself and
+/// [detach]es when it goes; the button shows while at least one is attached, whatever order they come in.
 class AgentShell {
   AgentShell._();
   static final ValueNotifier<bool> ready = ValueNotifier<bool>(false);
+  static final Set<Object> _holders = <Object>{};
+
+  static void attach(Object shell) {
+    _holders.add(shell);
+    _sync();
+  }
+
+  static void detach(Object shell) {
+    _holders.remove(shell);
+    _sync();
+  }
+
+  // read at the END of the turn, so two changes in one frame cannot leave an old answer behind
+  static void _sync() => scheduleMicrotask(() => ready.value = _holders.isNotEmpty);
+
+  /// Tests start with no shell.
+  @visibleForTesting
+  static void reset() {
+    _holders.clear();
+    ready.value = false;
+  }
 }
 
 /// The one conversation of this app session. It survives leaving the page and coming back; "New
@@ -155,7 +180,8 @@ class _DraggableAgentButton extends StatefulWidget {
 class _DraggableAgentButtonState extends State<_DraggableAgentButton> {
   Offset? _position; // top-left, logical pixels
   Offset? _pendingFraction;
-  bool _loaded = false;
+  // the button is there from the first frame (at its default spot); a saved spot only moves it when it arrives
+  bool _loaded = true;
   bool _dragging = false;
   bool _pressed = false;
 
@@ -175,7 +201,9 @@ class _DraggableAgentButtonState extends State<_DraggableAgentButton> {
     } catch (_) {/* a saved spot is a convenience */}
     if (!mounted) return;
     setState(() {
-      _pendingFraction = (dx != null && dy != null) ? Offset(dx, dy) : null;
+      // a spot that is not a sensible fraction of the screen is ignored (never a reason for the button to be lost)
+      final ok = dx != null && dy != null && dx.isFinite && dy.isFinite && dx >= 0 && dx <= 1 && dy >= 0 && dy <= 1;
+      _pendingFraction = ok ? Offset(dx, dy) : null;
       _loaded = true;
     });
   }
@@ -220,7 +248,8 @@ class _DraggableAgentButtonState extends State<_DraggableAgentButton> {
     final media = MediaQuery.of(context);
     final screen = media.size;
     // clear of the floating navigation at the bottom, like every other floating thing in the app
-    final bottomInset = GuideSpace.navClearanceOf(context) + GuideSpace.md;
+    // (and above the keyboard when it is open, so it is never hidden behind it)
+    final bottomInset = GuideSpace.navClearanceOf(context) + GuideSpace.md + media.viewInsets.bottom;
     final pos = _resolve(screen, media.padding, bottomInset);
 
     return Positioned(

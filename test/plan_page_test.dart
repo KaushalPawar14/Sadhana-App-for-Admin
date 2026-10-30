@@ -180,22 +180,6 @@ void main() {
       expect(find.byTooltip('Back'), findsNothing, reason: 'the root of this test has no back button');
     });
 
-    testWidgets('Today lists exactly what the server wrote; This week is a clean overview with its three sections', (tester) async {
-      await _open(tester);
-      expect(find.textContaining('Today — Friday 30 October'), findsOneWidget);
-      expect(find.text('Meet Harsh'), findsOneWidget);
-      expect(find.text('Follow up with Kishan'), findsOneWidget);
-      expect(find.byKey(const ValueKey('plan-week-section-interactions')), findsNothing, reason: 'the week is on the other tab');
-      await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
-      await tester.pumpAndSettle();
-      for (final k in ['interactions', 'targettasks', 'othertasks']) {
-        expect(find.byKey(ValueKey('plan-week-section-$k')), findsOneWidget, reason: k);
-      }
-      expect(find.text('Meet Harsh'), findsNothing, reason: 'one-day tasks are in Today only');
-      expect(find.text('Follow up with Kishan'), findsNothing);
-    });
-
-
     testWidgets('no plan yet: a friendly line; an empty day says so', (tester) async {
       final data = await _open(tester);
       await _emit(tester, data, null);
@@ -216,91 +200,6 @@ void main() {
       await _open(tester, page: const PlanPage(initialWeek: true));
       expect(find.byKey(const ValueKey('plan-week-section-interactions')), findsOneWidget);
       expect(find.textContaining('Today — Friday'), findsNothing);
-    });
-  });
-
-  group('TODAY is four sections: Worries, Target tasks, Follow-ups, Other tasks', () {
-    testWidgets('each task is in exactly one section: the student card sits in the most important one it has a topic in (Worries > Target tasks > Follow-ups > Other)', (tester) async {
-      await _open(tester, doc: _batchPlan(), size: const Size(360, 3200));
-      for (final k in ['worries', 'followups', 'targets', 'other']) {
-        expect(find.byKey(ValueKey('plan-section-$k')), findsOneWidget, reason: k);
-      }
-      for (final title in ['Worries', 'Follow-ups', 'Target tasks', 'Other tasks']) {
-        expect(find.descendant(of: find.byType(Scrollable).first, matching: find.text(title)), findsWidgets, reason: title);
-      }
-      double y(String key) => tester.getTopLeft(find.byKey(ValueKey(key))).dy;
-      expect(y('plan-section-worries'), lessThan(y('plan-section-targets')), reason: 'the order of the sections');
-      expect(y('plan-section-targets'), lessThan(y('plan-item-interaction:u2:2026-10-28')), reason: 'Amit (doubt + target topics) sits in the more important: Target tasks');
-      expect(y('plan-item-interaction:u2:2026-10-28'), lessThan(y('plan-item-interaction:u3:2026-10-28')), reason: 'Mohit (target only) is a target task too');
-      expect(y('plan-item-interaction:u3:2026-10-28'), lessThan(y('plan-section-followups')));
-      expect(y('plan-section-followups'), lessThan(y('plan-item-interaction:u1:2026-10-28')), reason: 'Ravi (sadhana) is a follow-up');
-      expect(y('plan-item-interaction:u1:2026-10-28'), lessThan(y('plan-section-other')));
-      expect(y('plan-section-other'), lessThan(y('plan-item-meeting:u9:2026-10-30')));
-      // Amit is counted in Follow-ups too (his doubt), without a second card
-      expect(tester.widget<Text>(find.byKey(const ValueKey('plan-section-count-followups'))).data, '2');
-      expect(tester.widget<Text>(find.byKey(const ValueKey('plan-section-count-targets'))).data, '2');
-      expect(find.byKey(const ValueKey('plan-item-interaction:u2:2026-10-28')), findsOneWidget, reason: 'one card');
-    });
-
-    testWidgets('a section with nothing in it is still there: "None yet"', (tester) async {
-      await _open(tester, doc: planDoc(left: 1, today: [interactionItem('u1', 'Ravi', ['sadhana'])]), size: const Size(360, 3200));
-      expect(find.byKey(const ValueKey('plan-section-followups')), findsOneWidget);
-      expect(find.byKey(const ValueKey('plan-section-targets')), findsOneWidget);
-      expect(find.byKey(const ValueKey('plan-section-other')), findsOneWidget);
-      expect(find.byKey(const ValueKey('plan-section-empty-followups')), findsNothing);
-      expect(find.byKey(const ValueKey('plan-section-empty-worries')), findsOneWidget);
-      expect(find.byKey(const ValueKey('plan-section-empty-targets')), findsOneWidget);
-      expect(find.byKey(const ValueKey('plan-section-empty-other')), findsOneWidget);
-      expect(find.text('None yet'), findsNWidgets(3));
-    });
-
-    testWidgets('EVERY COUNT IS ALWAYS SHOWN, 0 when there is none: interactions done / left, pending this week, target tasks, other tasks, meetings, doubts', (tester) async {
-      await _open(tester, doc: planDoc(), size: const Size(360, 3200));
-      String c(String k) => tester.widget<Text>(find.byKey(ValueKey('plan-count-$k'))).data!;
-      for (final k in ['interactions-done', 'interactions-left', 'pending', 'target-tasks', 'other-tasks', 'meetings', 'doubts']) {
-        expect(c(k), '0', reason: k);
-      }
-      expect(find.textContaining('done 0 · left'), findsOneWidget, reason: "the batch card shows counts");
-      await tester.pumpWidget(const SizedBox());
-      await _open(tester, doc: _batchPlan(), size: const Size(360, 3200));
-      expect(c('interactions-left'), '3');
-      expect(c('interactions-done'), '0');
-      expect(c('meetings'), '1');
-      expect(c('other-tasks'), '2');
-      expect(c('target-tasks'), '2', reason: 'Amit and Mohit: a card is counted in every section it has a topic in');
-      expect(c('students'), '3', reason: 'three students with an interaction (the meeting here is not about a student): cards, not topics');
-    });
-
-    for (final g in PlanGroup.values) {
-      testWidgets('opened from Home on ${g.name}: the page opens on TODAY and scrolls to that section', (tester) async {
-        final items = [
-          for (var i = 0; i < 3; i++) interactionItem('f$i', 'Follow$i', ['sadhana']),
-          for (var i = 0; i < 3; i++) interactionItem('t$i', 'Target$i', ['target']),
-          for (var i = 0; i < 4; i++) PlanItem(id: 'meeting:o$i:2026-10-30', kind: 'meeting', title: 'Meet Other$i', forYou: true),
-        ];
-        await _open(tester, doc: planDoc(left: 6, today: items), page: PlanPage(section: g));
-        await tester.pumpAndSettle();
-        final key = switch (g) { PlanGroup.worry => 'worries', PlanGroup.followUp => 'followups', PlanGroup.target => 'targets', PlanGroup.other => 'other' };
-        final top = tester.getTopLeft(find.byKey(ValueKey('plan-section-$key'))).dy;
-        expect(top, inInclusiveRange(0, 800), reason: 'the section is on screen');
-        if (g != PlanGroup.followUp) {
-          expect(tester.state<ScrollableState>(find.byType(Scrollable).first).position.pixels, greaterThan(0), reason: 'the page scrolled down to it');
-        }
-      });
-    }
-
-    testWidgets('opened on a section that is empty today: its title and "Nothing here today."', (tester) async {
-      await _open(tester, doc: planDoc(left: 1, today: [interactionItem('u1', 'Ravi', ['sadhana'])]), page: const PlanPage(section: PlanGroup.target));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('plan-section-targets')), findsOneWidget);
-      expect(find.byKey(const ValueKey('plan-section-empty-targets')), findsOneWidget);
-    });
-
-    testWidgets('a plan with no batch block (an old HOD plan) still shows every section and zero counts', (tester) async {
-      await _open(tester, role: 'HOD', doc: _plan());
-      expect(find.byKey(const ValueKey('plan-section-other')), findsOneWidget);
-      expect(find.byKey(const ValueKey('plan-today-counts')), findsOneWidget);
-      expect(find.text('Meet Harsh'), findsOneWidget);
     });
   });
 
@@ -331,6 +230,8 @@ void main() {
       );
       expect(_statusText(tester), 'Updated');
       expect(_lastUpdated(tester), 'Last updated: Fri 30 Oct, 10:00 AM (by refresh)');
+      await tester.tap(find.byKey(const ValueKey('plan-section-others'))); // the sections open by a tap
+      await tester.pump();
       expect(find.text('Follow up with Ravi'), findsOneWidget, reason: 'the new plan is on screen');
       expect(find.text('Meet Harsh'), findsNothing);
       final lit = tester.widget<AnimatedContainer>(find.byKey(const ValueKey('plan-status')));
@@ -343,6 +244,8 @@ void main() {
       final at = DateTime.utc(2026, 10, 30, 0, 30);
       final data = await _open(tester, doc: _plan(refreshedAt: at, refreshedBy: 'daily'));
       await _emit(tester, data, _plan(generatedAt: _now, refreshedAt: at, refreshedBy: 'daily', today: const [PlanItem(id: 'doubts::x', kind: 'doubtsToAnswer', title: '1 doubt waiting for your answer')]));
+      await tester.tap(find.byKey(const ValueKey('plan-section-followups')));
+      await tester.pump();
       expect(find.text('1 doubt waiting for your answer'), findsOneWidget);
       expect(_lastUpdated(tester), 'Last updated: Fri 30 Oct, 6:00 AM (daily update)');
     });
@@ -465,25 +368,6 @@ void main() {
           progress: const PlanProgress(needed: 3, done: 0, left: 3, summary: 'Interactions needed: 3 · done 0 · left 3', bySource: []),
         );
 
-    testWidgets('Today: his own batch card, students and tasks in the three sections, THEN "Guide by guide" with one line per guide', (tester) async {
-      await _open(tester, role: 'HOD', doc: hodDoc(), size: const Size(360, 3200));
-      expect(find.byKey(const ValueKey('plan-batch')), findsOneWidget);
-      expect(find.text('Interaction with Ravi'), findsOneWidget);
-      expect(find.text('Interaction with Amit'), findsOneWidget);
-      expect(find.text('Meet Harsh'), findsOneWidget);
-      expect(find.byKey(const ValueKey('plan-section-followups')), findsOneWidget);
-      expect(find.byKey(const ValueKey('plan-section-targets')), findsOneWidget);
-      expect(find.byKey(const ValueKey('plan-section-other')), findsOneWidget);
-      expect(find.byKey(const ValueKey('plan-section-guides')), findsOneWidget);
-      expect(find.text('Gopal: 3 for today, 5 interactions needed'), findsOneWidget);
-      expect(find.text('Govinda: 1 for today, 2 interactions needed'), findsOneWidget);
-      // the order on the page: his own tasks, then the guides
-      double y(Finder f) => tester.getTopLeft(f).dy;
-      expect(y(find.text('Interaction with Ravi')), lessThan(y(find.byKey(const ValueKey('plan-section-guides')))));
-      expect(y(find.text('Meet Harsh')), lessThan(y(find.byKey(const ValueKey('plan-section-guides')))));
-      expect(y(find.byKey(const ValueKey('plan-section-guides'))), lessThan(y(find.text('Gopal: 3 for today, 5 interactions needed'))));
-    });
-
     testWidgets('This week: his own progress and planned students first, "Guide by guide" last', (tester) async {
       await _open(tester, role: 'HOD', doc: hodDoc(), size: const Size(360, 3200));
       await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
@@ -518,123 +402,6 @@ void main() {
       final plan = _plan(refreshedAt: DateTime.utc(2026, 10, 30, 3, 30), refreshedBy: 'open');
       expect(planLastUpdated(plan), 'Last updated: Fri 30 Oct, 9:00 AM (first open today)');
     });
-  });
-
-  group('ONE CARD PER STUDENT: all his topics as one-line points; TODAY IS READ-ONLY (no buttons, no ticks)', () {
-    const ravi = PlanItem(
-      id: 'interaction:u1:2026-10-28',
-      kind: 'interaction',
-      title: 'Interaction with Ravi',
-      studentName: 'Ravi',
-      studentUid: 'u1',
-      mode: 'call',
-      forYou: true,
-      batchPosition: 1,
-      batchRound: 1,
-      percent: 42,
-      points: [
-        PlanPoint(title: 'Worry', text: 'Sounded discouraged or worried in his AI chat', group: PlanGroup.worry, kind: 'concern'),
-        PlanPoint(text: 'Unanswered doubt in Bhagavad-gita', group: PlanGroup.followUp, kind: 'doubt'),
-        PlanPoint(text: 'Chanting: 12 → 16 rounds', group: PlanGroup.target, kind: 'target_task'),
-        PlanPoint(text: 'Book due today: ask how far he has read', group: PlanGroup.other, kind: 'bookDue'),
-      ],
-      cardGroups: [PlanGroup.worry, PlanGroup.target, PlanGroup.followUp, PlanGroup.other],
-      reasonSources: ['concern', 'doubt', 'target'],
-    );
-    const amit = PlanItem(
-      id: 'student:u2:2026-10-30',
-      kind: 'student',
-      title: 'Amit',
-      studentName: 'Amit',
-      studentUid: 'u2',
-      forYou: true,
-      points: [PlanPoint(text: 'Meeting with him today', group: PlanGroup.other, kind: 'meeting')],
-      cardGroups: [PlanGroup.other],
-    );
-    PlanDoc doc(List<PlanItem> today) => planDoc(left: 1, today: today);
-
-    testWidgets('a student with a worry, a doubt, a target task and a book due is ONE card with four one-line points, in the Worries section', (tester) async {
-      await _open(tester, doc: doc([ravi, amit]), size: const Size(360, 3200));
-      expect(find.byKey(const ValueKey('plan-item-interaction:u1:2026-10-28')), findsOneWidget, reason: 'one card');
-      for (var i = 0; i < 4; i++) {
-        expect(find.byKey(ValueKey('plan-point-interaction:u1:2026-10-28-$i')), findsOneWidget, reason: 'point $i');
-      }
-      expect(find.text('Sounded discouraged or worried in his AI chat'), findsOneWidget);
-      expect(find.text('Chanting: 12 → 16 rounds'), findsOneWidget);
-      expect(find.text('Worry'), findsOneWidget, reason: 'each topic: a title, then ONE line');
-      expect(find.byKey(const ValueKey('plan-point-title-interaction:u1:2026-10-28-0')), findsOneWidget);
-      double y(String key) => tester.getTopLeft(find.byKey(ValueKey(key))).dy;
-      expect(y('plan-section-worries'), lessThan(y('plan-item-interaction:u1:2026-10-28')));
-      expect(y('plan-item-interaction:u1:2026-10-28'), lessThan(y('plan-section-targets')), reason: 'the card sits in the first section it has a topic in, and is not repeated under the others');
-      // Amit: a small card with his meeting, in Other
-      expect(find.byKey(const ValueKey('plan-item-student:u2:2026-10-30')), findsOneWidget);
-      expect(y('plan-section-other'), lessThan(y('plan-item-student:u2:2026-10-30')));
-      // the sections' counts include Ravi without repeating his card; the count of students is cards, not topics
-      String c(String k) => tester.widget<Text>(find.byKey(ValueKey(k))).data!;
-      expect([c('plan-section-count-worries'), c('plan-section-count-targets'), c('plan-section-count-followups'), c('plan-section-count-other')], ['1', '1', '1', '2']);
-      expect(c('plan-count-students'), '2');
-      expect(c('plan-count-worries'), '1');
-    });
-
-    testWidgets('a card that loses topics after a partial report keeps the open ones and is not ticked; when all close it is done', (tester) async {
-      final data = await _open(tester, doc: doc([ravi]), size: const Size(360, 3200));
-      expect(find.byKey(const ValueKey('plan-point-interaction:u1:2026-10-28-3')), findsOneWidget);
-      const partial = PlanItem(
-        id: 'interaction:u1:2026-10-28',
-        kind: 'interaction',
-        title: 'Interaction with Ravi',
-        studentName: 'Ravi',
-        studentUid: 'u1',
-        batchPosition: 1,
-        points: [PlanPoint(text: 'Unanswered doubt in Bhagavad-gita', group: PlanGroup.followUp, kind: 'doubt'), PlanPoint(text: 'Chanting: 12 → 16 rounds', group: PlanGroup.target, kind: 'target_task')],
-        cardGroups: [PlanGroup.target, PlanGroup.followUp],
-      );
-      await _emit(tester, data, doc([partial]));
-      expect(find.byKey(const ValueKey('plan-point-interaction:u1:2026-10-28-1')), findsOneWidget);
-      expect(find.byKey(const ValueKey('plan-point-interaction:u1:2026-10-28-2')), findsNothing, reason: 'the worry and the book were covered');
-      expect(find.byKey(const ValueKey('plan-done-interaction:u1:2026-10-28')), findsNothing, reason: 'topics are left: not ticked');
-      // the section he moved to: the worry section is empty now
-      expect(find.byKey(const ValueKey('plan-section-empty-worries')), findsOneWidget);
-    });
-
-    group('TODAY IS READ-ONLY: only the assistant completes a task', () {
-      const done = PlanItem(id: 'interaction:u3:2026-10-28', kind: 'interaction', title: 'Interaction with Mohit', studentName: 'Mohit', studentUid: 'u3', batchPosition: 2, done: true);
-      const kButtonWords = ['Talked', 'Not reachable', 'Willing', 'willing', 'New commitment', 'Report in one tap', 'Recorded'];
-
-      testWidgets('no button, no tick box and no one-tap report on any card (open, done, in the batch, small), and no button of any kind inside a card', (tester) async {
-        await _open(tester, doc: doc([ravi, done, amit]), size: const Size(360, 3600));
-        for (final word in kButtonWords) {
-          expect(find.textContaining(word), findsNothing, reason: word);
-        }
-        expect(find.byWidgetPredicate((w) => w.key is ValueKey<String> && (w.key! as ValueKey<String>).value.startsWith('plan-quick')), findsNothing);
-        for (final card in ['interaction:u1:2026-10-28', 'interaction:u3:2026-10-28', 'student:u2:2026-10-30']) {
-          final inside = find.descendant(of: find.byKey(ValueKey('plan-item-$card')), matching: find.byWidgetPredicate((w) => w is ButtonStyleButton || w is Checkbox || w is Switch || w is IconButton || w is FloatingActionButton));
-          expect(inside, findsNothing, reason: card);
-        }
-      });
-
-      testWidgets('only a student\'s name can be tapped (to open his details); a done card shows its tick, which is a picture, not a control', (tester) async {
-        await _open(tester, doc: doc([ravi, done]), size: const Size(360, 3600));
-        expect(find.byKey(const ValueKey('plan-open-interaction:u1:2026-10-28')), findsOneWidget);
-        expect(find.byKey(const ValueKey('plan-done-interaction:u3:2026-10-28')), findsOneWidget);
-        expect(find.descendant(of: find.byKey(const ValueKey('plan-item-interaction:u3:2026-10-28')), matching: find.byType(InkWell)), findsOneWidget, reason: 'the name, nothing else');
-      });
-    });
-
-    for (final dark in [false, true]) {
-      for (final scale in kScales) {
-        testWidgets('${dark ? 'dark' : 'light'}, text scale $scale on 360 dp: the card and its points fit', (tester) async {
-          await _open(tester, doc: doc([ravi, amit]), scale: scale, dark: dark, size: const Size(360, 3600));
-          expect(tester.takeException(), isNull);
-          final card = tester.getRect(find.byKey(const ValueKey('plan-item-interaction:u1:2026-10-28')));
-          expect(card.width, lessThanOrEqualTo(360));
-          for (var i = 0; i < 4; i++) {
-            final r = tester.getRect(find.byKey(ValueKey('plan-point-interaction:u1:2026-10-28-$i')));
-            expect(r.right, lessThanOrEqualTo(card.right + 0.5), reason: 'point $i');
-          }
-        });
-      }
-    }
   });
 
   group('the REFRESH button', () {

@@ -290,7 +290,7 @@ void main() {
         final page = tester.widget<PlanPage>(find.byType(PlanPage));
         expect(page.section, e.value);
         expect(page.initialWeek, isFalse);
-        expect(find.byKey(ValueKey('plan-section-${e.key}')), findsOneWidget);
+        expect(find.byKey(ValueKey('plan-section-${e.key == 'other' ? 'others' : e.key}')), findsOneWidget);
       });
     }
 

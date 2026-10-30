@@ -45,7 +45,10 @@ class PlanTopic {
 
 /// One topic on a student's ONE card, as a one-line point ("He has asked to meet: answer him"). [group] is the section it belongs to.
 class PlanPoint {
-  const PlanPoint({required this.text, required this.group, this.kind = '', this.id = '', this.title = ''});
+  const PlanPoint({required this.text, required this.group, this.kind = '', this.id = '', this.title = '', this.done = false});
+
+  /// This topic is done (the guide reported it to the assistant, or the data finished it): it stays on the card with a line through it.
+  final bool done;
 
   /// "Worry", "Chanting target", "Surrender 40%": the short title; [text] is its ONE line.
   final String title;
@@ -58,8 +61,17 @@ class PlanPoint {
     if (raw is! Map) return null;
     final text = (raw['text'] ?? '').toString();
     if (text.isEmpty) return null;
-    return PlanPoint(text: text, group: PlanGroup.parse(raw['group']) ?? PlanGroup.followUp, kind: (raw['kind'] ?? '').toString(), id: (raw['id'] ?? '').toString(), title: (raw['title'] ?? '').toString());
+    return PlanPoint(text: text, group: PlanGroup.parse(raw['group']) ?? PlanGroup.followUp, done: raw['done'] == true, kind: (raw['kind'] ?? '').toString(), id: (raw['id'] ?? '').toString(), title: (raw['title'] ?? '').toString());
   }
+}
+
+/// One student's step in a target ("Testing 12 → 16").
+class PlanStep {
+  const PlanStep({required this.name, required this.from, required this.to, this.done = false});
+  final String name;
+  final int from;
+  final int to;
+  final bool done;
 }
 
 class PlanItem {
@@ -91,6 +103,7 @@ class PlanItem {
     this.mode = '',
     this.points = const [],
     this.cardGroups = const [],
+    this.steps = const [],
     this.also = '',
   });
 
@@ -105,6 +118,9 @@ class PlanItem {
   /// and the sections ([cardGroups], the most important first) those points belong to.
   final List<PlanPoint> points;
   final List<PlanGroup> cardGroups;
+
+  /// This week's target line: each student's step ("Testing 12 → 16", "Amit 8 → 12"), the done ones ticked.
+  final List<PlanStep> steps;
 
   final String id;
   final String kind;
@@ -223,6 +239,11 @@ class PlanItem {
               if (PlanPoint.fromMap(p) case final x?) x,
         ],
         also: (m['also'] ?? '').toString(),
+        steps: [
+          if (m['steps'] is List)
+            for (final e in (m['steps'] as List))
+              if (e is Map) PlanStep(name: (e['name'] ?? '').toString(), from: e['from'] is num ? (e['from'] as num).round() : 0, to: e['to'] is num ? (e['to'] as num).round() : 0, done: e['done'] == true),
+        ],
         cardGroups: [
           if (m['groups'] is List)
             for (final g in (m['groups'] as List))

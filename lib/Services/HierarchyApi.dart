@@ -66,6 +66,9 @@ class HierarchyApi {
     }
   }
 
+  /// A server function by name (the assistant's Undo of a change the server made).
+  Future<Map<String, dynamic>> call(String name, [Map<String, dynamic> data = const {}]) => _call(name, data);
+
   /// The signed-in admin's profile, or null when the account is not a
   /// registered admin (or nobody is signed in).
   Future<AdminProfile?> getAdminProfile() async {
@@ -196,7 +199,11 @@ class HierarchyApi {
       _call('saveNotificationPrefs', {'groups': groups, 'types': types});
 
   /// The guide's number of students in a day's batch (1 to 12); the server works the plan out again at once.
-  Future<void> savePlanSettings({required int dailyBatch}) => _call('savePlanSettings', {'dailyBatch': dailyBatch});
+  /// Returns the number it was before (the server says), so a change can be undone.
+  Future<int> savePlanSettings({required int dailyBatch}) async {
+    final r = await _call('savePlanSettings', {'dailyBatch': dailyBatch});
+    return r['previous'] is num ? (r['previous'] as num).round() : 4;
+  }
 
   /// The Refresh button at the top of the Plan page: the AI writes the questions again and the plan is worked out afresh. A guide refreshes only
   /// his own plan; a HOD may refresh every guide's ([all]). Once per 2 minutes: then `ok` is false and `retryInSec` says how long is left.

@@ -119,4 +119,71 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     }
   });
+
+  // ---------------------------------------------------------------- THE BUTTON NEVER DISAPPEARS (root causes)
+
+  testWidgets('A SHELL REPLACED BY ANOTHER IN THE SAME FRAME keeps the button: the old one going after the new one coming used to clear the flag for good', (tester) async {
+    await _pump(tester, const Scaffold(body: SizedBox.expand()));
+    final a = Object();
+    final b = Object();
+    AgentShell.attach(a);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(_visible(tester), isTrue);
+    // the new shell comes and the old one goes in the same frame, in the worst order
+    AgentShell.attach(b);
+    AgentShell.detach(a);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(AgentShell.ready.value, isTrue, reason: 'one shell is still there');
+    expect(_visible(tester), isTrue);
+    // and the other order
+    AgentShell.detach(b);
+    AgentShell.attach(a);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(_visible(tester), isTrue);
+    // only when the last one goes does it go
+    AgentShell.detach(a);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(AgentShell.ready.value, isFalse);
+    expect(_visible(tester), isFalse);
+    AgentShell.reset();
+  });
+
+  testWidgets('THE BUTTON IS THERE FROM THE FIRST FRAME (it does not wait for the saved spot to be read) and a garbage saved spot never loses it', (tester) async {
+    for (final saved in <Map<String, Object>>[
+      {},
+      {'agent_button_dx_fraction': double.nan, 'agent_button_dy_fraction': 5.0},
+      {'agent_button_dx_fraction': -3.0, 'agent_button_dy_fraction': 12.0},
+      {'agent_button_dx_fraction': 0.5, 'agent_button_dy_fraction': 0.5},
+    ]) {
+      SharedPreferences.setMockInitialValues(saved);
+      AgentShell.ready.value = true;
+      await prepareApp(tester);
+      phone(tester, 1.0, size: const Size(360, 800));
+      await tester.pumpWidget(MaterialApp(theme: GuideTheme.light, builder: (context, child) => AgentOverlay(child: child!), home: const Scaffold(body: SizedBox.expand())));
+      await tester.pump(); // ONE frame: no waiting for the saved spot
+      expect(find.byKey(const ValueKey('agent-fab')), findsOneWidget, reason: '$saved');
+      await tester.pump(const Duration(milliseconds: 600));
+      final r = tester.getRect(find.byKey(const ValueKey('agent-fab')));
+      expect(r.left, greaterThanOrEqualTo(0), reason: '$saved');
+      expect(r.right, lessThanOrEqualTo(360), reason: '$saved');
+      expect(r.top, greaterThanOrEqualTo(0), reason: '$saved');
+      expect(r.bottom, lessThanOrEqualTo(800), reason: '$saved');
+      expect(_visible(tester), isTrue);
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
+  testWidgets('THE KEYBOARD NEVER HIDES THE BUTTON: with the keyboard open it sits above it', (tester) async {
+    AgentShell.ready.value = true;
+    await prepareApp(tester);
+    phone(tester, 1.0, size: const Size(360, 800));
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    addTearDown(() => tester.view.resetViewInsets());
+    await tester.pumpWidget(MaterialApp(theme: GuideTheme.light, builder: (context, child) => AgentOverlay(child: child!), home: const Scaffold(body: SizedBox.expand())));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    final r = tester.getRect(find.byKey(const ValueKey('agent-fab')));
+    expect(r.bottom, lessThanOrEqualTo(800 - 300), reason: 'above the keyboard');
+    expect(_visible(tester), isTrue);
+  });
 }

@@ -324,6 +324,10 @@ void main() {
 
     testWidgets('Today shows ONE card for Harsh: his name and %, each topic a title and ONE line, one "Also:" line; no questions, no talking points', (tester) async {
       await _openPlan(tester, doc: doc());
+      for (final id in ['followups', 'targets', 'others']) {
+        await tester.tap(find.byKey(ValueKey('plan-section-$id'))); // the sections open by a tap
+        await tester.pump();
+      }
       expect(find.text('Interaction with Harsh · 42%'), findsOneWidget);
       expect(find.byKey(const ValueKey('plan-item-interaction:u1:2026-10-28')), findsOneWidget);
       for (final t in ['Worry', 'Chanting target', 'Surrender 42%']) {
@@ -339,10 +343,13 @@ void main() {
 
     testWidgets('once the guide has reported back, the item is ticked (a tick and "Done"), read-only as always', (tester) async {
       await _openPlan(tester, doc: _plan(done: true));
-      expect(find.byKey(const ValueKey('plan-done-interaction:u1:2026-10-28')), findsOneWidget);
-      expect(find.text('Done'), findsOneWidget);
+      for (final id in ['followups', 'targets', 'others']) {
+        await tester.tap(find.byKey(ValueKey('plan-section-$id')));
+        await tester.pump();
+      }
+      expect(tester.widget<Icon>(find.byKey(const ValueKey('plan-check-interaction:u1:2026-10-28'))).icon, Icons.check_circle, reason: 'the task is ticked');
       expect(find.text('For you to do'), findsNothing, reason: 'it has been done');
-      await tester.tap(find.byKey(const ValueKey('plan-done-interaction:u1:2026-10-28')));
+      await tester.tap(find.byKey(const ValueKey('plan-check-interaction:u1:2026-10-28')), warnIfMissed: false);
       await tester.pump();
       expect(tester.takeException(), isNull, reason: 'the page is read-only: nothing to untick');
     });

@@ -8,6 +8,7 @@ import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/PlanData.dart';
+import '../utils/PlanToday.dart';
 import '../utils/Pronouns.dart';
 import '../utils/SeenMarkers.dart';
 import 'StudentProfilePage.dart';
@@ -80,13 +81,8 @@ String planStatusText(PlanDoc plan, {bool refreshing = false}) => refreshing || 
 /// The names of Today's three groups, as the page's sections.
 const Map<PlanGroup, String> kPlanGroupTitles = {PlanGroup.worry: 'Worries', PlanGroup.target: 'Target tasks', PlanGroup.followUp: 'Follow-ups', PlanGroup.other: 'Other tasks'};
 
-String _sectionKey(PlanGroup g) => switch (g) { PlanGroup.worry => 'worries', PlanGroup.followUp => 'followups', PlanGroup.target => 'targets', PlanGroup.other => 'other' };
 
 class _PlanPageState extends State<PlanPage> {
-
-  /// The students-a-day number the guide just chose (shown at once, until the server's new plan arrives).
-  int? _sizeChosen;
-  bool _savingSize = false;
 
   /// 0 Today, 1 This week, 2 Missing reports.
   late int _tab = widget.initialWeek ? 1 : 0;
@@ -117,7 +113,10 @@ class _PlanPageState extends State<PlanPage> {
   /// One GlobalKey per student card in Today (a tap on his name in This week scrolls to it).
   final Map<String, GlobalKey> _cardKeys = {};
 
-  final Map<PlanGroup, GlobalKey> _sectionKeys = {for (final g in PlanGroup.values) g: GlobalKey()};
+  final Map<String, GlobalKey> _sectionKeys = {for (final id in [kSectionFollowUps, kSectionTargets, kSectionOthers]) id: GlobalKey()};
+
+  /// The sections the guide opened (a tap on a header): they start closed.
+  final Set<String> _expanded = {};
   bool _scrolled = false;
 
   String get _me => AdminProfileProvider.current?.id ?? '';
@@ -139,7 +138,6 @@ class _PlanPageState extends State<PlanPage> {
         final updated = _loaded && fresh != null && _lastGenerated != null && fresh.isAfter(_lastGenerated!);
         setState(() {
           _plan = p;
-          _sizeChosen = null; // the server's own number is the truth again
           _loaded = true;
           _failed = false;
           if (fresh != null) _lastGenerated = fresh;
@@ -154,6 +152,7 @@ class _PlanPageState extends State<PlanPage> {
         }
         if (!_scrolled && widget.section != null && !_week && p != null) {
           _scrolled = true;
+          _expanded.add(_sectionIdOf(widget.section!));
           WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToSection());
         }
       },
@@ -163,9 +162,16 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
+  /// A Home count opens the section its tasks are in (a worry is a follow-up).
+  static String _sectionIdOf(PlanGroup g) => switch (g) {
+        PlanGroup.worry || PlanGroup.followUp => kSectionFollowUps,
+        PlanGroup.target => kSectionTargets,
+        PlanGroup.other => kSectionOthers,
+      };
+
   void _scrollToSection({bool retry = true}) {
     if (!mounted) return;
-    final ctx = _sectionKeys[widget.section]?.currentContext;
+    final ctx = _sectionKeys[_sectionIdOf(widget.section!)]?.currentContext;
     if (ctx == null) {
       if (retry) WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToSection(retry: false));
       return;
@@ -385,165 +391,118 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
-  /// TODAY: the day's batch, a row of counts, then four sections: Worries, Target tasks, Follow-ups and Other tasks. ONE CARD PER STUDENT: every topic
-  /// about him is a one-line point on his one card, which sits in the most important section it has a point in; a section's count includes every
-  /// card that has a topic in it. EVERYTHING IS ALWAYS THERE: a count with nothing behind it reads "0" and a section with nothing in it reads
-  /// "None yet" (it is never left out).
+  /// TODAY: ONE summary line ("Total tasks today: N · Done D · Left L"), then three sections (Follow-ups, Target tasks, Other tasks), each with a circular
+  /// checkbox and its count (done / total); a tap on the header opens it. Every task has a circular checkbox and, inside it, its topics; a topic that
+  /// is done has a line through it and a tick. Nothing is ticked by a tap: the ticks come by themselves (a report to the assistant, or the data). The
+  /// done ones STAY in Today. ONE CARD PER STUDENT: all his topics on his one card, in the most important section.
   List<Widget> _todayBody(BuildContext context, PlanDoc plan) {
     final t = context.gText;
-    // a HOD's own tasks first; the summary line of every guide goes BELOW them
-    final items = plan.todayItems.where((i) => !i.isGuideSummary).toList();
-    final summaries = plan.todayItems.where((i) => i.isGuideSummary).toList();
+    final g = context.g;
+    final view = TodayView.of(plan);
     final date = DateTime.tryParse(plan.todayDate);
-    final students = items.where((i) => i.isInteraction).length;
-    final batch = plan.batch ?? const PlanBatch(size: 4, round: 1, members: 0, carried: 0, nextReady: false, done: 0, left: 0);
+    var n = 0;
     final out = <Widget>[
       GuideSectionTitle(date == null ? 'Today' : 'Today — ${DateFormat('EEEE d MMMM').format(date)}'),
       const SizedBox(height: 4),
-      _batchCard(context, batch),
-      _todayCounts(context, items, plan.progress),
+      Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: GuideCard(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          child: Text(view.summaryText, key: const ValueKey('plan-summary'), style: t.bodyStrong),
+        ),
+      ),
     ];
-    var n = 0;
-    Widget card(PlanItem it) => GuideEntry(index: n++, child: _itemCard(context, it, total: it.isInteraction ? (plan.batch?.members ?? students) : 0));
-    // the summary of every guide, below the HOD's own plan
-    final guides = <Widget>[
-      if (summaries.isNotEmpty) ...[
-        Padding(padding: const EdgeInsets.only(top: 18), child: GuideSectionTitle('Guide by guide', key: const ValueKey('plan-section-guides'))),
-        for (final it in summaries) card(it),
-      ],
-    ];
-    if (items.isEmpty) {
+    if (view.total == 0 && view.information.isEmpty) {
       out.add(Padding(padding: const EdgeInsets.only(top: 8), child: Text('Nothing is planned for today. A quiet day — enjoy it.', key: const ValueKey('plan-today-empty'), style: t.small)));
     }
-    for (final g in PlanGroup.values) {
-      final mine = items.where((i) => i.group == g).toList();
-      // every card with a topic in this section, even when his card sits in a more important one (counted, not repeated)
-      final count = items.where((i) => !i.done && i.inGroups.contains(g)).length;
+    for (final sec in view.sections) {
+      final open = _expanded.contains(sec.id);
       out.add(Padding(
-        key: _sectionKeys[g],
-        padding: const EdgeInsets.only(top: 14),
-        child: GuideSectionTitle(
-          kPlanGroupTitles[g]!,
-          key: ValueKey('plan-section-${_sectionKey(g)}'),
-          trailing: Text('$count', key: ValueKey('plan-section-count-${_sectionKey(g)}'), style: t.bodyStrong),
-        ),
-      ));
-      if (mine.isEmpty) out.add(Padding(padding: const EdgeInsets.only(top: 6), child: Text('None yet', key: ValueKey('plan-section-empty-${_sectionKey(g)}'), style: t.small)));
-      for (final it in mine) {
-        out.add(card(it));
-      }
-    }
-    return [...out, ...guides];
-  }
-
-  /// The day at a glance, every number always shown (0 when there is none): students with a card, interactions done / left, pending this week,
-  /// each section's count, meetings, doubts. A student is ONE card however many topics he has.
-  Widget _todayCounts(BuildContext context, List<PlanItem> items, PlanProgress? progress) {
-    final t = context.gText;
-    final g = context.g;
-    final open = items.where((i) => !i.done).toList();
-    final doubts = open.where((i) => i.kind == 'doubtsToAnswer').fold<int>(0, (n, i) => n + (int.tryParse(RegExp(r'^\d+').stringMatch(i.title) ?? '') ?? 1)) +
-        open.where((i) => i.points.any((p) => p.kind == 'doubt')).length;
-    int inGroup(PlanGroup grp) => open.where((i) => i.inGroups.contains(grp)).length;
-    final counts = <(String, String, int)>[
-      ('students', 'Students today', open.where((i) => i.isCard).length),
-      ('interactions-done', 'Interactions done', items.where((i) => i.isInteraction && i.done).length),
-      ('interactions-left', 'Interactions left', open.where((i) => i.isInteraction).length),
-      ('pending', 'Pending this week', progress?.left ?? 0),
-      ('worries', 'Worries', inGroup(PlanGroup.worry)),
-      ('target-tasks', 'Target tasks', inGroup(PlanGroup.target)),
-      ('follow-ups', 'Follow-ups', inGroup(PlanGroup.followUp)),
-      ('other-tasks', 'Other tasks', inGroup(PlanGroup.other)),
-      ('meetings', 'Meetings', open.where((i) => i.kind == 'meeting' || i.kind == 'meeting_request' || i.points.any((p) => p.kind == 'meeting' || p.kind == 'meeting_request')).length),
-      ('doubts', 'Doubts to answer', doubts),
-    ];
-    return Padding(
-      key: const ValueKey('plan-today-counts'),
-      padding: const EdgeInsets.only(top: 8),
-      child: GuideCard(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Wrap(
-          spacing: 18,
-          runSpacing: 10,
-          children: [
-            for (final c in counts)
-              ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 84, maxWidth: 140),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('${c.$3}', key: ValueKey('plan-count-${c.$1}'), style: t.cardTitleSmall.copyWith(fontSize: 20, color: g.agent)),
-                    Text(c.$2, style: t.caption),
-                  ],
+        key: _sectionKeys[sec.id],
+        padding: const EdgeInsets.only(top: 12),
+        child: GuideCard(
+          padding: EdgeInsets.zero,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              InkWell(
+                key: ValueKey('plan-section-${sec.id}'),
+                borderRadius: BorderRadius.circular(GuideShape.cardRadius),
+                onTap: () => setState(() => open ? _expanded.remove(sec.id) : _expanded.add(sec.id)),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    child: Row(
+                      children: [
+                        _circleCheck(context, sec.allDone, key: ValueKey('plan-section-check-${sec.id}')),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text(sec.title, style: t.cardTitleSmall)),
+                        Text('${sec.done}/${sec.total}', key: ValueKey('plan-section-count-${sec.id}'), style: t.bodyStrong.copyWith(color: g.agent)),
+                        const SizedBox(width: 6),
+                        Icon(open ? Icons.expand_less : Icons.expand_more, color: g.mutedText),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-          ],
+              if (open)
+                Padding(
+                  key: ValueKey('plan-section-body-${sec.id}'),
+                  padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (sec.tasks.isEmpty && !(sec.id == kSectionOthers && view.information.isNotEmpty))
+                        Padding(padding: const EdgeInsets.fromLTRB(4, 0, 4, 4), child: Text('None yet', key: ValueKey('plan-section-empty-${sec.id}'), style: t.small)),
+                      for (final it in sec.tasks) GuideEntry(index: n++, child: _taskCard(context, it)),
+                      if (sec.id == kSectionOthers)
+                        for (final it in view.information)
+                          Padding(
+                            key: ValueKey('plan-info-${it.id}'),
+                            padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+                            child: Text(it.title, style: t.small.copyWith(color: g.mutedText)),
+                          ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
-      ),
-    );
+      ));
+    }
+    // a HOD's summary of every guide, below his own plan
+    if (view.summaries.isNotEmpty) {
+      out.add(Padding(padding: const EdgeInsets.only(top: 18), child: GuideSectionTitle('Guide by guide', key: const ValueKey('plan-section-guides'))));
+      for (final it in view.summaries) {
+        out.add(GuideEntry(index: n++, child: _summaryLine(context, it)));
+      }
+    }
+    return out;
   }
 
-  /// The day's batch: how many students, how many done and left, "Next 4 ready", and the guide's own number a day.
-  Widget _batchCard(BuildContext context, PlanBatch b) {
-    final g = context.g;
+  /// A HOD's one line for a guide (what is due, who needs attention).
+  Widget _summaryLine(BuildContext context, PlanItem it) {
     final t = context.gText;
-    final size = _sizeChosen ?? b.size;
     return Padding(
-      key: const ValueKey('plan-batch'),
+      key: ValueKey('plan-item-${it.id}'),
       padding: const EdgeInsets.only(top: 8),
       child: GuideCard(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(child: Text("Today's students", style: t.cardTitleSmall)),
-                Text('done ${b.done} · left ${b.left}', key: const ValueKey('plan-batch-counts'), style: t.bodyStrong.copyWith(color: g.agent)),
-              ],
-            ),
-            if (b.nextReady) ...[
-              const SizedBox(height: 6),
-              Align(alignment: Alignment.centerLeft, child: _tag(context, 'Next ${b.size} ready', key: const ValueKey('plan-next-ready'))),
-            ],
-            if (b.carried > 0) ...[
-              const SizedBox(height: 4),
-              Text('${b.carried} carried over from an earlier day, on top.', key: const ValueKey('plan-carried-note'), style: t.caption),
-            ],
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Expanded(child: Text('Students a day', style: t.small)),
-                _stepButton(context, key: const ValueKey('plan-size-less'), tooltip: 'Fewer students a day', icon: Icons.remove, onPressed: size > 1 && !_savingSize ? () => _setSize(size - 1) : null),
-                SizedBox(width: 36, child: Text('$size', key: const ValueKey('plan-size'), textAlign: TextAlign.center, style: t.cardTitleSmall.copyWith(color: g.text))),
-                _stepButton(context, key: const ValueKey('plan-size-more'), tooltip: 'More students a day', icon: Icons.add, onPressed: size < 12 && !_savingSize ? () => _setSize(size + 1) : null),
-              ],
-            ),
-          ],
-        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(it.title, key: ValueKey('plan-title-${it.id}'), style: t.cardTitleSmall),
+          if (it.detail.isNotEmpty) ...[const SizedBox(height: 4), Text(it.detail, style: t.small.copyWith(height: 1.35))],
+        ]),
       ),
     );
   }
 
-  /// One side of the "Students a day" stepper. Its colours are the theme's own and always legible, light or dark (text on the chip fill, at least
-  /// 4.5:1): ENABLED is a filled chip with a strong ring and the page's text colour; DISABLED is an empty ring with the muted text colour.
-  Widget _stepButton(BuildContext context, {required Key key, required String tooltip, required IconData icon, required VoidCallback? onPressed}) {
+  /// The circular checkbox: filled and ticked when done. It is a picture, never a control (nothing is ticked by tapping it).
+  Widget _circleCheck(BuildContext context, bool done, {Key? key, double size = 24}) {
     final g = context.g;
-    bool off(Set<WidgetState> s) => s.contains(WidgetState.disabled);
-    return IconButton(
-      key: key,
-      tooltip: tooltip,
-      icon: Icon(icon, size: 22),
-      onPressed: onPressed,
-      style: ButtonStyle(
-        minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
-        fixedSize: const WidgetStatePropertyAll(Size(48, 48)),
-        padding: const WidgetStatePropertyAll(EdgeInsets.zero),
-        shape: WidgetStateProperty.resolveWith((s) => CircleBorder(side: BorderSide(color: off(s) ? g.border : g.text, width: off(s) ? 1 : 1.5))),
-        backgroundColor: WidgetStateProperty.resolveWith((s) => off(s) ? Colors.transparent : g.chipBackground),
-        foregroundColor: WidgetStateProperty.resolveWith((s) => off(s) ? g.mutedText : g.text),
-      ),
+    return Semantics(
+      label: done ? 'Done' : 'Not done yet',
+      child: Icon(done ? Icons.check_circle : Icons.radio_button_unchecked, key: key, size: size, color: done ? g.success : g.mutedText),
     );
   }
 
@@ -626,22 +585,6 @@ class _PlanPageState extends State<PlanPage> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is HierarchyException ? e.message : 'Could not ignore him. Please try again.')));
     }
     if (mounted) setState(() => _ignoring.remove(m.studentUid));
-  }
-
-  Future<void> _setSize(int n) async {
-    setState(() {
-      _sizeChosen = n;
-      _savingSize = true;
-    });
-    try {
-      await HierarchyApi.instance.savePlanSettings(dailyBatch: n);
-    } catch (e) {
-      if (mounted) {
-        setState(() => _sizeChosen = null);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is HierarchyException ? e.message : 'Could not save that. Please try again.')));
-      }
-    }
-    if (mounted) setState(() => _savingSize = false);
   }
 
   /// THIS WEEK: a clean overview and nothing else. The totals, then INTERACTIONS day by day (names only, the Surrender % small, the done ones
@@ -735,7 +678,37 @@ class _PlanPageState extends State<PlanPage> {
             children: [
               Icon(it.done ? Icons.check_circle : Icons.radio_button_unchecked, size: 18, color: it.done ? g.success : g.mutedText),
               const SizedBox(width: 10),
-              Expanded(child: Text(it.title, style: t.body.copyWith(height: 1.35))),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(it.title, style: t.body.copyWith(height: 1.35, fontWeight: it.steps.isEmpty ? null : FontWeight.w600)),
+                    // each student's step, the done ones ticked: "Testing 12 → 16", "Amit 8 → 12 ✓"
+                    if (it.steps.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: [
+                            for (var i = 0; i < it.steps.length; i++)
+                              Row(
+                                key: ValueKey('plan-week-step-${it.id}-$i'),
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (it.steps[i].done) ...[Icon(Icons.check_rounded, size: 16, color: g.success), const SizedBox(width: 2)],
+                                  Text(
+                                    '${it.steps[i].name} ${it.steps[i].from} → ${it.steps[i].to}',
+                                    style: t.small.copyWith(decoration: it.steps[i].done ? TextDecoration.lineThrough : null, color: it.steps[i].done ? g.mutedText : g.text),
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -757,7 +730,7 @@ class _PlanPageState extends State<PlanPage> {
       for (final s in plan.sections)
         if (s.id == 'guides') ...[
           header(s.title, 'plan-week-section-guides'),
-          for (final it in s.items) _itemCard(context, it),
+          for (final it in s.items) _summaryLine(context, it),
         ],
     ];
   }
@@ -769,7 +742,10 @@ class _PlanPageState extends State<PlanPage> {
       if (c.isCard && c.studentUid == it.studentUid) card = c;
     }
     if (card != null) {
-      setState(() => _tab = 0);
+      setState(() {
+        _tab = 0;
+        _expanded.add(todaySectionOf(card!));
+      });
       void go({bool retry = true}) {
         final ctx = _cardKeys[it.studentUid]?.currentContext;
         if (ctx == null) {
@@ -809,84 +785,99 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
-  /// ONE CARD PER STUDENT, short and factual: his name and Surrender %, then each topic as a TITLE and ONE line with the direction (written by plain
-  /// code on the server: no questions, no talking points), and at most one "Also: ..." line. A non-student item (a target task, a phase end ...) is
-  /// its title and one line.
-  Widget _itemCard(BuildContext context, PlanItem it, {int total = 0}) {
+  /// A TASK in Today: a circular checkbox and its title; for a student his Surrender % beside his name (a tap opens his details) and, inside, his TOPICS
+  /// (a short title and ONE line each). A topic that is done has a line through its title and a tick with "done"; the task is ticked when all its
+  /// topics are. A task that is not about one student (a target task, a phase end ...) is its title and one line.
+  Widget _taskCard(BuildContext context, PlanItem it) {
     final g = context.g;
     final t = context.gText;
     final when = it.scheduledFor.isEmpty ? null : DateTime.tryParse(it.scheduledFor);
-    final inBatch = it.batchPosition != null;
+    TextStyle struck(TextStyle base) => it.done ? base.copyWith(decoration: TextDecoration.lineThrough, color: g.mutedText) : base;
+    final title = it.isInteraction && it.percent != null ? '${it.title} · ${it.percent}%' : it.title;
     return Padding(
       key: ValueKey('plan-item-${it.id}'),
       padding: const EdgeInsets.only(top: 8),
-      child: GuideCard(
+      child: Container(
         key: it.isCard && it.studentUid.isNotEmpty ? _cardKeys.putIfAbsent(it.studentUid, GlobalKey.new) : null,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(color: g.chipBackground.withValues(alpha: .45), borderRadius: BorderRadius.circular(12), border: Border.all(color: g.border)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (it.done) ...[
-                  Icon(Icons.check_circle, key: ValueKey('plan-done-${it.id}'), size: 18, color: g.success),
-                  const SizedBox(width: 6),
-                ],
-                // the student's Surrender % beside his name (the list is in that order: highest first, a worry on top)
+                _circleCheck(context, it.done, key: ValueKey('plan-check-${it.id}'), size: 22),
+                const SizedBox(width: 10),
                 Expanded(
                   child: it.isCard && it.studentUid.isNotEmpty
                       ? InkWell(
                           key: ValueKey('plan-open-${it.id}'),
                           onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => StudentProfilePage(studentUid: it.studentUid))),
-                          child: Text(it.isInteraction && it.percent != null ? '${it.title} · ${it.percent}%' : it.title, key: ValueKey('plan-title-${it.id}'), style: t.cardTitleSmall),
+                          child: Text(title, key: ValueKey('plan-title-${it.id}'), style: struck(t.cardTitleSmall)),
                         )
-                      : Text(it.isInteraction && it.percent != null ? '${it.title} · ${it.percent}%' : it.title, key: ValueKey('plan-title-${it.id}'), style: t.cardTitleSmall),
+                      : Text(title, key: ValueKey('plan-title-${it.id}'), style: struck(t.cardTitleSmall)),
                 ),
               ],
             ),
-            if (inBatch) ...[
-              const SizedBox(height: 2),
-              Text('Student ${it.batchPosition}${total > 0 ? ' of $total' : ''}', key: ValueKey('plan-position-${it.id}'), style: t.caption.copyWith(color: g.agent)),
-            ],
             if (when != null) ...[
               const SizedBox(height: 2),
-              Text(DateFormat('EEE d MMM').format(when), style: t.caption.copyWith(color: g.agent)),
+              Padding(padding: const EdgeInsets.only(left: 32), child: Text(DateFormat('EEE d MMM').format(when), style: t.caption.copyWith(color: g.agent))),
             ],
-            // every topic: a title and ONE line
+            // every topic: a title and ONE line; done: struck through, with a tick
             if (it.points.isNotEmpty) ...[
               const SizedBox(height: 8),
-              for (var i = 0; i < it.points.length; i++)
-                Padding(
-                  key: ValueKey('plan-point-${it.id}-$i'),
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (it.points[i].title.isNotEmpty) Text(it.points[i].title, key: ValueKey('plan-point-title-${it.id}-$i'), style: t.bodyStrong.copyWith(fontSize: 14, color: g.agent)),
-                      Text(it.points[i].text, key: ValueKey('plan-point-text-${it.id}-$i'), style: t.small.copyWith(height: 1.35)),
-                    ],
-                  ),
-                ),
-              if (it.also.isNotEmpty) Text(it.also, key: ValueKey('plan-also-${it.id}'), style: t.caption.copyWith(height: 1.3)),
+              for (var i = 0; i < it.points.length; i++) _topicLine(context, it, i),
+              if (it.also.isNotEmpty) Padding(padding: const EdgeInsets.only(left: 32), child: Text(it.also, key: ValueKey('plan-also-${it.id}'), style: t.caption.copyWith(height: 1.3))),
             ] else if (it.detail.isNotEmpty) ...[
               const SizedBox(height: 4),
-              Text(it.detail, style: t.small.copyWith(height: 1.35)),
+              Padding(padding: const EdgeInsets.only(left: 32), child: Text(it.detail, style: struck(t.small.copyWith(height: 1.35)))),
             ],
-            if (it.done || it.carriedOver || (it.checkWithHim && !it.isCard)) ...[
+            if (it.carriedOver || (it.checkWithHim && !it.isCard)) ...[
               const SizedBox(height: 6),
-              Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: [
-                  if (it.done) _tag(context, 'Done'),
-                  if (it.carriedOver) _tag(context, 'Carried over', key: ValueKey('plan-carried-${it.id}')),
-                  if (it.checkWithHim && !it.isCard) _tag(context, pronouned('Check with him first', it.gender, name: it.studentName)),
-                ],
+              Padding(
+                padding: const EdgeInsets.only(left: 32),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    if (it.carriedOver) _tag(context, 'Carried over', key: ValueKey('plan-carried-${it.id}')),
+                    if (it.checkWithHim && !it.isCard) _tag(context, pronouned('Check with him first', it.gender, name: it.studentName)),
+                  ],
+                ),
               ),
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// One topic of a task: its title (struck through when done) with a tick and "done", then its one line.
+  Widget _topicLine(BuildContext context, PlanItem it, int i) {
+    final g = context.g;
+    final t = context.gText;
+    final p = it.points[i];
+    TextStyle struck(TextStyle base) => p.done ? base.copyWith(decoration: TextDecoration.lineThrough, color: g.mutedText) : base;
+    return Padding(
+      key: ValueKey('plan-point-${it.id}-$i'),
+      padding: const EdgeInsets.only(left: 32, bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (p.title.isNotEmpty) Flexible(child: Text(p.title, key: ValueKey('plan-point-title-${it.id}-$i'), style: struck(t.bodyStrong.copyWith(fontSize: 14, color: g.agent)))),
+              if (p.done) ...[
+                const SizedBox(width: 8),
+                Icon(Icons.check_rounded, key: ValueKey('plan-point-tick-${it.id}-$i'), size: 16, color: g.success),
+                const SizedBox(width: 2),
+                Text('done', key: ValueKey('plan-point-done-${it.id}-$i'), style: t.caption.copyWith(color: g.success, fontWeight: FontWeight.w700)),
+              ],
+            ],
+          ),
+          Text(p.text, key: ValueKey('plan-point-text-${it.id}-$i'), style: struck(t.small.copyWith(height: 1.35))),
+        ],
       ),
     );
   }

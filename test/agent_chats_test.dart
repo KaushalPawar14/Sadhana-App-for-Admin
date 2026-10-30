@@ -262,7 +262,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 700));
       expect(requests.last['outcome'], 'executed');
       expect(requests.last['proposalId'], 'p1');
-      expect(find.text('Done'), findsWidgets);
+      expect(find.textContaining('Done'), findsWidgets);
     });
 
     testWidgets('lifts by itself the next day', (tester) async {

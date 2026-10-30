@@ -20,8 +20,8 @@ import 'AgentTypes.dart';
 /// the guide's own settings. Same rule as the first half (AgentWrites.dart): every executor calls the
 /// shared function the matching screen calls, after checking the thing is in this guide's scope.
 
-AgentResult _done(String message, {List<AgentEntity> entities = const []}) =>
-    AgentResult.ok({'done': message}, entities: entities);
+AgentResult _done(String message, {List<AgentEntity> entities = const [], Future<void> Function()? undo}) =>
+    AgentResult.ok({'done': message}, entities: entities, undo: undo);
 
 final DateFormat _day = DateFormat('EEE d MMM yyyy');
 
@@ -183,7 +183,10 @@ Future<AgentResult> planItemSkip(Map<String, dynamic> a, AgentEnv env) async {
     noteText: a['note'] == null ? null : _s(a['note']),
   );
   await _planNote(env, uid, _s(a['note']));
-  return _done('$message It will not come back, and I will remember why.');
+  return _done('$message It will not come back, and I will remember why.',
+      undo: () async {
+        await HierarchyApi.instance.planCorrection(itemId: _s(a['itemId']), mode: 'restore', reason: 'undone');
+      });
 }
 
 Future<AgentResult> planItemChange(Map<String, dynamic> a, AgentEnv env) async {
@@ -207,7 +210,9 @@ Future<AgentResult> studentNoteAdd(Map<String, dynamic> a, AgentEnv env) async {
   final uid = _s(a['studentUid']);
   final s = await env.student(uid);
   final message = await HierarchyApi.instance.studentGuideNote(studentUid: uid, kind: 'note', text: _s(a['text']));
-  return _done('$message (${_s(s['name'])}: "${_s(a['text'])}")');
+  return _done('$message (${_s(s['name'])}: "${_s(a['text'])}")', undo: () async {
+    await HierarchyApi.instance.studentGuideNote(studentUid: uid, kind: 'note_undo');
+  });
 }
 
 /// "Remove the interactions for Amit": the plan entries and the reasons in Interactions needed go, it is noted in his history, and nothing
@@ -220,7 +225,9 @@ Future<AgentResult> interactionPlanRemove(Map<String, dynamic> a, AgentEnv env) 
     kind: 'interactions_remove',
     text: a['reason'] == null ? null : _s(a['reason']),
   );
-  return _done('$message (${_s(s['name'])})');
+  return _done('$message (${_s(s['name'])})', undo: () async {
+    await HierarchyApi.instance.studentGuideNote(studentUid: uid, kind: 'interactions_restore');
+  });
 }
 
 /// WHY a student is not filling his daily report, as he told the guide: saved in his history and shown under his name in the Plan's Missing
@@ -229,7 +236,9 @@ Future<AgentResult> studentReportReasonAdd(Map<String, dynamic> a, AgentEnv env)
   final uid = _s(a['studentUid']);
   final s = await env.student(uid);
   final message = await HierarchyApi.instance.studentGuideNote(studentUid: uid, kind: 'report_reason', text: _s(a['reason']));
-  return _done('$message (${_s(s['name'])}: "${_s(a['reason'])}")');
+  return _done('$message (${_s(s['name'])}: "${_s(a['reason'])}")', undo: () async {
+    await HierarchyApi.instance.studentGuideNote(studentUid: uid, kind: 'report_reason_clear');
+  });
 }
 
 /// Ignore a student's missing daily reports (he leaves Missing reports for good; his attitude part counts 0 while ignored), or stop ignoring him
@@ -242,7 +251,17 @@ Future<AgentResult> studentReportIgnoreSet(Map<String, dynamic> a, AgentEnv env)
     kind: a['ignore'] == false ? 'report_unignore' : 'report_ignore',
     text: a['reason'] == null ? null : _s(a['reason']),
   );
-  return _done('$message (${_s(s['name'])})');
+  return _done('$message (${_s(s['name'])})', undo: () async {
+    await HierarchyApi.instance.studentGuideNote(studentUid: uid, kind: a['ignore'] == false ? 'report_ignore' : 'report_unignore');
+  });
+}
+
+/// Changes how many students the daily batch holds (1 to 12; 4 unless changed). Only the guide asking changes it: the number is not shown in the app.
+Future<AgentResult> planBatchSizeSet(Map<String, dynamic> a, AgentEnv env) async {
+  final n = a['size'] is num ? (a['size'] as num).round() : 0;
+  if (n < 1 || n > 12) throw AgentFailure('Choose a number from 1 to 12.');
+  final before = await HierarchyApi.instance.savePlanSettings(dailyBatch: n); // the server says what it was
+  return _done('Today now holds $n student${n == 1 ? '' : 's'} a day.', undo: () => HierarchyApi.instance.savePlanSettings(dailyBatch: before));
 }
 
 /// The advice for a student: stop / resume suggesting more chanting or reading, or discuss the daily report / timings again (the server keeps the
@@ -255,7 +274,16 @@ Future<AgentResult> studentAdviceSet(Map<String, dynamic> a, AgentEnv env) async
     kind: _s(a['setting']),
     text: a['reason'] == null ? null : _s(a['reason']),
   );
-  return _done('$message (${_s(s['name'])})');
+  const opposite = {
+    'stop_chanting_push': 'resume_chanting_push',
+    'resume_chanting_push': 'stop_chanting_push',
+    'stop_reading_push': 'resume_reading_push',
+    'resume_reading_push': 'stop_reading_push',
+  };
+  final back = opposite[_s(a['setting'])];
+  return _done('$message (${_s(s['name'])})', undo: back == null ? null : () async {
+    await HierarchyApi.instance.studentGuideNote(studentUid: uid, kind: back);
+  });
 }
 
 Future<AgentResult> studentFolkInterestSet(Map<String, dynamic> a, AgentEnv env) async {
@@ -267,7 +295,9 @@ Future<AgentResult> studentFolkInterestSet(Map<String, dynamic> a, AgentEnv env)
     kind: notInterested ? 'not_folk' : 'folk_open',
     text: a['reason'] == null ? null : _s(a['reason']),
   );
-  return _done('$message (${_s(s['name'])})');
+  return _done('$message (${_s(s['name'])})', undo: () async {
+    await HierarchyApi.instance.studentGuideNote(studentUid: uid, kind: notInterested ? 'folk_open' : 'not_folk');
+  });
 }
 
 Future<AgentResult> calendarAddNotes(Map<String, dynamic> a, AgentEnv env) async {
@@ -625,6 +655,7 @@ final Map<String, AgentRun> kAgentWritesB = {
   'student_advice_set': studentAdviceSet,
   'student_report_reason_add': studentReportReasonAdd,
   'student_report_ignore_set': studentReportIgnoreSet,
+  'plan_batch_size_set': planBatchSizeSet,
   'interaction_plan_remove': interactionPlanRemove,
   'plan_item_skip': planItemSkip,
   'plan_item_change': planItemChange,

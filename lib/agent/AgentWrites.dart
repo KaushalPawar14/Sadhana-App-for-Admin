@@ -36,8 +36,8 @@ import 'AgentTypes.dart';
 /// What an executor returns is a sentence saying what was done, in the app's words; the server
 /// passes it to the model, which tells the guide.
 
-AgentResult _done(String message, {List<AgentEntity> entities = const []}) =>
-    AgentResult.ok({'done': message}, entities: entities);
+AgentResult _done(String message, {List<AgentEntity> entities = const [], Future<void> Function()? undo}) =>
+    AgentResult.ok({'done': message}, entities: entities, undo: undo);
 
 final DateFormat _when = DateFormat('EEE d MMM yyyy, h:mm a');
 final DateFormat _day = DateFormat('EEE d MMM yyyy');
@@ -304,9 +304,14 @@ Future<AgentResult> studentCommitmentsSet(Map<String, dynamic> a, AgentEnv env) 
   int? keep(String key) => s[key] is num ? (s[key] as num).toInt() : null;
   final rounds = a['rounds'] is int ? a['rounds'] as int : keep('commitmentRounds');
   final reading = a['readingMinutes'] is int ? a['readingMinutes'] as int : keep('readingCommitmentMinutes');
+  final beforeRounds = keep('commitmentRounds');
+  final beforeReading = keep('readingCommitmentMinutes');
   await setStudentCommitments(uid, rounds: rounds, readingMinutes: reading);
   env.invalidate();
-  return _done("${_s(s['name'])}'s commitments are now ${rounds ?? 'unset'} rounds and ${reading ?? 'unset'} minutes of reading a day.");
+  return _done(
+    "${_s(s['name'])}'s commitments are now ${rounds ?? 'unset'} rounds and ${reading ?? 'unset'} minutes of reading a day.",
+    undo: () => setStudentCommitments(uid, rounds: beforeRounds, readingMinutes: beforeReading),
+  );
 }
 
 Future<AgentResult> studentNotificationSet(Map<String, dynamic> a, AgentEnv env) async {
@@ -419,8 +424,11 @@ Future<AgentResult> flaggedDelete(Map<String, dynamic> a, AgentEnv env) async {
 
 Future<AgentResult> doubtAnswer(Map<String, dynamic> a, AgentEnv env) async {
   final m = await _aboutStudent(env, 'bookDoubts', _s(a['doubtId']), uidField: 'uid', what: 'doubt');
-  await StudentDoubts.answer(doubtId: m.snap.id, text: _s(a['text']), me: env.me);
-  return _done("Answered ${_s(m.student['name'])}'s doubt; they have been told.");
+  // sent as the GUIDE's answer; when the assistant prepared it from the teachings, the student is told so
+  final byAi = a['byAi'] == true;
+  final text = byAi ? '${_s(a['text'])}\n\n(Prepared with AI from Śrīla Prabhupāda\'s teachings, and sent by ${env.me.displayName}.)' : _s(a['text']);
+  await StudentDoubts.answer(doubtId: m.snap.id, text: text, me: env.me);
+  return _done("Answered ${_s(m.student['name'])}'s doubt${byAi ? ' (prepared with AI)' : ''}; they have been told.");
 }
 
 Future<AgentResult> submissionRemind(Map<String, dynamic> a, AgentEnv env) async {

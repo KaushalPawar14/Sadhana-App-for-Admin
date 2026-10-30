@@ -74,15 +74,15 @@ class _CurvedNavBarState extends State<CurvedNavBar> {
     GuideTabRequest.requested.addListener(_onTabRequest);
     // the main shell is on screen: the assistant's button may fade in (never before: not on the splash, sign-in or a loading screen)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) AgentShell.ready.value = true;
+      if (mounted) AgentShell.attach(this);
     });
   }
 
   @override
   void dispose() {
     GuideTabRequest.requested.removeListener(_onTabRequest);
-    // the shell is going (a sign-out, a restart of the app's flow): the button goes with it
-    scheduleMicrotask(() => AgentShell.ready.value = false);
+    // the shell is going (a sign-out, a restart of the app's flow): the button goes with it, unless another shell is already there
+    AgentShell.detach(this);
     super.dispose();
   }
 
