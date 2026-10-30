@@ -343,7 +343,7 @@ void main() {
     final titles = tester.widgetList<Text>(find.descendant(of: find.byKey(const ValueKey('history-list')), matching: find.byType(Text))).map((t) => t.data).whereType<String>().toList();
     expect(titles.indexOf('Plan advice: call him about japa'), lessThan(titles.indexOf('Interaction (Call): ask about his Gita reading')));
     expect(titles.indexOf('Interaction (Call): ask about his Gita reading'), lessThan(titles.indexOf('Chanting up 4 rounds a day (8 → 12)')));
-    expect(find.text('29 Oct'), findsOneWidget);
+    expect(find.textContaining('20 Oct'), findsOneWidget, reason: 'one small heading per day (no date on the lines)');
     // the books are no longer in the card
     expect(find.text('Level 1'), findsNothing);
     expect(find.textContaining('Committed to'), findsNothing);
@@ -370,6 +370,8 @@ void main() {
     data.historyC.add(null);
     await tester.pumpAndSettle();
     expect(find.text('Show 22 more'), findsOneWidget, reason: '30 kept, 8 shown');
+    await tester.ensureVisible(find.text('Show 22 more'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Show 22 more'));
     await tester.pumpAndSettle();
     expect(find.text('Show 22 more'), findsNothing);

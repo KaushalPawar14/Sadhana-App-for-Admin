@@ -30,10 +30,21 @@ class CalendarPage extends StatefulWidget {
   /// silently showing nothing.
   final String? studentUid;
 
+  /// Opens on the Books tab (the Today buttons "Update book" / "Assign book"): [focusBookDocId] is the `booksRead` document to show selected,
+  /// [booksHint] a line above the list, [openAllBookLevels] opens every level.
+  final bool startOnBooks;
+  final String focusBookDocId;
+  final String booksHint;
+  final bool openAllBookLevels;
+
   CalendarPage({
     required this.username,
     required this.role,
     this.studentUid,
+    this.startOnBooks = false,
+    this.focusBookDocId = '',
+    this.booksHint = '',
+    this.openAllBookLevels = false,
   });
 
   @override
@@ -61,7 +72,7 @@ class _CalendarPageState extends State<CalendarPage> {
   /// so they survive a tab switch: leaving the Calendar tab and coming back
   /// keeps the selected day and its detail rather than resetting to "Select a
   /// date". That is deliberate.
-  _Tab _tab = _Tab.calendar;
+  late _Tab _tab = widget.startOnBooks ? _Tab.books : _Tab.calendar;
 
   // Category-separated reports: only the collection of the student's CURRENT category is read, and it follows
   // the student's profile live (a category change, by this guide or another, recolours the calendar at once and
@@ -683,7 +694,12 @@ class _CalendarPageState extends State<CalendarPage> {
                   _Tab.scores => _scoresPanel(colorProvider),
                   _Tab.books => widget.studentUid == null || widget.studentUid!.isEmpty
                       ? _needsUid(colorProvider, "Books")
-                      : StudentBooksPanel(studentUid: widget.studentUid!, studentName: widget.username),
+                      : StudentBooksPanel(
+                          studentUid: widget.studentUid!,
+                          studentName: widget.username,
+                          focusDocId: widget.focusBookDocId,
+                          hint: widget.booksHint,
+                          openAllLevels: widget.openAllBookLevels),
                 },
               ],
             ),

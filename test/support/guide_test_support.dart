@@ -48,7 +48,8 @@ void phone(WidgetTester tester, double scale, {Size size = const Size(360, 800),
 
 /// The widget in the real theme, light or dark, with "reduce animations" on by
 /// default (so nothing is mid-animation when a test measures).
-Widget guideHost(Widget child, {bool dark = false, bool reduce = true}) => MaterialApp(
+Widget guideHost(Widget child, {bool dark = false, bool reduce = true, List<NavigatorObserver> observers = const []}) => MaterialApp(
+      navigatorObservers: observers,
       debugShowCheckedModeBanner: false,
       theme: GuideTheme.light,
       darkTheme: GuideTheme.dark,

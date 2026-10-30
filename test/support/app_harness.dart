@@ -241,6 +241,7 @@ Future<void> pumpScreen(
   bool reduce = true,
   bool resetBoardMemory = true,
   Size size = const Size(360, 800),
+  List<NavigatorObserver> observers = const [],
 }) async {
   phone(tester, scale, size: size, resetBoardMemory: resetBoardMemory);
   SharedPreferences.setMockInitialValues({
@@ -256,7 +257,7 @@ Future<void> pumpScreen(
         ChangeNotifierProvider<AdminProfileProvider>.value(value: AdminProfileProvider.instance),
         ChangeNotifierProvider<DateRangeProvider>(create: (_) => DateRangeProvider()),
       ],
-      child: guideHost(screen, dark: dark, reduce: reduce),
+      child: guideHost(screen, dark: dark, reduce: reduce, observers: observers),
     ),
   );
 }

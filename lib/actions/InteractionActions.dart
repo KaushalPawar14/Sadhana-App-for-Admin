@@ -86,6 +86,8 @@ Future<SavedInteraction> saveInteraction({
   String? willingness,
   bool addressed = true,
   Map<String, dynamic>? analysis,
+  String source = 'assistant',
+  bool skipAi = false,
 }) async {
   final initialSummary = {
     'interactionType': interactionType,
@@ -115,7 +117,8 @@ Future<SavedInteraction> saveInteraction({
     'extractedDraft': null,
     'status': 'approved',
     // the ONLY way an interaction is recorded: a report the guide made to the assistant and CONFIRMED on its card
-    'source': 'assistant',
+    // 'guide_form': recorded by hand on the Today card's form (the server writes its history line from what the guide chose, with NO AI pass)
+    'source': source,
     if (topicAnswers.isNotEmpty) 'topicAnswers': topicAnswers,
     if (willingness != null && willingness.isNotEmpty) 'willingness': willingness,
     'addressed': addressed,
@@ -123,7 +126,8 @@ Future<SavedInteraction> saveInteraction({
     // server saves it as it stands: no second AI pass reads the same words again. Without it the server analyses the notes, as before.
     if (analysis != null && analysis.isNotEmpty) 'preAnalysis': analysis,
     // the server's background analysis picks it up from here
-    'analysis': 'queued',
+    // [skipAi]: the server's background AI analysis is never queued (the record is complete as it stands)
+    'analysis': skipAi ? 'done' : 'queued',
     'createdAt': FieldValue.serverTimestamp(),
     'approvedAt': FieldValue.serverTimestamp(),
   });

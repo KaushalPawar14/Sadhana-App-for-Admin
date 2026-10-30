@@ -25,10 +25,19 @@ import 'GuideWait.dart';
 /// configuration, and the shared writes in `actions/BookActions.dart` (the assistant assigns through the same ones). A book commitment
 /// the guide has not seen carries a dot until the tab has been open a moment.
 class StudentBooksPanel extends StatefulWidget {
-  const StudentBooksPanel({super.key, required this.studentUid, required this.studentName});
+  const StudentBooksPanel({super.key, required this.studentUid, required this.studentName, this.focusDocId = '', this.hint = '', this.openAllLevels = false});
 
   final String studentUid;
   final String studentName;
+
+  /// The `booksRead` document (`uid_level_bookKey`) to show selected: its level opens and its row is outlined (the Today button "Update book").
+  final String focusDocId;
+
+  /// A line above the list saying what to do here ("Tap a book to assign it ...").
+  final String hint;
+
+  /// Every level opens (the Today button "Assign book").
+  final bool openAllLevels;
 
   @override
   State<StudentBooksPanel> createState() => _StudentBooksPanelState();
@@ -115,6 +124,11 @@ class _StudentBooksPanelState extends State<StudentBooksPanel> {
                         builder: (context, c) => c.hasData ? _commitment(c.data) : const SizedBox.shrink(),
                       ),
                       const SizedBox(height: 8),
+                      if (widget.hint.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(widget.hint, key: const ValueKey('books-hint'), style: t.bodyStrong.copyWith(color: context.g.agent)),
+                        ),
                       for (final level in kBookLevels) _level(level, configSnap.data!, entries),
                     ],
                   ),
@@ -162,8 +176,9 @@ class _StudentBooksPanelState extends State<StudentBooksPanel> {
     }
     final order = [...done, ...current, ...rest];
     final key = '${widget.studentUid}_$level';
-    final open = _open.contains(key);
-    final shown = _showAll.contains(key) ? order : order.take(_booksShown).toList();
+    final focusHere = widget.focusDocId.isNotEmpty && books.any((b) => _docId(b) == widget.focusDocId);
+    final open = _open.contains(key) || widget.openAllLevels || focusHere;
+    final shown = _showAll.contains(key) || focusHere ? order : order.take(_booksShown).toList();
     final hidden = order.length - shown.length;
     final hasUnseen = books.any((b) => _unseen.contains(_docId(b)));
     return Column(
@@ -172,7 +187,7 @@ class _StudentBooksPanelState extends State<StudentBooksPanel> {
         GestureDetector(
           key: ValueKey('books-level-$level'),
           behavior: HitTestBehavior.opaque,
-          onTap: () => setState(() => open ? _open.remove(key) : _open.add(key)),
+          onTap: () => setState(() => _open.contains(key) || widget.openAllLevels || focusHere ? _open.remove(key) : _open.add(key)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
             child: Padding(
@@ -233,11 +248,15 @@ class _StudentBooksPanelState extends State<StudentBooksPanel> {
     final icon = finished ? Icons.check_circle_rounded : (current ? Icons.timelapse_rounded : Icons.radio_button_unchecked_rounded);
     final due = (entry?['commitmentDate'] as String?)?.trim();
     final by = (entry?['commitmentSetBy'] as String?)?.trim();
+    final focused = widget.focusDocId.isNotEmpty && _docId(book) == widget.focusDocId;
     return GestureDetector(
       key: ValueKey('book-row-${book.level}_${book.key}'),
       behavior: HitTestBehavior.opaque,
       onTap: finished ? null : () => _assign(book),
-      child: ConstrainedBox(
+      child: Container(
+        key: focused ? const ValueKey('book-focused') : null,
+        decoration: focused ? BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: g.agent, width: 1.5)) : null,
+        child: ConstrainedBox(
         constraints: BoxConstraints(minHeight: finished ? 36 : GuideShape.touchTarget),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
@@ -265,6 +284,7 @@ class _StudentBooksPanelState extends State<StudentBooksPanel> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

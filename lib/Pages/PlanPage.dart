@@ -9,6 +9,7 @@ import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/PlanData.dart';
 import '../utils/PlanToday.dart';
+import '../utils/PlanTopicActions.dart';
 import '../utils/Pronouns.dart';
 import '../utils/SeenMarkers.dart';
 import 'StudentProfilePage.dart';
@@ -877,6 +878,17 @@ class _PlanPageState extends State<PlanPage> {
             ],
           ),
           Text(p.text, key: ValueKey('plan-point-text-${it.id}-$i'), style: struck(t.small.copyWith(height: 1.35))),
+          // ONE button per open topic: it opens the place to do it by hand; it never ticks (the topic ticks when the real record is saved there)
+          if (!p.done && it.isCard && it.studentUid.isNotEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: ValueKey('plan-action-${it.id}-$i'),
+                style: TextButton.styleFrom(minimumSize: const Size(48, 48), padding: const EdgeInsets.symmetric(horizontal: 4), tapTargetSize: MaterialTapTargetSize.padded),
+                onPressed: () => runTopicAction(context, it, p),
+                child: Text(kTopicActionLabels[topicActionOf(p)]!, style: t.bodyStrong.copyWith(color: g.agent)),
+              ),
+            ),
         ],
       ),
     );

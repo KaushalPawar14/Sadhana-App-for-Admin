@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../theme/GuideTheme.dart';
 import '../actions/StudentActions.dart';
+import '../utils/GuideDb.dart';
 import '../utils/Snackbar.dart';
 import 'GuideDialog.dart';
 
@@ -87,6 +88,37 @@ String commitmentsLine(int? rounds, int? readingMinutes) {
   final r = rounds != null && rounds > 0 ? '$rounds rounds' : 'not set';
   final m = readingMinutes != null ? '$readingMinutes min' : 'not set';
   return 'Chanting: $r · Reading: $m';
+}
+
+/// The commitments dialog (chanting + reading) for one student, opened from anywhere (the Today button "Change commitment"): reads his current
+/// numbers, asks, and saves with the same shared write as the profile card. Returns true when saved.
+Future<bool> editStudentCommitments(BuildContext context, {required String studentUid, required String studentName, FirebaseFirestore? firestore}) async {
+  final db = firestore ?? GuideDb.instance;
+  int? rounds;
+  int? reading;
+  try {
+    final u = (await db.collection('users').doc(studentUid).get()).data();
+    rounds = (u?['commitmentRounds'] as num?)?.toInt();
+    reading = (u?['readingCommitmentMinutes'] as num?)?.toInt();
+  } catch (_) {
+    // the dialog still opens, with the standard numbers
+  }
+  if (!context.mounted) return false;
+  final result = await showDialog<_CommitmentChoice>(
+    context: context,
+    builder: (_) => _CommitmentDialog(studentName: studentName, rounds: rounds, readingMinutes: reading),
+  );
+  if (result == null || !context.mounted) return false;
+  try {
+    await setStudentCommitments(studentUid, rounds: result.rounds, readingMinutes: result.readingMinutes, db: db);
+    if (context.mounted) showSnackbar(context, 'Commitments saved', Colors.green, Icons.check_circle);
+    return true;
+  } on FirebaseException catch (e) {
+    if (context.mounted) showSnackbar(context, _StudentCommitmentsCardState._friendlyError(e), Colors.red, Icons.error);
+  } catch (_) {
+    if (context.mounted) showSnackbar(context, 'Could not save the commitments just now.', Colors.red, Icons.error);
+  }
+  return false;
 }
 
 class _StudentCommitmentsCardState extends State<StudentCommitmentsCard> {

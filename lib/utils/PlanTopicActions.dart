@@ -1,0 +1,111 @@
+import 'package:flutter/material.dart';
+
+import '../Home/Calendar.dart';
+import '../Pages/AssociationManager.dart';
+import '../Pages/StudentDoubtsPage.dart';
+import '../Pages/StudentProfilePage.dart';
+import '../widgets/RecordInteractionDialog.dart';
+import '../widgets/StudentCommitmentsCard.dart';
+import 'PlanData.dart';
+
+/// TODAY'S ACTION BUTTONS: every open topic on a student's card has ONE button that opens the exact place where the guide does it by hand. The
+/// button never ticks anything: the topic is ticked by itself ONLY when the real record has been saved there (the interaction, the book, the
+/// commitment, the answer, the meeting) and the server has seen it.
+enum TopicAction { updateBook, assignBook, changeCommitment, openProfile, answerDoubt, openMeeting, recordInteraction }
+
+const Map<TopicAction, String> kTopicActionLabels = {
+  TopicAction.updateBook: 'Update book',
+  TopicAction.assignBook: 'Assign book',
+  TopicAction.changeCommitment: 'Change commitment',
+  TopicAction.openProfile: 'Open profile',
+  TopicAction.answerDoubt: 'Answer doubt',
+  TopicAction.openMeeting: 'Open meeting',
+  TopicAction.recordInteraction: 'Record interaction',
+};
+
+/// The one button of a topic, by what the topic is about.
+TopicAction topicActionOf(PlanPoint p) {
+  switch (p.kind) {
+    case 'bookDue':
+      return TopicAction.updateBook;
+    case 'doubt':
+      return TopicAction.answerDoubt;
+    case 'meeting':
+    case 'meeting_request':
+      return TopicAction.openMeeting;
+    case 'target_chanting':
+      return TopicAction.changeCommitment;
+    case 'target_books':
+      return TopicAction.assignBook;
+    case 'target_folk':
+      return TopicAction.openProfile;
+    case 'target_task':
+      return switch (p.metric) {
+        'chanting' => TopicAction.changeCommitment,
+        'books' => TopicAction.assignBook,
+        'folk' => TopicAction.openProfile,
+        _ => TopicAction.recordInteraction,
+      };
+    default:
+      // a worry, a streak, his sadhana, his daily report / timings, a Surrender step, his next step: all of them are talked about
+      return TopicAction.recordInteraction;
+  }
+}
+
+/// The open topics of a card that are done by recording an interaction (the checkboxes of the Record-interaction form).
+List<PlanPoint> recordTopicsOf(PlanItem card) => [for (final p in card.points) if (!p.done && p.kind.isNotEmpty && topicActionOf(p) == TopicAction.recordInteraction) p];
+
+/// The page a button opens, as a route's name (tests and logs read it) and its widget. Null for the buttons that open a dialog.
+class TopicDestination {
+  const TopicDestination(this.name, this.page);
+  final String name;
+  final Widget page;
+}
+
+/// The page [action] opens for this topic of this student's card, or null when it opens a dialog.
+TopicDestination? topicDestinationOf(PlanItem card, PlanPoint p) {
+  final uid = card.studentUid;
+  final name = card.studentName;
+  switch (topicActionOf(p)) {
+    case TopicAction.updateBook:
+      return TopicDestination(
+        'topic:updateBook',
+        CalendarPage(
+          username: name,
+          role: '',
+          studentUid: uid,
+          startOnBooks: true,
+          focusBookDocId: p.bookId,
+          booksHint: 'Mark it finished (the circle), or tap the book to set a new due date.',
+        ),
+      );
+    case TopicAction.assignBook:
+      return TopicDestination(
+        'topic:assignBook',
+        CalendarPage(username: name, role: '', studentUid: uid, startOnBooks: true, openAllBookLevels: true, booksHint: 'Tap a book to assign it, with a finish-by date.'),
+      );
+    case TopicAction.openProfile:
+      return TopicDestination('topic:openProfile', StudentProfilePage(studentUid: uid));
+    case TopicAction.answerDoubt:
+      return TopicDestination('topic:answerDoubt', StudentDoubtsPage(openDoubtId: p.doubtId.isEmpty ? null : p.doubtId));
+    case TopicAction.openMeeting:
+      return TopicDestination('topic:openMeeting', AssociationManagerPage(highlightAssociationId: p.assocId.isEmpty ? null : p.assocId));
+    case TopicAction.changeCommitment:
+    case TopicAction.recordInteraction:
+      return null;
+  }
+}
+
+/// Runs the button of [p] on [card]: a page is pushed, a dialog opens. Nothing is ticked here.
+Future<void> runTopicAction(BuildContext context, PlanItem card, PlanPoint p) async {
+  final dest = topicDestinationOf(card, p);
+  if (dest != null) {
+    await Navigator.of(context).push(MaterialPageRoute<void>(settings: RouteSettings(name: dest.name), builder: (_) => dest.page));
+    return;
+  }
+  if (topicActionOf(p) == TopicAction.changeCommitment) {
+    await editStudentCommitments(context, studentUid: card.studentUid, studentName: card.studentName);
+    return;
+  }
+  await showRecordInteractionDialog(context, card: card, tapped: p);
+}

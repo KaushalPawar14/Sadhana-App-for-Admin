@@ -159,7 +159,7 @@ void main() {
   testWidgets('NOTHING IS TICKED BY TAPPING: no checkbox, switch or button in a task; tapping the circle changes nothing', (tester) async {
     await _open(tester, _plan([_ravi, _amit, _meeting]));
     await _openAll(tester);
-    final others = find.byWidgetPredicate((w) => w is Checkbox || w is Switch || w is ButtonStyleButton || w is FloatingActionButton || w is Radio);
+    final others = find.byWidgetPredicate((w) => w is Checkbox || w is Switch || (w is ButtonStyleButton && !'${w.key}'.contains('plan-action-')) || w is FloatingActionButton || w is Radio);
     for (final id in ['plan-section-body-followups', 'plan-section-body-targets', 'plan-section-body-others']) {
       expect(find.descendant(of: find.byKey(ValueKey(id)), matching: others), findsNothing, reason: id);
     }

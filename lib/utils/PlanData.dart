@@ -45,7 +45,25 @@ class PlanTopic {
 
 /// One topic on a student's ONE card, as a one-line point ("He has asked to meet: answer him"). [group] is the section it belongs to.
 class PlanPoint {
-  const PlanPoint({required this.text, required this.group, this.kind = '', this.id = '', this.title = '', this.done = false});
+  const PlanPoint({
+    required this.text,
+    required this.group,
+    this.kind = '',
+    this.id = '',
+    this.title = '',
+    this.done = false,
+    this.bookId = '',
+    this.assocId = '',
+    this.doubtId = '',
+    this.metric = '',
+  });
+
+  /// What the Today button of this topic opens: the book (a book due), the meeting (an association) or the doubt, and a target task's metric
+  /// (`chanting` | `books` | `folk`).
+  final String bookId;
+  final String assocId;
+  final String doubtId;
+  final String metric;
 
   /// This topic is done (the guide reported it to the assistant, or the data finished it): it stays on the card with a line through it.
   final bool done;
@@ -61,7 +79,7 @@ class PlanPoint {
     if (raw is! Map) return null;
     final text = (raw['text'] ?? '').toString();
     if (text.isEmpty) return null;
-    return PlanPoint(text: text, group: PlanGroup.parse(raw['group']) ?? PlanGroup.followUp, done: raw['done'] == true, kind: (raw['kind'] ?? '').toString(), id: (raw['id'] ?? '').toString(), title: (raw['title'] ?? '').toString());
+    return PlanPoint(text: text, group: PlanGroup.parse(raw['group']) ?? PlanGroup.followUp, done: raw['done'] == true, kind: (raw['kind'] ?? '').toString(), id: (raw['id'] ?? '').toString(), title: (raw['title'] ?? '').toString(), bookId: (raw['bookId'] ?? '').toString(), assocId: (raw['assocId'] ?? '').toString(), doubtId: (raw['doubtId'] ?? '').toString(), metric: (raw['metric'] ?? '').toString());
   }
 }
 

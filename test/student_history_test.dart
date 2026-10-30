@@ -65,6 +65,9 @@ void main() {
       }
       expect(historyDay(DateTime(2026, 10, 29), DateTime(2026, 11, 1)), '29 Oct');
       expect(historyDay(DateTime(2025, 12, 25), DateTime(2026, 11, 1)), '25 Dec 2025');
+      expect(historyDayHeading(DateTime(2026, 11, 1, 9), DateTime(2026, 11, 1, 20)), 'Today');
+      expect(historyDayHeading(DateTime(2026, 10, 31, 23), DateTime(2026, 11, 1, 1)), 'Yesterday');
+      expect(historyDayHeading(DateTime(2026, 10, 29), DateTime(2026, 11, 1)), '29 Oct');
     });
   });
 
@@ -89,6 +92,23 @@ void main() {
       await tester.pump();
       expect(find.byKey(const ValueKey('history-more')), findsNothing);
       expect(find.byKey(const ValueKey('history-line-h29')), findsOneWidget, reason: 'the 30th');
+    });
+
+    testWidgets('GROUPED BY DAY: one small heading per day, newest first, and no date on the line itself', (tester) async {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day, 10);
+      await pump(tester, lines: [
+        HistoryLine(id: 'a', kind: kHistoryNote, title: 'Note A', detail: 'd', at: today),
+        HistoryLine(id: 'b', kind: kHistoryInteraction, title: 'Interaction B', detail: 'd', at: today.subtract(const Duration(hours: 2))),
+        HistoryLine(id: 'c', kind: kHistoryDealing, title: 'Dealing C', detail: 'd', at: today.subtract(const Duration(days: 1))),
+        HistoryLine(id: 'd', kind: kHistoryDealing, title: 'Dealing D', detail: 'd', at: DateTime(2020, 3, 4, 9)),
+      ]);
+      expect(find.text('Today'), findsOneWidget, reason: 'two lines, one heading');
+      expect(find.text('Yesterday'), findsOneWidget);
+      expect(find.text('4 Mar 2020'), findsOneWidget);
+      final y = ['Note A', 'Interaction B', 'Dealing C', 'Dealing D'].map((x) => tester.getTopLeft(find.text(x)).dy).toList();
+      expect(y, [...y]..sort(), reason: 'newest first');
+      expect(tester.getTopLeft(find.text('Today')).dy, lessThan(y[0]), reason: 'the heading sits above its lines');
     });
 
     testWidgets('a tap opens a dialog with the full details, the kind and the date', (tester) async {

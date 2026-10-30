@@ -8,9 +8,10 @@ import '../utils/StudentHistory.dart';
 import 'GuideDialog.dart';
 import 'GuideWait.dart';
 
-/// The board card's drop-down: ONE LINE per thing that happened with this student, newest first, the last 30 (AI advice, interactions,
-/// dealings, the guide's notes to the assistant, significant sadhana changes). A tap opens a dialog with the full details. Updated
-/// live by the server.
+/// The board card's drop-down: ONE LINE per MEANINGFUL thing that happened with this student (interactions, doubts and worries, meetings,
+/// books, trips, the guide's notes, commitment / residence changes, Surrender steps), newest first, the last 30, GROUPED BY DAY under a
+/// small day heading (so a line carries no date of its own). A tap opens a dialog with the full details. Updated live by the server,
+/// which never writes status re-checks or repeats.
 class StudentHistoryList extends StatefulWidget {
   const StudentHistoryList({super.key, required this.studentUid, this.firstShown = 8});
 
@@ -41,6 +42,17 @@ String historyKindLabel(String kind) => switch (kind) {
       _ => 'Dealing',
     };
 
+/// The heading of a day group: "Today", "Yesterday", else "29 Oct" (with the year when it is not this one).
+String historyDayHeading(DateTime d, [DateTime? now]) {
+  final n = now ?? DateTime.now();
+  final today = DateTime(n.year, n.month, n.day);
+  final day = DateTime(d.year, d.month, d.day);
+  final diff = today.difference(day).inDays;
+  if (diff == 0) return 'Today';
+  if (diff == 1) return 'Yesterday';
+  return historyDay(d, n);
+}
+
 /// "29 Oct" (and the year when it is not this one).
 String historyDay(DateTime d, [DateTime? now]) {
   final n = now ?? DateTime.now();
@@ -65,7 +77,7 @@ class _StudentHistoryListState extends State<StudentHistoryList> {
           return Padding(
             key: const ValueKey('history-empty'),
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text('Nothing yet. Advice, interactions, dealings and notes about this student appear here.', style: t.caption),
+            child: Text('Nothing yet. Interactions, doubts, meetings, books and notes about this student appear here.', style: t.caption),
           );
         }
         final shown = _all ? lines : lines.take(widget.firstShown).toList();
@@ -74,7 +86,10 @@ class _StudentHistoryListState extends State<StudentHistoryList> {
           key: const ValueKey('history-list'),
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (final l in shown) _line(context, l),
+            for (var i = 0; i < shown.length; i++) ...[
+              if (i == 0 || !_sameDay(shown[i - 1].at, shown[i].at)) _dayHeading(context, shown[i].at),
+              _line(context, shown[i]),
+            ],
             if (hidden > 0)
               GestureDetector(
                 key: const ValueKey('history-more'),
@@ -88,6 +103,18 @@ class _StudentHistoryListState extends State<StudentHistoryList> {
           ],
         );
       },
+    );
+  }
+
+  static bool _sameDay(DateTime? a, DateTime? b) => a != null && b != null && a.year == b.year && a.month == b.month && a.day == b.day;
+
+  Widget _dayHeading(BuildContext context, DateTime? at) {
+    final g = context.g;
+    final t = context.gText;
+    return Padding(
+      key: ValueKey('history-day-${at == null ? 'none' : '${at.year}-${at.month}-${at.day}'}'),
+      padding: const EdgeInsets.only(top: 8, bottom: 2),
+      child: Text(at == null ? 'Earlier' : historyDayHeading(at), style: t.caption.copyWith(color: g.mutedText, fontWeight: FontWeight.w700)),
     );
   }
 
@@ -107,10 +134,6 @@ class _StudentHistoryListState extends State<StudentHistoryList> {
               Icon(historyIcon(l.kind), size: 16, color: g.mutedText),
               const SizedBox(width: 8),
               Expanded(child: Text(l.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.body.copyWith(fontSize: 13))),
-              if (l.at != null) ...[
-                const SizedBox(width: 8),
-                Text(historyDay(l.at!), style: t.caption),
-              ],
               const SizedBox(width: 2),
               Icon(Icons.chevron_right_rounded, size: 16, color: g.mutedText),
             ],
