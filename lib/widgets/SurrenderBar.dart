@@ -117,7 +117,7 @@ Future<void> showSurrenderBreakdown(BuildContext context, String name, Surrender
                           spacing: 8,
                           children: [
                             Text(p.label, style: t.bodyStrong),
-                            Text('${surrenderPoints(p.earned)} of ${p.weight}', key: ValueKey('surrender-points-${p.key}'), style: t.bodyStrong.copyWith(color: p.earned == 0 ? g.mutedText : g.brass)),
+                            Text('${surrenderPoints(p.earned)} of ${surrenderPoints(p.weight)}', key: ValueKey('surrender-points-${p.key}'), style: t.bodyStrong.copyWith(color: p.earned == 0 ? g.mutedText : g.brass)),
                           ],
                         ),
                         if ((p.score ?? 0) > 0) ...[
@@ -126,7 +126,7 @@ Future<void> showSurrenderBreakdown(BuildContext context, String name, Surrender
                         ],
                         const SizedBox(height: 4),
                         Text(p.reason, style: t.body.copyWith(fontSize: 13, height: 1.35)),
-                        // the Sadhana part: its four equal pieces of 10, each with its points and its reason ("Reported 3 of 30 days → 1 of 10")
+                        // the Sadhana part: its four equal pieces of 10, and the Bonus: its four pieces of 2.5, each with its points and its reason ("Reported 3 of 30 days → 1 of 10", "Bonus: 52 rounds on 12 Oct → +2.5")
                         for (final q in p.sub)
                           Padding(
                             key: ValueKey('surrender-sub-${q.key}'),
@@ -138,7 +138,7 @@ Future<void> showSurrenderBreakdown(BuildContext context, String name, Surrender
                                   spacing: 8,
                                   children: [
                                     Text(q.label, style: t.bodyStrong.copyWith(fontSize: 13)),
-                                    Text('${surrenderPoints(q.earned)} of ${q.weight}', key: ValueKey('surrender-points-${q.key}'), style: t.bodyStrong.copyWith(fontSize: 13, color: q.earned == 0 ? g.mutedText : g.brass)),
+                                    Text('${surrenderPoints(q.earned)} of ${surrenderPoints(q.weight)}', key: ValueKey('surrender-points-${q.key}'), style: t.bodyStrong.copyWith(fontSize: 13, color: q.earned == 0 ? g.mutedText : g.brass)),
                                   ],
                                 ),
                                 const SizedBox(height: 2),

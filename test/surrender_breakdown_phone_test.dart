@@ -37,9 +37,22 @@ SurrenderInfo info({bool long = false, String? cap}) => SurrenderInfo(
             SurrenderPart(key: 'sadhana_timings', label: 'Timings', weight: 10, score: 1, points: 10, reason: 'Timings on the days reported: 100% of the best (wake-up, sleep, japa finish) → 10 of 10'),
           ],
         ),
-        SurrenderPart(key: 'association', label: 'Association with his guide', weight: 20, score: 0.8, points: 16, reason: '2 interactions in the last 30 days.'),
-        SurrenderPart(key: 'attitude', label: 'Attitude and willingness', weight: 10, score: 0, points: 0, missing: true, reason: 'No attitude observed yet → 0 of 10'),
+        SurrenderPart(key: 'attitude', label: 'Association — attitude & willingness', weight: 20, score: 0.8, points: 16, reason: "His guide's latest report: willing; 2 interactions or meetings with his guide in the last 30 days."),
         SurrenderPart(key: 'lit', label: 'LIT', weight: 20, score: 0, points: 0, missing: true, reason: 'No LIT yet → 0 of 20'),
+        SurrenderPart(
+          key: 'bonus',
+          label: 'Bonus',
+          weight: 10,
+          score: 0.25,
+          points: 2.5,
+          reason: 'Bonus: 1 of 4 pieces earned (2.5 of 10).',
+          sub: const [
+            SurrenderPart(key: 'bonus_chanting', label: 'Extraordinary chanting', weight: 2.5, score: 1, points: 2.5, reason: 'Bonus: 52 rounds on 12 Oct → +2.5'),
+            SurrenderPart(key: 'bonus_reading', label: 'Extraordinary reading', weight: 2.5, score: 0, points: 0, reason: 'No day with 180+ minutes of reading in the last 30 days → 0 of 2.5'),
+            SurrenderPart(key: 'bonus_chanting_commitment', label: 'Chanting above his commitment', weight: 2.5, score: 0, points: 0, reason: 'No chanting commitment recorded → 0 of 2.5'),
+            SurrenderPart(key: 'bonus_reading_commitment', label: 'Reading above his commitment', weight: 2.5, score: 0, points: 0, reason: 'Averaging 30 minutes of reading on the days reported, not above his commitment of 60 → 0 of 2.5'),
+          ],
+        ),
       ],
     );
 
@@ -92,6 +105,14 @@ void main() {
             expect(find.byKey(const ValueKey('surrender-points-sadhana_regularity')), findsOneWidget);
             expect(tester.widget<Text>(find.byKey(const ValueKey('surrender-points-sadhana_regularity'))).data, '1 of 10');
             expect(find.text('Reported 3 of 30 days → 1 of 10'), findsOneWidget);
+            // THE BONUS: its four pieces of 2.5, each with its points and reason
+            for (final k in ['chanting', 'reading', 'chanting_commitment', 'reading_commitment']) {
+              expect(find.byKey(ValueKey('surrender-sub-bonus_$k')), findsOneWidget, reason: k);
+            }
+            expect(tester.widget<Text>(find.byKey(const ValueKey('surrender-points-bonus_chanting'))).data, '2.5 of 2.5');
+            expect(tester.widget<Text>(find.byKey(const ValueKey('surrender-points-bonus'))).data, '2.5 of 10');
+            expect(find.text('Bonus: 52 rounds on 12 Oct → +2.5'), findsOneWidget);
+            expect(find.text('Association — attitude & willingness'), findsOneWidget);
             expect(tester.widget<Text>(find.byKey(const ValueKey('surrender-points-sadhana'))).data, '31 of 40');
             final opacity = tester.widgetList<FadeTransition>(find.ancestor(of: title, matching: find.byType(FadeTransition))).map((f) => f.opacity.value);
             expect(opacity.every((o) => o == 1.0), isTrue, reason: 'faded in all the way: $opacity');

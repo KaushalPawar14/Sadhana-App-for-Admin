@@ -110,9 +110,9 @@ SurrenderInfo _info({int percent = 42, int? trend = 6, String? cap, bool complet
       parts: const [
         SurrenderPart(key: 'commitment', label: 'Commitment', weight: 10, score: 0.6, points: 6, reason: 'Committed to 12 rounds and 30 min of reading a day.'),
         SurrenderPart(key: 'sadhana', label: 'Sadhana actually done', weight: 40, score: 0.5, points: 20, reason: 'Last 30 days: rounds 70% of 16.'),
-        SurrenderPart(key: 'association', label: 'Association with his guide', weight: 20, score: 0.8, points: 16, reason: '2 interactions in the last 30 days.'),
-        SurrenderPart(key: 'attitude', label: 'Attitude and willingness', weight: 10, score: 0, points: 0, missing: true, reason: 'No attitude observed yet → 0 of 10'),
+        SurrenderPart(key: 'attitude', label: 'Association — attitude & willingness', weight: 20, score: 0, points: 0, missing: true, reason: 'No interaction or meeting with his guide in the last 30 days → 0 of 20'),
         SurrenderPart(key: 'lit', label: 'LIT', weight: 20, score: 0, points: 0, missing: true, reason: 'No LIT yet → 0 of 20'),
+        SurrenderPart(key: 'bonus', label: 'Bonus', weight: 10, score: 0, points: 0, reason: 'No bonus earned yet (it comes from the daily report forms, the last 30 days)'),
       ],
     );
 
@@ -191,12 +191,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('surrender-dialog-title')), findsOneWidget);
       expect(find.text('Arjun: Surrender 42%'), findsOneWidget);
-      for (final k in ['commitment', 'sadhana', 'association', 'attitude', 'lit']) {
+      for (final k in ['commitment', 'sadhana', 'attitude', 'lit', 'bonus']) {
         expect(find.byKey(ValueKey('surrender-part-$k')), findsOneWidget, reason: k);
       }
       expect(find.text('Committed to 12 rounds and 30 min of reading a day.'), findsOneWidget, reason: 'a reason each');
-      // every part: its points earned of the points possible (they add up to the 42%: 6 + 20 + 16 + 0 + 0)
-      for (final e in {'commitment': '6 of 10', 'sadhana': '20 of 40', 'association': '16 of 20', 'attitude': '0 of 10', 'lit': '0 of 20'}.entries) {
+      // every part: its points earned of the points possible (6 + 20 + 0 + 0 + 0 here)
+      for (final e in {'commitment': '6 of 10', 'sadhana': '20 of 40', 'attitude': '0 of 20', 'lit': '0 of 20', 'bonus': '0 of 10'}.entries) {
         expect(find.descendant(of: find.byKey(ValueKey('surrender-part-${e.key}')), matching: find.text(e.value)), findsOneWidget, reason: e.key);
       }
       expect(find.text('No LIT yet → 0 of 20'), findsOneWidget);
@@ -229,9 +229,9 @@ void main() {
         ..surrenders['sg1'] = const SurrenderInfo(percent: 10, trend: null, cap: null, complete: false, residence: 'hostel', parts: [
           SurrenderPart(key: 'commitment', label: 'Commitment', weight: 10, score: 1, points: 10, reason: 'Committed to 16 rounds and 60 min of reading a day (16 rounds and 60 min is full).'),
           SurrenderPart(key: 'sadhana', label: 'Sadhana actually done', weight: 40, score: 0, points: 0, missing: true, reason: 'No reports in the last 30 days → 0 of 40'),
-          SurrenderPart(key: 'association', label: 'Association with his guide', weight: 20, score: 0, points: 0, missing: true, reason: 'No interactions or meetings with his guide yet → 0 of 20'),
-          SurrenderPart(key: 'attitude', label: 'Attitude and willingness', weight: 10, score: 0, points: 0, missing: true, reason: 'No attitude observed yet → 0 of 10'),
+          SurrenderPart(key: 'attitude', label: 'Association — attitude & willingness', weight: 20, score: 0, points: 0, missing: true, reason: 'No interaction or meeting with his guide in the last 30 days → 0 of 20'),
           SurrenderPart(key: 'lit', label: 'LIT', weight: 20, score: 0, points: 0, missing: true, reason: 'No LIT yet → 0 of 20'),
+          SurrenderPart(key: 'bonus', label: 'Bonus', weight: 10, score: 0, points: 0, reason: 'No bonus earned yet (it comes from the daily report forms, the last 30 days)'),
         ]);
       await openBoard(tester, data: data);
       await tester.tap(find.text('Arjun Kumar'));

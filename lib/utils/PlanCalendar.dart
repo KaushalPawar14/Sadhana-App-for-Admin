@@ -20,7 +20,10 @@ List<CalendarEvent> planCalendarEvents(PlanDoc? plan) {
   for (final sec in view.sections) {
     for (final t in sec.tasks) {
       if (t.studentUid.isNotEmpty) inToday.add(t.studentUid);
-      final topics = [for (final p in t.points) if (p.title.isNotEmpty) p.title];
+      // a MEETING topic is the meeting itself: the calendar draws it from the meeting (one entry, with its date and time, gone when it is cancelled), never a second time from the plan
+      bool isMeeting(PlanPoint p) => p.kind == 'meeting' || p.kind == 'meeting_request';
+      if (t.isCard && t.points.isNotEmpty && t.points.every(isMeeting)) continue;
+      final topics = [for (final p in t.points) if (p.title.isNotEmpty && !isMeeting(p)) p.title];
       final who = t.isCard && t.studentName.isNotEmpty ? t.studentName : t.title;
       out.add(autoCalendarEvent(
         id: 'plan_today_${t.id}',

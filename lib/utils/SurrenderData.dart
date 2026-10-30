@@ -12,8 +12,8 @@ class SurrenderPart {
   final String key;
   final String label;
 
-  /// The part's weight in the percent = the points possible (10 / 40 / 20 / 10 / 20).
-  final int weight;
+  /// The part's weight in the percent = the points possible (commitment 10, sadhana 40, association — attitude & willingness 20, LIT 20, bonus 10); a bonus piece 2.5.
+  final double weight;
 
   /// 0..1 (a part with nothing to show yet is 0). Null only in a record written before the new weights.
   final double? score;
@@ -26,6 +26,7 @@ class SurrenderPart {
   final double? points;
   final bool missing;
 
+  /// The BONUS part is four pieces of 2.5 (extraordinary chanting, extraordinary reading, chanting above his commitment, reading above it), shown the same way.
   /// The Sadhana part is FOUR EQUAL PIECES of 10 (reporting regularity, chanting, reading, timings), each with its points and reason ("Reported 3 of 30 days → 1 of 10").
   /// Empty for the other parts and for a record written before the pieces.
   final List<SurrenderPart> sub;
@@ -42,7 +43,7 @@ class SurrenderPart {
     return SurrenderPart(
       key: key,
       label: (raw['label'] ?? key).toString(),
-      weight: w is num ? w.round() : 0,
+      weight: w is num ? w.toDouble() : 0,
       score: s is num ? s.toDouble().clamp(0.0, 1.0) : null,
       reason: (raw['reason'] ?? '').toString(),
       effectiveWeight: raw['effectiveWeight'] is num ? (raw['effectiveWeight'] as num).toDouble() : null,
