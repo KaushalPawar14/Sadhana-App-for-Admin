@@ -62,11 +62,9 @@ class TopicDestination {
   final Widget page;
 }
 
-/// The page [action] opens for this topic of this student's card, or null when it opens a dialog.
-TopicDestination? topicDestinationOf(PlanItem card, PlanPoint p) {
-  final uid = card.studentUid;
-  final name = card.studentName;
-  switch (topicActionOf(p)) {
+/// The page [action] opens for this student, or null when it opens a dialog. [bookId] / [assocId] / [doubtId] point at the exact record when known.
+TopicDestination? destinationFor(TopicAction action, {required String uid, required String name, String bookId = '', String assocId = '', String doubtId = '', String bookHint = ''}) {
+  switch (action) {
     case TopicAction.updateBook:
       return TopicDestination(
         'topic:updateBook',
@@ -75,8 +73,8 @@ TopicDestination? topicDestinationOf(PlanItem card, PlanPoint p) {
           role: '',
           studentUid: uid,
           startOnBooks: true,
-          focusBookDocId: p.bookId,
-          booksHint: 'Mark it finished (the circle), or tap the book to set a new due date.',
+          focusBookDocId: bookId,
+          booksHint: bookHint.isEmpty ? 'Mark it finished (the circle), or tap the book to set a new due date.' : 'Find "$bookHint": mark it finished (the circle), or tap it to set a new due date.',
         ),
       );
     case TopicAction.assignBook:
@@ -87,25 +85,41 @@ TopicDestination? topicDestinationOf(PlanItem card, PlanPoint p) {
     case TopicAction.openProfile:
       return TopicDestination('topic:openProfile', StudentProfilePage(studentUid: uid));
     case TopicAction.answerDoubt:
-      return TopicDestination('topic:answerDoubt', StudentDoubtsPage(openDoubtId: p.doubtId.isEmpty ? null : p.doubtId));
+      return TopicDestination('topic:answerDoubt', StudentDoubtsPage(openDoubtId: doubtId.isEmpty ? null : doubtId));
     case TopicAction.openMeeting:
-      return TopicDestination('topic:openMeeting', AssociationManagerPage(highlightAssociationId: p.assocId.isEmpty ? null : p.assocId));
+      return TopicDestination('topic:openMeeting', AssociationManagerPage(highlightAssociationId: assocId.isEmpty ? null : assocId));
     case TopicAction.changeCommitment:
     case TopicAction.recordInteraction:
       return null;
   }
 }
 
-/// Runs the button of [p] on [card]: a page is pushed, a dialog opens. Nothing is ticked here.
-Future<void> runTopicAction(BuildContext context, PlanItem card, PlanPoint p) async {
-  final dest = topicDestinationOf(card, p);
+/// The page a Today topic's button opens for this topic of this student's card, or null when it opens a dialog.
+TopicDestination? topicDestinationOf(PlanItem card, PlanPoint p) =>
+    destinationFor(topicActionOf(p), uid: card.studentUid, name: card.studentName, bookId: p.bookId, assocId: p.assocId, doubtId: p.doubtId);
+
+/// Opens the place for [action] and a student: a page is pushed, a dialog opens. Nothing is ticked here.
+Future<void> runStudentAction(BuildContext context, TopicAction action, {required String uid, required String name, String bookId = '', String assocId = '', String doubtId = '', String bookHint = '', List<PlanPoint> topics = const []}) async {
+  final dest = destinationFor(action, uid: uid, name: name, bookId: bookId, assocId: assocId, doubtId: doubtId, bookHint: bookHint);
   if (dest != null) {
     await Navigator.of(context).push(MaterialPageRoute<void>(settings: RouteSettings(name: dest.name), builder: (_) => dest.page));
     return;
   }
-  if (topicActionOf(p) == TopicAction.changeCommitment) {
-    await editStudentCommitments(context, studentUid: card.studentUid, studentName: card.studentName);
+  if (action == TopicAction.changeCommitment) {
+    await editStudentCommitments(context, studentUid: uid, studentName: name);
     return;
   }
-  await showRecordInteractionDialog(context, card: card, tapped: p);
+  await showRecordInteractionFor(context, studentUid: uid, studentName: name, topics: topics);
 }
+
+/// Runs the button of [p] on [card] (Today).
+Future<void> runTopicAction(BuildContext context, PlanItem card, PlanPoint p) => runStudentAction(
+      context,
+      topicActionOf(p),
+      uid: card.studentUid,
+      name: card.studentName,
+      bookId: p.bookId,
+      assocId: p.assocId,
+      doubtId: p.doubtId,
+      topics: recordTopicsOf(card),
+    );

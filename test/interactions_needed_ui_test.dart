@@ -116,6 +116,17 @@ SurrenderInfo _info({int percent = 42, int? trend = 6, String? cap, bool complet
       ],
     );
 
+
+/// Every row of Today opens (a tap on the row shows its topics).
+Future<void> _openRows(WidgetTester tester) async {
+  final rows = find.byWidgetPredicate((w) => w.key is ValueKey<String> && (w.key! as ValueKey<String>).value.startsWith('plan-row-') && !(w.key! as ValueKey<String>).value.startsWith('plan-row-body-'));
+  final n = rows.evaluate().length;
+  for (var i = 0; i < n; i++) {
+    await tester.tap(rows.at(i));
+    await tester.pump();
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
@@ -324,14 +335,12 @@ void main() {
 
     testWidgets('Today shows ONE card for Harsh: his name and %, each topic a title and ONE line, one "Also:" line; no questions, no talking points', (tester) async {
       await _openPlan(tester, doc: doc());
-      for (final id in ['followups', 'targets', 'others']) {
-        await tester.tap(find.byKey(ValueKey('plan-section-$id'))); // the sections open by a tap
-        await tester.pump();
-      }
-      expect(find.text('Interaction with Harsh · 42%'), findsOneWidget);
+      await _openRows(tester);
+      expect(find.text('Harsh'), findsOneWidget);
+      expect(find.text('42%'), findsOneWidget);
       expect(find.byKey(const ValueKey('plan-item-interaction:u1:2026-10-28')), findsOneWidget);
       for (final t in ['Worry', 'Chanting target', 'Surrender 42%']) {
-        expect(find.text(t), findsOneWidget, reason: t);
+        expect(find.text(t), findsNWidgets(2), reason: '$t: its chip and its topic');
       }
       expect(find.text('Sounded discouraged or worried in his AI chat — talk with him and listen first.'), findsOneWidget);
       expect(find.text('Chanting 12 of 16 for your target — talk about moving to 16.'), findsOneWidget);
@@ -343,10 +352,6 @@ void main() {
 
     testWidgets('once the guide has reported back, the item is ticked (a tick and "Done"), read-only as always', (tester) async {
       await _openPlan(tester, doc: _plan(done: true));
-      for (final id in ['followups', 'targets', 'others']) {
-        await tester.tap(find.byKey(ValueKey('plan-section-$id')));
-        await tester.pump();
-      }
       expect(tester.widget<Icon>(find.byKey(const ValueKey('plan-check-interaction:u1:2026-10-28'))).icon, Icons.check_circle, reason: 'the task is ticked');
       expect(find.text('For you to do'), findsNothing, reason: 'it has been done');
       await tester.tap(find.byKey(const ValueKey('plan-check-interaction:u1:2026-10-28')), warnIfMissed: false);

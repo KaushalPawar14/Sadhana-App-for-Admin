@@ -9,13 +9,16 @@ import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/PlanData.dart';
 import '../utils/PlanToday.dart';
+import '../utils/Responsive.dart';
 import '../utils/PlanTopicActions.dart';
 import '../utils/Pronouns.dart';
 import '../utils/SeenMarkers.dart';
 import 'StudentProfilePage.dart';
 import '../widgets/GuideAppBar.dart';
 import '../theme/GuideColors.dart';
+import '../widgets/Guide3dButton.dart';
 import '../widgets/GuideButtons.dart';
+import '../widgets/PlanBlocks.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideEntry.dart';
 import '../widgets/GuideStates.dart';
@@ -116,8 +119,9 @@ class _PlanPageState extends State<PlanPage> {
 
   final Map<String, GlobalKey> _sectionKeys = {for (final id in [kSectionFollowUps, kSectionTargets, kSectionOthers]) id: GlobalKey()};
 
-  /// The sections the guide opened (a tap on a header): they start closed.
-  final Set<String> _expanded = {};
+  /// The blocks the guide collapsed (a tap on a header): they start OPEN, like a to-do list. And the rows he opened (a tap on a row shows its topics).
+  final Set<String> _collapsed = {};
+  final Set<String> _openRows = {};
   bool _scrolled = false;
 
   String get _me => AdminProfileProvider.current?.id ?? '';
@@ -153,7 +157,7 @@ class _PlanPageState extends State<PlanPage> {
         }
         if (!_scrolled && widget.section != null && !_week && p != null) {
           _scrolled = true;
-          _expanded.add(_sectionIdOf(widget.section!));
+          _collapsed.remove(_sectionIdOf(widget.section!));
           WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToSection());
         }
       },
@@ -248,7 +252,10 @@ class _PlanPageState extends State<PlanPage> {
     final plan = _plan;
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 12, GuideSpace.pagePadding, 40),
-      child: Column(
+      // on the website the list keeps a reading width (760 dp) instead of stretching across the window; a phone is unchanged
+      child: ContentWidth(
+        maxWidth: 760,
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _refreshBar(context),
@@ -272,6 +279,7 @@ class _PlanPageState extends State<PlanPage> {
             if (_tab == 2) ..._missingBody(context, plan) else if (_week) ..._weekBody(context, plan) else ..._todayBody(context, plan),
           ],
         ],
+      ),
       ),
     );
   }
@@ -392,89 +400,58 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
-  /// TODAY: ONE summary line ("Total tasks today: N · Done D · Left L"), then three sections (Follow-ups, Target tasks, Other tasks), each with a circular
-  /// checkbox and its count (done / total); a tap on the header opens it. Every task has a circular checkbox and, inside it, its topics; a topic that
-  /// is done has a line through it and a tick. Nothing is ticked by a tap: the ticks come by themselves (a report to the assistant, or the data). The
-  /// done ones STAY in Today. ONE CARD PER STUDENT: all his topics on his one card, in the most important section.
+  /// TODAY: a clean TO-DO LIST. ONE summary line ("Total tasks today: N · Done D · Left L") and nothing else above three BLOCKS separated by a divider:
+  /// FOLLOW-UPS, TARGET TASKS, OTHER TASKS. Each block has an icon, its name, "done/total" and a circular check (ticked when every task in it is done); a tap
+  /// on the header collapses / expands it. Inside, one ROW per task (= one student, in his most important block): a circle, his name with his small
+  /// Surrender %, small coloured chips of what the task contains; a tap on the row shows each topic (its circle, title, one line, and its 3D action button).
+  /// Done rows stay, dimmed, at the bottom of their block. Nothing is ticked by a tap: the ticks come from the saved records.
   List<Widget> _todayBody(BuildContext context, PlanDoc plan) {
     final t = context.gText;
     final g = context.g;
     final view = TodayView.of(plan);
-    final date = DateTime.tryParse(plan.todayDate);
     var n = 0;
     final out = <Widget>[
-      GuideSectionTitle(date == null ? 'Today' : 'Today — ${DateFormat('EEEE d MMMM').format(date)}'),
-      const SizedBox(height: 4),
       Padding(
-        padding: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.only(top: 4),
         child: GuideCard(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          child: Text(view.summaryText, key: const ValueKey('plan-summary'), style: t.bodyStrong),
+          child: Text(view.summaryText, key: const ValueKey('plan-summary'), style: t.cardTitleSmall),
         ),
       ),
+      const SizedBox(height: 14),
     ];
-    if (view.total == 0 && view.information.isEmpty) {
-      out.add(Padding(padding: const EdgeInsets.only(top: 8), child: Text('Nothing is planned for today. A quiet day — enjoy it.', key: const ValueKey('plan-today-empty'), style: t.small)));
-    }
-    for (final sec in view.sections) {
-      final open = _expanded.contains(sec.id);
-      out.add(Padding(
+    const icons = {kSectionFollowUps: Icons.forum_outlined, kSectionTargets: Icons.flag_outlined, kSectionOthers: Icons.event_note_outlined};
+    for (var i = 0; i < view.sections.length; i++) {
+      final sec = view.sections[i];
+      final open = !_collapsed.contains(sec.id);
+      if (i > 0) out.add(const PlanBlockDivider());
+      out.add(KeyedSubtree(
         key: _sectionKeys[sec.id],
-        padding: const EdgeInsets.only(top: 12),
-        child: GuideCard(
-          padding: EdgeInsets.zero,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              InkWell(
-                key: ValueKey('plan-section-${sec.id}'),
-                borderRadius: BorderRadius.circular(GuideShape.cardRadius),
-                onTap: () => setState(() => open ? _expanded.remove(sec.id) : _expanded.add(sec.id)),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    child: Row(
-                      children: [
-                        _circleCheck(context, sec.allDone, key: ValueKey('plan-section-check-${sec.id}')),
-                        const SizedBox(width: 12),
-                        Expanded(child: Text(sec.title, style: t.cardTitleSmall)),
-                        Text('${sec.done}/${sec.total}', key: ValueKey('plan-section-count-${sec.id}'), style: t.bodyStrong.copyWith(color: g.agent)),
-                        const SizedBox(width: 6),
-                        Icon(open ? Icons.expand_less : Icons.expand_more, color: g.mutedText),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              if (open)
+        child: PlanBlock(
+          id: sec.id,
+          icon: icons[sec.id] ?? Icons.checklist_rounded,
+          title: sec.title,
+          done: sec.done,
+          total: sec.total,
+          open: open,
+          onToggle: () => setState(() => open ? _collapsed.add(sec.id) : _collapsed.remove(sec.id)),
+          children: [
+            for (final it in sec.tasks) GuideEntry(index: n++, child: _taskRow(context, it)),
+            if (sec.id == kSectionOthers)
+              for (final it in view.information)
                 Padding(
-                  key: ValueKey('plan-section-body-${sec.id}'),
-                  padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (sec.tasks.isEmpty && !(sec.id == kSectionOthers && view.information.isNotEmpty))
-                        Padding(padding: const EdgeInsets.fromLTRB(4, 0, 4, 4), child: Text('None yet', key: ValueKey('plan-section-empty-${sec.id}'), style: t.small)),
-                      for (final it in sec.tasks) GuideEntry(index: n++, child: _taskCard(context, it)),
-                      if (sec.id == kSectionOthers)
-                        for (final it in view.information)
-                          Padding(
-                            key: ValueKey('plan-info-${it.id}'),
-                            padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
-                            child: Text(it.title, style: t.small.copyWith(color: g.mutedText)),
-                          ),
-                    ],
-                  ),
+                  key: ValueKey('plan-info-${it.id}'),
+                  padding: const EdgeInsets.fromLTRB(6, 8, 6, 0),
+                  child: Text(it.title, style: t.small.copyWith(color: g.mutedText)),
                 ),
-            ],
-          ),
+          ],
         ),
       ));
     }
     // a HOD's summary of every guide, below his own plan
     if (view.summaries.isNotEmpty) {
-      out.add(Padding(padding: const EdgeInsets.only(top: 18), child: GuideSectionTitle('Guide by guide', key: const ValueKey('plan-section-guides'))));
+      out.add(const PlanBlockDivider());
+      out.add(Padding(padding: const EdgeInsets.only(bottom: 4), child: GuideSectionTitle('Guide by guide', key: const ValueKey('plan-section-guides'))));
       for (final it in view.summaries) {
         out.add(GuideEntry(index: n++, child: _summaryLine(context, it)));
       }
@@ -499,13 +476,7 @@ class _PlanPageState extends State<PlanPage> {
   }
 
   /// The circular checkbox: filled and ticked when done. It is a picture, never a control (nothing is ticked by tapping it).
-  Widget _circleCheck(BuildContext context, bool done, {Key? key, double size = 24}) {
-    final g = context.g;
-    return Semantics(
-      label: done ? 'Done' : 'Not done yet',
-      child: Icon(done ? Icons.check_circle : Icons.radio_button_unchecked, key: key, size: size, color: done ? g.success : g.mutedText),
-    );
-  }
+  Widget _circleCheck(BuildContext context, bool done, {Key? key, double size = 24}) => planCircle(context, done, key: key, size: size);
 
   /// MISSING REPORTS: every student with no report for 5 or more days (or never). A note, then one card per student with ONE button: Ignore.
   List<Widget> _missingBody(BuildContext context, PlanDoc plan) {
@@ -588,9 +559,9 @@ class _PlanPageState extends State<PlanPage> {
     if (mounted) setState(() => _ignoring.remove(m.studentUid));
   }
 
-  /// THIS WEEK: a clean overview and nothing else. The totals, then INTERACTIONS day by day (names only, the Surrender % small, the done ones
-  /// ticked; a tap opens that student's card), TARGET TASKS and OTHER TASKS as short lists. The details (topics, one-line reasons) are only in
-  /// TODAY, on each student's card.
+  /// THIS WEEK: the same to-do look as Today. The totals, then BLOCKS separated by a divider: INTERACTIONS (day by day, "Thu 30 Oct", the names with their
+  /// small Surrender %, the done ones ticked; a tap opens that student's card), TARGET TASKS (each target with each student's step, and the roster tasks)
+  /// and OTHER TASKS (meetings, trips, competitions, book deadlines, with their dates). No advice text: the details are in Today.
   List<Widget> _weekBody(BuildContext context, PlanDoc plan) {
     final t = context.gText;
     final g = context.g;
@@ -611,9 +582,6 @@ class _PlanPageState extends State<PlanPage> {
     final tasks = held('targettasks')?.items ?? const <PlanItem>[];
     final others = held('othertasks')?.items ?? const <PlanItem>[];
 
-    Widget header(String text, String key) => Padding(padding: const EdgeInsets.only(top: 20, bottom: 8), child: GuideSectionTitle(text, key: ValueKey(key)));
-    Widget none(String key) => Padding(padding: const EdgeInsets.only(top: 2), child: Text('None yet', key: ValueKey(key), style: t.small));
-
     Widget name(PlanItem it) {
       final done = it.done;
       return GestureDetector(
@@ -629,7 +597,7 @@ class _PlanPageState extends State<PlanPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (done) ...[Icon(Icons.check_rounded, key: ValueKey('plan-week-tick-${it.studentUid}'), size: 16, color: g.success), const SizedBox(width: 4)],
-                Flexible(child: Text(it.studentName, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.bodyStrong.copyWith(fontSize: 14, color: done ? g.mutedText : g.text))),
+                Flexible(child: Text(it.studentName, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.bodyStrong.copyWith(fontSize: 14, color: done ? g.mutedText : g.text, decoration: done ? TextDecoration.lineThrough : null))),
                 if (it.percent != null) ...[const SizedBox(width: 6), Text('${it.percent}%', style: t.caption)],
               ],
             ),
@@ -643,6 +611,52 @@ class _PlanPageState extends State<PlanPage> {
       return dt == null ? 'No day yet' : DateFormat('EEE d MMM').format(dt);
     }
 
+    bool collapsed(String id) => _collapsed.contains(id);
+    void toggle(String id) => setState(() => collapsed(id) ? _collapsed.remove(id) : _collapsed.add(id));
+    final peopleDone = people.where((x) => x.done).length;
+    final tasksDone = tasks.where((x) => x.done).length;
+
+    Widget taskRow(PlanItem it) => Container(
+          key: ValueKey('plan-week-task-${it.id}'),
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(color: g.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: g.border)),
+          child: Opacity(
+            opacity: it.done ? .62 : 1,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                planCircle(context, it.done, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(it.title, style: t.body.copyWith(height: 1.35, fontWeight: it.steps.isEmpty ? null : FontWeight.w700, decoration: it.done ? TextDecoration.lineThrough : null)),
+                      // each student's step, the done ones ticked: "Testing 12 → 16", "Amit 8 → 12 ✓"
+                      if (it.steps.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              for (var i = 0; i < it.steps.length; i++)
+                                KeyedSubtree(
+                                  key: ValueKey('plan-week-step-${it.id}-$i'),
+                                  child: PlanChip(label: '${it.steps[i].name} ${it.steps[i].from} → ${it.steps[i].to}', color: g.eventTarget, done: it.steps[i].done),
+                                ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+
     return [
       // the totals
       Padding(
@@ -650,87 +664,79 @@ class _PlanPageState extends State<PlanPage> {
         padding: const EdgeInsets.only(top: 4),
         child: GuideCard(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Text('Interactions this week: ${p.needed} · done ${p.done} · left ${p.left}', key: const ValueKey('plan-progress-summary'), style: t.cardTitleSmall),
+          child: Text('Interactions this week: ${p.needed} · Done ${p.done} · Left ${p.left}', key: const ValueKey('plan-progress-summary'), style: t.cardTitleSmall),
         ),
       ),
-      header('Interactions', 'plan-week-section-interactions'),
-      if (dayKeys.isEmpty) none('plan-week-empty-interactions'),
-      for (final d in dayKeys)
-        Padding(
-          key: ValueKey('plan-week-day-$d'),
-          padding: const EdgeInsets.only(bottom: 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(dayTitle(d), style: t.caption.copyWith(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 6),
-              Wrap(spacing: 8, runSpacing: 8, children: [for (final it in days[d]!) name(it)]),
-            ],
-          ),
-        ),
-      header('Target tasks', 'plan-week-section-targettasks'),
-      if (tasks.isEmpty) none('plan-week-empty-targettasks'),
-      for (final it in tasks)
-        Padding(
-          key: ValueKey('plan-week-task-${it.id}'),
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(it.done ? Icons.check_circle : Icons.radio_button_unchecked, size: 18, color: it.done ? g.success : g.mutedText),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(it.title, style: t.body.copyWith(height: 1.35, fontWeight: it.steps.isEmpty ? null : FontWeight.w600)),
-                    // each student's step, the done ones ticked: "Testing 12 → 16", "Amit 8 → 12 ✓"
-                    if (it.steps.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 4,
-                          children: [
-                            for (var i = 0; i < it.steps.length; i++)
-                              Row(
-                                key: ValueKey('plan-week-step-${it.id}-$i'),
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (it.steps[i].done) ...[Icon(Icons.check_rounded, size: 16, color: g.success), const SizedBox(width: 2)],
-                                  Text(
-                                    '${it.steps[i].name} ${it.steps[i].from} → ${it.steps[i].to}',
-                                    style: t.small.copyWith(decoration: it.steps[i].done ? TextDecoration.lineThrough : null, color: it.steps[i].done ? g.mutedText : g.text),
-                                  ),
-                                ],
-                              ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
+      const SizedBox(height: 14),
+      PlanBlock(
+        id: 'week-interactions',
+        icon: Icons.forum_outlined,
+        title: 'Interactions',
+        done: peopleDone,
+        total: people.length,
+        open: !collapsed('week-interactions'),
+        onToggle: () => toggle('week-interactions'),
+        emptyText: 'Nothing here this week',
+        children: [
+          for (final d in dayKeys)
+            Padding(
+              key: ValueKey('plan-week-day-$d'),
+              padding: const EdgeInsets.fromLTRB(4, 4, 4, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(dayTitle(d), style: t.caption.copyWith(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 6),
+                  Wrap(spacing: 8, runSpacing: 8, children: [for (final it in days[d]!) name(it)]),
+                ],
               ),
-            ],
-          ),
-        ),
-      header('Other tasks', 'plan-week-section-othertasks'),
-      if (others.isEmpty) none('plan-week-empty-othertasks'),
-      for (final it in others)
-        Padding(
-          key: ValueKey('plan-week-other-${it.id}'),
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(width: 78, child: Text(dayTitle(it.scheduledFor), style: t.caption.copyWith(fontWeight: FontWeight.w700))),
-              Expanded(child: Text(it.title, style: t.body.copyWith(height: 1.35))),
-            ],
-          ),
-        ),
+            ),
+        ],
+      ),
+      const PlanBlockDivider(),
+      PlanBlock(
+        id: 'week-targettasks',
+        icon: Icons.flag_outlined,
+        title: 'Target tasks',
+        done: tasksDone,
+        total: tasks.length,
+        open: !collapsed('week-targettasks'),
+        onToggle: () => toggle('week-targettasks'),
+        emptyText: 'Nothing here this week',
+        children: [for (final it in tasks) taskRow(it)],
+      ),
+      const PlanBlockDivider(),
+      PlanBlock(
+        id: 'week-othertasks',
+        icon: Icons.event_note_outlined,
+        title: 'Other tasks',
+        total: others.length,
+        showCheck: false,
+        open: !collapsed('week-othertasks'),
+        onToggle: () => toggle('week-othertasks'),
+        emptyText: 'Nothing here this week',
+        children: [
+          for (final it in others)
+            Container(
+              key: ValueKey('plan-week-other-${it.id}'),
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(color: g.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: g.border)),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(width: 78, child: Text(dayTitle(it.scheduledFor), style: t.caption.copyWith(fontWeight: FontWeight.w800))),
+                  Expanded(child: Text(it.title, style: t.body.copyWith(height: 1.35))),
+                ],
+              ),
+            ),
+        ],
+      ),
       // a HOD's summary of every guide, below his own
       for (final s in plan.sections)
         if (s.id == 'guides') ...[
-          header(s.title, 'plan-week-section-guides'),
+          const PlanBlockDivider(),
+          Padding(padding: const EdgeInsets.only(bottom: 4), child: GuideSectionTitle(s.title, key: const ValueKey('plan-week-section-guides'))),
           for (final it in s.items) _summaryLine(context, it),
         ],
     ];
@@ -745,7 +751,8 @@ class _PlanPageState extends State<PlanPage> {
     if (card != null) {
       setState(() {
         _tab = 0;
-        _expanded.add(todaySectionOf(card!));
+        _collapsed.remove(todaySectionOf(card!));
+        _openRows.add(card.id);
       });
       void go({bool retry = true}) {
         final ctx = _cardKeys[it.studentUid]?.currentContext;
@@ -786,75 +793,117 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
-  /// A TASK in Today: a circular checkbox and its title; for a student his Surrender % beside his name (a tap opens his details) and, inside, his TOPICS
-  /// (a short title and ONE line each). A topic that is done has a line through its title and a tick with "done"; the task is ticked when all its
-  /// topics are. A task that is not about one student (a target task, a phase end ...) is its title and one line.
-  Widget _taskCard(BuildContext context, PlanItem it) {
+  /// A TO-DO ROW in Today: a circle (ticked when ALL his topics are done, never by tapping), his name with his small Surrender %, and small coloured CHIPS of what
+  /// it contains. A tap on the row shows each topic: its circle, its title (struck through with a tick when done), its one line and its 3D action button.
+  /// A task that is not about one student (a phase end, a deadline ...) is its title; a tap shows its line. Done rows are dimmed.
+  Widget _taskRow(BuildContext context, PlanItem it) {
     final g = context.g;
     final t = context.gText;
+    final open = _openRows.contains(it.id);
     final when = it.scheduledFor.isEmpty ? null : DateTime.tryParse(it.scheduledFor);
     TextStyle struck(TextStyle base) => it.done ? base.copyWith(decoration: TextDecoration.lineThrough, color: g.mutedText) : base;
-    final title = it.isInteraction && it.percent != null ? '${it.title} · ${it.percent}%' : it.title;
+    final name = it.isCard && it.studentName.isNotEmpty ? it.studentName : it.title;
+    final seen = <String>{};
+    final chips = [
+      for (final p in it.points)
+        if (seen.add('${p.title}|${p.kind}')) PlanChip(label: p.title.isEmpty ? p.kind : p.title, color: planChipColor(g, p.kind), done: p.done),
+    ];
     return Padding(
       key: ValueKey('plan-item-${it.id}'),
-      padding: const EdgeInsets.only(top: 8),
-      child: Container(
-        key: it.isCard && it.studentUid.isNotEmpty ? _cardKeys.putIfAbsent(it.studentUid, GlobalKey.new) : null,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(color: g.chipBackground.withValues(alpha: .45), borderRadius: BorderRadius.circular(12), border: Border.all(color: g.border)),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _circleCheck(context, it.done, key: ValueKey('plan-check-${it.id}'), size: 22),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: it.isCard && it.studentUid.isNotEmpty
-                      ? InkWell(
-                          key: ValueKey('plan-open-${it.id}'),
-                          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => StudentProfilePage(studentUid: it.studentUid))),
-                          child: Text(title, key: ValueKey('plan-title-${it.id}'), style: struck(t.cardTitleSmall)),
-                        )
-                      : Text(title, key: ValueKey('plan-title-${it.id}'), style: struck(t.cardTitleSmall)),
-                ),
-              ],
-            ),
-            if (when != null) ...[
-              const SizedBox(height: 2),
-              Padding(padding: const EdgeInsets.only(left: 32), child: Text(DateFormat('EEE d MMM').format(when), style: t.caption.copyWith(color: g.agent))),
-            ],
-            // every topic: a title and ONE line; done: struck through, with a tick
-            if (it.points.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              for (var i = 0; i < it.points.length; i++) _topicLine(context, it, i),
-              if (it.also.isNotEmpty) Padding(padding: const EdgeInsets.only(left: 32), child: Text(it.also, key: ValueKey('plan-also-${it.id}'), style: t.caption.copyWith(height: 1.3))),
-            ] else if (it.detail.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Padding(padding: const EdgeInsets.only(left: 32), child: Text(it.detail, style: struck(t.small.copyWith(height: 1.35)))),
-            ],
-            if (it.carriedOver || (it.checkWithHim && !it.isCard)) ...[
-              const SizedBox(height: 6),
-              Padding(
-                padding: const EdgeInsets.only(left: 32),
-                child: Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  children: [
-                    if (it.carriedOver) _tag(context, 'Carried over', key: ValueKey('plan-carried-${it.id}')),
-                    if (it.checkWithHim && !it.isCard) _tag(context, pronouned('Check with him first', it.gender, name: it.studentName)),
-                  ],
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Opacity(
+        opacity: it.done ? .62 : 1,
+        child: Container(
+          key: it.isCard && it.studentUid.isNotEmpty ? _cardKeys.putIfAbsent(it.studentUid, GlobalKey.new) : null,
+          decoration: BoxDecoration(color: g.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: open ? g.agent : g.border), boxShadow: g.cardShadow),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              InkWell(
+                key: ValueKey('plan-row-${it.id}'),
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => setState(() => open ? _openRows.remove(it.id) : _openRows.add(it.id)),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _circleCheck(context, it.done, key: ValueKey('plan-check-${it.id}'), size: 22),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Flexible(child: Text(name, key: ValueKey('plan-title-${it.id}'), maxLines: 2, overflow: TextOverflow.ellipsis, style: struck(t.cardTitleSmall))),
+                                  if (it.isInteraction && it.percent != null) ...[const SizedBox(width: 8), Text('${it.percent}%', key: ValueKey('plan-percent-${it.id}'), style: t.caption.copyWith(fontWeight: FontWeight.w700))],
+                                ],
+                              ),
+                              if (chips.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(key: ValueKey('plan-chips-${it.id}'), spacing: 6, runSpacing: 6, children: chips)),
+                            ],
+                          ),
+                        ),
+                        Icon(open ? Icons.expand_less : Icons.expand_more, color: g.mutedText),
+                      ],
+                    ),
+                  ),
                 ),
               ),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                alignment: Alignment.topCenter,
+                child: !open
+                    ? const SizedBox(width: double.infinity)
+                    : Padding(
+                        key: ValueKey('plan-row-body-${it.id}'),
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (when != null) Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(DateFormat('EEE d MMM').format(when), style: t.caption.copyWith(color: g.agent))),
+                            if (it.points.isNotEmpty) ...[
+                              for (var i = 0; i < it.points.length; i++) _topicLine(context, it, i),
+                              if (it.also.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(it.also, key: ValueKey('plan-also-${it.id}'), style: t.caption.copyWith(height: 1.3))),
+                            ] else if (it.detail.isNotEmpty)
+                              Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(it.detail, style: struck(t.small.copyWith(height: 1.35)))),
+                            if (it.carriedOver || (it.checkWithHim && !it.isCard))
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  children: [
+                                    if (it.carriedOver) _tag(context, 'Carried over', key: ValueKey('plan-carried-${it.id}')),
+                                    if (it.checkWithHim && !it.isCard) _tag(context, pronouned('Check with him first', it.gender, name: it.studentName)),
+                                  ],
+                                ),
+                              ),
+                            if (it.isCard && it.studentUid.isNotEmpty)
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: TextButton(
+                                  key: ValueKey('plan-open-${it.id}'),
+                                  style: TextButton.styleFrom(minimumSize: const Size(48, 48), padding: const EdgeInsets.symmetric(horizontal: 4)),
+                                  onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => StudentProfilePage(studentUid: it.studentUid))),
+                                  child: Text('His profile', style: t.bodyStrong.copyWith(color: g.agent)),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+              ),
             ],
-          ],
+          ),
         ),
       ),
     );
   }
 
-  /// One topic of a task: its title (struck through when done) with a tick and "done", then its one line.
+  /// One topic of a task: its circle, its title (struck through when done, with a tick and "done"), its one line and, while open, its 3D action button.
   Widget _topicLine(BuildContext context, PlanItem it, int i) {
     final g = context.g;
     final t = context.gText;
@@ -862,33 +911,40 @@ class _PlanPageState extends State<PlanPage> {
     TextStyle struck(TextStyle base) => p.done ? base.copyWith(decoration: TextDecoration.lineThrough, color: g.mutedText) : base;
     return Padding(
       key: ValueKey('plan-point-${it.id}-$i'),
-      padding: const EdgeInsets.only(left: 32, bottom: 8),
-      child: Column(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              if (p.title.isNotEmpty) Flexible(child: Text(p.title, key: ValueKey('plan-point-title-${it.id}-$i'), style: struck(t.bodyStrong.copyWith(fontSize: 14, color: g.agent)))),
-              if (p.done) ...[
-                const SizedBox(width: 8),
-                Icon(Icons.check_rounded, key: ValueKey('plan-point-tick-${it.id}-$i'), size: 16, color: g.success),
-                const SizedBox(width: 2),
-                Text('done', key: ValueKey('plan-point-done-${it.id}-$i'), style: t.caption.copyWith(color: g.success, fontWeight: FontWeight.w700)),
+          Padding(padding: const EdgeInsets.only(top: 1), child: planCircle(context, p.done, key: ValueKey('plan-point-circle-${it.id}-$i'), size: 18)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    if (p.title.isNotEmpty) Flexible(child: Text(p.title, key: ValueKey('plan-point-title-${it.id}-$i'), style: struck(t.bodyStrong.copyWith(fontSize: 14, color: g.agent)))),
+                    if (p.done) ...[
+                      const SizedBox(width: 8),
+                      Icon(Icons.check_rounded, key: ValueKey('plan-point-tick-${it.id}-$i'), size: 16, color: g.success),
+                      const SizedBox(width: 2),
+                      Text('done', key: ValueKey('plan-point-done-${it.id}-$i'), style: t.caption.copyWith(color: g.success, fontWeight: FontWeight.w700)),
+                    ],
+                  ],
+                ),
+                Text(p.text, key: ValueKey('plan-point-text-${it.id}-$i'), style: struck(t.small.copyWith(height: 1.35))),
+                // ONE 3D button per open topic: it opens the place to do it by hand; it never ticks (the topic ticks when the real record is saved there)
+                if (!p.done && it.isCard && it.studentUid.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Guide3dButton(key: ValueKey('plan-action-${it.id}-$i'), label: kTopicActionLabels[topicActionOf(p)]!, onPressed: () => runTopicAction(context, it, p)),
+                    ),
+                  ),
               ],
-            ],
-          ),
-          Text(p.text, key: ValueKey('plan-point-text-${it.id}-$i'), style: struck(t.small.copyWith(height: 1.35))),
-          // ONE button per open topic: it opens the place to do it by hand; it never ticks (the topic ticks when the real record is saved there)
-          if (!p.done && it.isCard && it.studentUid.isNotEmpty)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                key: ValueKey('plan-action-${it.id}-$i'),
-                style: TextButton.styleFrom(minimumSize: const Size(48, 48), padding: const EdgeInsets.symmetric(horizontal: 4), tapTargetSize: MaterialTapTargetSize.padded),
-                onPressed: () => runTopicAction(context, it, p),
-                child: Text(kTopicActionLabels[topicActionOf(p)]!, style: t.bodyStrong.copyWith(color: g.agent)),
-              ),
             ),
+          ),
         ],
       ),
     );

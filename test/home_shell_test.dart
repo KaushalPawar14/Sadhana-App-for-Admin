@@ -267,7 +267,7 @@ void main() {
       final page = tester.widget<PlanPage>(find.byType(PlanPage));
       expect(page.initialWeek, isTrue);
       expect(page.section, isNull);
-      expect(find.byKey(const ValueKey('plan-week-section-interactions')), findsOneWidget, reason: 'the This week tab is showing');
+      expect(find.byKey(const ValueKey('plan-section-week-interactions')), findsOneWidget, reason: 'the This week tab is showing');
     });
 
     testWidgets("TODAY'S TASKS (the card) opens the Plan page on the Today tab", (tester) async {
@@ -278,7 +278,7 @@ void main() {
       final page = tester.widget<PlanPage>(find.byType(PlanPage));
       expect(page.initialWeek, isFalse);
       expect(page.section, isNull);
-      expect(find.textContaining('Today — Friday 30 October'), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-summary')), findsOneWidget, reason: 'the Today tab is showing');
     });
 
     for (final e in {'followups': PlanGroup.followUp, 'targets': PlanGroup.target, 'other': PlanGroup.other}.entries) {

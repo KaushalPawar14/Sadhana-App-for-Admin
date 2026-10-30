@@ -185,20 +185,22 @@ void main() {
       await _emit(tester, data, null);
       expect(find.byKey(const ValueKey('plan-empty')), findsOneWidget);
       await _emit(tester, data, _plan(today: const [], sections: const []));
-      expect(find.byKey(const ValueKey('plan-today-empty')), findsOneWidget);
+      for (final id in ['followups', 'targets', 'others']) {
+        expect(find.byKey(ValueKey('plan-section-empty-$id')), findsOneWidget, reason: 'an empty block says "Nothing here today"');
+      }
       await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
       await tester.pumpAndSettle();
       // nothing is hidden: the counts are 0 and every section says "None yet"
       expect(find.byKey(const ValueKey('plan-progress')), findsOneWidget);
-      expect(find.text('Interactions this week: 0 · done 0 · left 0'), findsOneWidget);
-      for (final id in ['interactions', 'targettasks', 'othertasks']) {
-        expect(find.byKey(ValueKey('plan-week-empty-$id')), findsOneWidget, reason: id);
+      expect(find.text('Interactions this week: 0 · Done 0 · Left 0'), findsOneWidget);
+      for (final id in ['week-interactions', 'week-targettasks', 'week-othertasks']) {
+        expect(find.byKey(ValueKey('plan-section-empty-$id')), findsOneWidget, reason: id);
       }
     });
 
     testWidgets('opened for THIS WEEK (from Home) it starts on that tab', (tester) async {
       await _open(tester, page: const PlanPage(initialWeek: true));
-      expect(find.byKey(const ValueKey('plan-week-section-interactions')), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-section-week-interactions')), findsOneWidget);
       expect(find.textContaining('Today — Friday'), findsNothing);
     });
   });
@@ -230,8 +232,6 @@ void main() {
       );
       expect(_statusText(tester), 'Updated');
       expect(_lastUpdated(tester), 'Last updated: Fri 30 Oct, 10:00 AM (by refresh)');
-      await tester.tap(find.byKey(const ValueKey('plan-section-others'))); // the sections open by a tap
-      await tester.pump();
       expect(find.text('Follow up with Ravi'), findsOneWidget, reason: 'the new plan is on screen');
       expect(find.text('Meet Harsh'), findsNothing);
       final lit = tester.widget<AnimatedContainer>(find.byKey(const ValueKey('plan-status')));
@@ -244,8 +244,6 @@ void main() {
       final at = DateTime.utc(2026, 10, 30, 0, 30);
       final data = await _open(tester, doc: _plan(refreshedAt: at, refreshedBy: 'daily'));
       await _emit(tester, data, _plan(generatedAt: _now, refreshedAt: at, refreshedBy: 'daily', today: const [PlanItem(id: 'doubts::x', kind: 'doubtsToAnswer', title: '1 doubt waiting for your answer')]));
-      await tester.tap(find.byKey(const ValueKey('plan-section-followups')));
-      await tester.pump();
       expect(find.text('1 doubt waiting for your answer'), findsOneWidget);
       expect(_lastUpdated(tester), 'Last updated: Fri 30 Oct, 6:00 AM (daily update)');
     });
@@ -373,10 +371,10 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('plan-progress')), findsOneWidget);
-      expect(find.byKey(const ValueKey('plan-week-section-interactions')), findsOneWidget);
+      expect(find.byKey(const ValueKey('plan-section-week-interactions')), findsOneWidget);
       expect(find.text('Guide by guide'), findsOneWidget);
       double y(Finder f) => tester.getTopLeft(f).dy;
-      expect(y(find.byKey(const ValueKey('plan-week-section-interactions'))), lessThan(y(find.text('Guide by guide'))));
+      expect(y(find.byKey(const ValueKey('plan-section-week-interactions'))), lessThan(y(find.text('Guide by guide'))));
     });
 
     test('the Home counts are his OWN tasks: the guides\' summary lines are never counted', () {

@@ -71,12 +71,12 @@ Future<_FakePlanData> _open(WidgetTester tester, PlanDoc doc, {List<NavigatorObs
   data.controller.add(doc);
   await tester.pump();
   await tester.pump();
-  for (final id in ['followups', 'targets', 'others']) {
-    final f = find.byKey(ValueKey('plan-section-$id'));
-    if (f.evaluate().isNotEmpty) {
-      await tester.tap(f);
-      await tester.pump();
-    }
+  // the blocks are open; a tap on a row shows its topics (and their buttons)
+  final rows = find.byWidgetPredicate((w) => w.key is ValueKey<String> && (w.key! as ValueKey<String>).value.startsWith('plan-row-') && !(w.key! as ValueKey<String>).value.startsWith('plan-row-body-'));
+  final n = rows.evaluate().length;
+  for (var i = 0; i < n; i++) {
+    await tester.tap(rows.at(i));
+    await tester.pumpAndSettle();
   }
   return data;
 }

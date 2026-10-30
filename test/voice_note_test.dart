@@ -628,10 +628,8 @@ void main() {
 
     await pumpScreen(tester, const AssociationManagerPage());
     await tester.pumpAndSettle();
-    // Confirmed meetings, the ones that can be completed, are on the second tab.
-    await tester.tap(find.text('Upcoming & History'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Mark Complete').first);
+    // Confirmed meetings, the ones that can be completed, are in the Confirmed section.
+    await tester.tap(find.byWidgetPredicate((w) => w.key is ValueKey<String> && (w.key! as ValueKey<String>).value.startsWith('assoc-completed-')).first);
     await tester.pumpAndSettle();
 
     expect(find.text('Notes from the meeting'), findsOneWidget);
@@ -666,9 +664,7 @@ void main() {
         addTearDown(() => VoiceRecorder.useForTests(null));
         await pumpScreen(tester, const AssociationManagerPage(), scale: scale, dark: dark);
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Upcoming & History'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Mark Complete').first);
+        await tester.tap(find.byWidgetPredicate((w) => w.key is ValueKey<String> && (w.key! as ValueKey<String>).value.startsWith('assoc-completed-')).first);
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('voice-speak')));
         await tester.pump(const Duration(seconds: 70));

@@ -34,10 +34,14 @@ enum Willingness {
 /// the save, and the plan ticks by itself when the server has the record.
 ///
 /// Returns true when the interaction was saved.
-Future<bool> showRecordInteractionDialog(BuildContext context, {required PlanItem card, PlanPoint? tapped}) async {
+Future<bool> showRecordInteractionDialog(BuildContext context, {required PlanItem card, PlanPoint? tapped}) =>
+    showRecordInteractionFor(context, studentUid: card.studentUid, studentName: card.studentName, topics: recordTopicsOf(card));
+
+/// The same form for a student and the topics to cover (the assistant's "Guide me" button too).
+Future<bool> showRecordInteractionFor(BuildContext context, {required String studentUid, required String studentName, List<PlanPoint> topics = const []}) async {
   final saved = await showDialog<bool>(
     context: context,
-    builder: (_) => RecordInteractionDialog(studentUid: card.studentUid, studentName: card.studentName, topics: recordTopicsOf(card)),
+    builder: (_) => RecordInteractionDialog(studentUid: studentUid, studentName: studentName, topics: topics),
   );
   return saved == true;
 }

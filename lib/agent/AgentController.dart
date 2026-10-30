@@ -9,6 +9,7 @@ import 'AgentEnv.dart';
 import 'AgentReads.dart';
 import 'TaskProgress.dart';
 import 'AgentTypes.dart';
+import 'AgentGuideMe.dart';
 import 'AgentWrites.dart';
 import 'AgentWrites2.dart';
 
@@ -56,9 +57,12 @@ class UserEntry extends ChatEntry {
 }
 
 class AssistantEntry extends ChatEntry {
-  AssistantEntry(this.text, [this.links = const []]);
+  AssistantEntry(this.text, [this.links = const [], this.buttons = const []]);
   final String text;
   final List<AgentLink> links;
+
+  /// "Guide me": the buttons that open the screen for each instruction (saved with the chat).
+  final List<GuideButton> buttons;
 }
 
 class ErrorEntry extends ChatEntry {
@@ -245,6 +249,7 @@ class AgentController extends ChangeNotifier {
         return AssistantEntry(
           (m['text'] ?? '').toString(),
           [for (final l in (m['links'] as List? ?? const []).whereType<Map>()) AgentLink.fromMap(l)],
+          [for (final b in (m['buttons'] as List? ?? const [])) if (GuideButton.fromMap(b) case final x?) x],
         );
       case 'question':
         return QuestionEntry(
@@ -291,6 +296,30 @@ class AgentController extends ChangeNotifier {
     return reply;
   }
 
+  /// "GUIDE ME" (the assistant only points to the screen, changing nothing) or "DO IT" (it does the task at once, the default). Remembered per admin.
+  AgentMode mode = AgentMode.doIt;
+
+  /// Loads the saved mode of the signed-in admin (a missing one is "Do it").
+  Future<void> loadMode() async {
+    try {
+      mode = await AgentModeStore.load(env.me.id);
+      notifyListeners();
+    } catch (_) {
+      // no signed-in admin yet: "Do it"
+    }
+  }
+
+  Future<void> setMode(AgentMode m) async {
+    if (mode == m) return;
+    mode = m;
+    notifyListeners();
+    try {
+      await AgentModeStore.save(env.me.id, m);
+    } catch (_) {
+      // remembered only until the app closes
+    }
+  }
+
   /// The guide said something.
   Future<void> send(String text) async {
     final clean = text.trim();
@@ -301,7 +330,13 @@ class AgentController extends ChangeNotifier {
     _task = task;
     _add(task);
     try {
-      await _handle(await _turn({'text': clean}));
+      if (mode == AgentMode.guide) {
+        // GUIDE ME: the students found by name go with the request (the server checks each against the guide's scope); one cheap call, no tools, no changes
+        final found = studentCandidates(await env.students(), clean);
+        await _handle(await _turn({'text': clean, 'mode': 'guide', 'candidates': found}));
+      } else {
+        await _handle(await _turn({'text': clean}));
+      }
     } catch (e) {
       final message = agentFailureMessage(e);
       task.progress.fail(message);
@@ -323,7 +358,7 @@ class AgentController extends ChangeNotifier {
           _task?.progress.finish();
           // changes the server ran by itself: shown as done, with their Undo, before the assistant's closing words
           if (reply.executed != null) _addExecuted(reply.executed!);
-          if (reply.text != null || reply.links.isNotEmpty) _add(AssistantEntry(reply.text ?? '', reply.links));
+          if (reply.text != null || reply.links.isNotEmpty || reply.buttons.isNotEmpty) _add(AssistantEntry(reply.text ?? '', reply.links, reply.buttons));
           return;
 
         case AgentStatus.limit:

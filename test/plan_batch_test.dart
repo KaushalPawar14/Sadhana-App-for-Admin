@@ -113,7 +113,7 @@ void main() {
     await _open(tester);
     await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
     await tester.pumpAndSettle();
-    expect(tester.widget<Text>(find.byKey(const ValueKey('plan-progress-summary'))).data, 'Interactions this week: 20 · done 4 · left 16');
+    expect(tester.widget<Text>(find.byKey(const ValueKey('plan-progress-summary'))).data, 'Interactions this week: 20 · Done 4 · Left 16');
     // day by day, in order
     expect(find.byKey(const ValueKey('plan-week-day-2026-10-30')), findsOneWidget);
     expect(find.byKey(const ValueKey('plan-week-day-2026-10-31')), findsOneWidget);
@@ -175,7 +175,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('plan-tab-week')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('plan-progress')), findsOneWidget);
-    expect(find.text('Interactions this week: 0 · done 0 · left 0'), findsOneWidget);
+    expect(find.text('Interactions this week: 0 · Done 0 · Left 0'), findsOneWidget);
   });
 
   group('every state: light and dark, text scale 1.0 / 1.3 / 1.6, no overflow', () {

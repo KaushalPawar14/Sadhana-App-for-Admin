@@ -2,7 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
 import '../Services/HierarchyApi.dart';
+import '../utils/AdminProfile.dart';
 import '../utils/GuideDb.dart';
+import 'InteractionActions.dart';
 import '../utils/GuideNotes.dart';
 
 /// Meetings with students (Associations): the writes, with no screen in them.
@@ -110,17 +112,61 @@ Future<void> acceptStudentProposal(
   );
 }
 
-/// "Mark Complete": the meeting happened; these are the notes.
+/// "Completed": the meeting happened; these are the notes.
+///
+/// A held meeting COUNTS AS AN INTERACTION with the student (the same record the assistant and the Today form save, with no AI pass): the server
+/// recomputes his Surrender %, ticks his Today topics (the meeting itself, and the interaction topics a conversation deals with) and works the
+/// plans out again. His history already gets its "Meeting held" line and the guide's notes line from the meeting's own triggers, so the interaction
+/// record (`source: 'meeting'`) adds no third line.
 Future<void> completeMeeting(
   String associationId, {
   required String notes,
 }) async {
+  final ref = GuideDb.instance.collection('associations').doc(associationId);
+  final before = (await ref.get()).data();
   // The guide's notes are GUIDE-ONLY: they go to `associationGuideNotes`, never onto the association the student reads.
-  await GuideDb.instance.collection('associations').doc(associationId).update({
+  await ref.update({
     'status': 'completed',
     'updatedAt': FieldValue.serverTimestamp(),
   });
   await saveGuideNote(associationId, notes);
+  final studentUid = (before?['studentUid'] ?? '').toString();
+  final guide = AdminProfileProvider.current?.id ?? '';
+  if (studentUid.isEmpty || guide.isEmpty) return;
+  try {
+    await saveInteraction(
+      guideId: guide,
+      studentUid: studentUid,
+      studentName: (before?['studentName'] ?? '').toString(),
+      raw: notes.trim(),
+      interactionType: 'Live (in-person)',
+      interactionDate: DateTime.now(),
+      addressed: true,
+      source: 'meeting',
+      skipAi: true,
+      notify: false,
+    );
+  } catch (_) {
+    // the meeting stays completed with its notes; only the interaction record is missing
+  }
+}
+
+/// "Cancelled" on a CONFIRMED meeting: the association is deleted completely (with the guide's note on it) and the student is told, as before.
+Future<void> cancelAndDeleteMeeting(
+  String associationId, {
+  required String studentUid,
+}) async {
+  await GuideDb.instance.collection('associations').doc(associationId).delete();
+  try {
+    await GuideDb.instance.collection('associationGuideNotes').doc(associationId).delete();
+  } catch (_) {
+    // a note that was never there
+  }
+  await notifyStudentAboutMeeting(
+    studentUid,
+    'Meeting Cancelled',
+    'Your meeting request was cancelled',
+  );
 }
 
 /// Cancel a request or a meeting.

@@ -2,9 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:folk_guide_app/Pages/AssociationManager.dart';
 import 'package:folk_guide_app/Services/HierarchyApi.dart';
 import 'package:folk_guide_app/actions/AssociationActions.dart';
+import 'package:folk_guide_app/utils/AdminProfile.dart';
 import 'package:folk_guide_app/utils/GuideDb.dart';
 
 import 'support/app_harness.dart';
@@ -171,97 +171,28 @@ void main() {
   });
 
   // -------------------------------------------------------------------------
-  // the screen, still working through the shared functions
-  // -------------------------------------------------------------------------
-  Future<void> openUpcoming(WidgetTester tester, {double scale = 1.0, bool dark = false}) async {
-    await pumpScreen(tester, const AssociationManagerPage(), scale: scale, dark: dark);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Upcoming & History'));
-    await tester.pumpAndSettle();
-  }
-
-  testWidgets('the Upcoming card offers Reschedule beside Mark Complete and Cancel',
-      (tester) async {
-    await prepareApp(tester);
-    await openUpcoming(tester);
-    expect(find.text('Mark Complete'), findsWidgets);
-    expect(find.text('Reschedule'), findsWidgets);
-    expect(find.text('Cancel'), findsWidgets);
-  });
-
-  testWidgets('Reschedule asks for a date and time, then moves the meeting',
-      (tester) async {
-    final seeded = await prepareApp(tester);
-    final calls = <Map<String, dynamic>>[];
-    HierarchyApi.useForTests((name, args) async {
-      if (name == 'sendStudentNotification') calls.add(args);
-      return <String, dynamic>{};
+  group('a held meeting counts as an interaction; a cancelled confirmed one is deleted', () {
+    test('Completed with a signed-in guide also saves the interaction record of the meeting (no AI), the notes still guide-only', () async {
+      AdminProfileProvider.instance.debugSet(adminProfile(Who.guide));
+      addTearDown(() => AdminProfileProvider.instance.debugSet(null));
+      final id = await seed();
+      await completeMeeting(id, notes: 'We agreed a smaller target.');
+      final logs = (await db.collection('interactionLogs').get()).docs;
+      expect(logs.length, 1);
+      final d = logs.single.data();
+      expect([d['studentUid'], d['source'], d['analysis'], d['status'], d['addressed'], d['rawDictation']], ['s1', 'meeting', 'done', 'approved', true, 'We agreed a smaller target.']);
+      expect(d.containsKey('preAnalysis'), isFalse, reason: 'no AI');
+      expect((await read(id))['status'], 'completed');
     });
-    await openUpcoming(tester);
 
-    final before = (await seeded.collection('associations').where('status', isEqualTo: 'confirmed').get())
-        .docs.first;
-    final oldDate = (before.data()['confirmedDate'] as Timestamp).toDate();
-
-    await tester.tap(find.text('Reschedule').first);
-    await tester.pumpAndSettle();
-    // pick a different day: the 28th of the month shown (always selectable)
-    await tester.tap(find.text('28'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('OK'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('OK'));
-    await tester.pumpAndSettle();
-    await tester.pump(const Duration(seconds: 4));
-
-    final after = await seeded.collection('associations').doc(before.id).get();
-    final newDate = (after.data()!['confirmedDate'] as Timestamp).toDate();
-    expect(newDate.day, 28);
-    expect(newDate != oldDate, isTrue);
-    expect(after.data()!['status'], 'confirmed');
-    expect(calls.single['title'], 'Meeting Rescheduled');
+    test('Cancelled on a confirmed meeting DELETES it completely (and its guide note) and tells the student', () async {
+      final id = await seed();
+      await db.collection('associationGuideNotes').doc(id).set({'notes': 'x', 'studentUid': 's1'});
+      await cancelAndDeleteMeeting(id, studentUid: 's1');
+      expect((await db.collection('associations').doc(id).get()).exists, isFalse);
+      expect((await db.collection('associationGuideNotes').doc(id).get()).exists, isFalse);
+      expect(pushes.single['title'], 'Meeting Cancelled');
+      expect(pushes.single['body'], 'Your meeting request was cancelled');
+    });
   });
-
-  testWidgets('cancelling out of the pickers moves nothing', (tester) async {
-    final seeded = await prepareApp(tester);
-    await openUpcoming(tester);
-    final before = (await seeded.collection('associations').where('status', isEqualTo: 'confirmed').get())
-        .docs.first;
-
-    await tester.tap(find.text('Reschedule').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Cancel').last);
-    await tester.pumpAndSettle();
-
-    final after = await seeded.collection('associations').doc(before.id).get();
-    expect(after.data()!['confirmedDate'], before.data()['confirmedDate']);
-  });
-
-  testWidgets('Mark Complete still saves what is in the notes box', (tester) async {
-    final seeded = await prepareApp(tester);
-    await openUpcoming(tester);
-    await tester.tap(find.text('Mark Complete').first);
-    await tester.pumpAndSettle();
-    await tester.enterText(find.widgetWithText(TextFormField, 'Notes from the meeting'), 'Agreed on 8 rounds.');
-    await tester.tap(find.text('Save'));
-    await tester.pumpAndSettle();
-    await tester.pump(const Duration(seconds: 4));
-
-    final done = await seeded.collection('associations').where('status', isEqualTo: 'completed').get();
-    expect(done.docs.any((d) => d.data().containsKey('guideNotes')), isFalse);
-    final notes = await seeded.collection('associationGuideNotes').get();
-    expect(notes.docs.any((d) => d.data()['notes'] == 'Agreed on 8 rounds.'), isTrue);
-  });
-
-  for (final scale in kScales) {
-    for (final dark in [false, true]) {
-      testWidgets('the Upcoming card with Reschedule fits at text $scale, ${dark ? 'dark' : 'light'}',
-          (tester) async {
-        await prepareApp(tester);
-        await openUpcoming(tester, scale: scale, dark: dark);
-        expect(tester.takeException(), isNull);
-        expect(find.text('Reschedule'), findsWidgets);
-      });
-    }
-  }
 }

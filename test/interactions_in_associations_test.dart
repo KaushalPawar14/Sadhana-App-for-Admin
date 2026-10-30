@@ -24,12 +24,6 @@ Future<void> openAssociations(WidgetTester tester,
   await tester.pumpAndSettle();
 }
 
-/// Moves to the "Upcoming & History" tab, where interactions live.
-Future<void> openHistoryTab(WidgetTester tester) async {
-  await tester.tap(find.text('Upcoming & History'));
-  await tester.pumpAndSettle();
-}
-
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(loadGuideFonts);
@@ -51,21 +45,6 @@ void main() {
   // -------------------------------------------------------------------------
   // the new way in
   // -------------------------------------------------------------------------
-  testWidgets('Associations has NO "Add interaction" / "New interaction" button on either tab: interactions are recorded through the assistant',
-      (tester) async {
-    await prepareApp(tester);
-    await openAssociations(tester);
-    expect(find.text('Add interaction'), findsNothing);
-    expect(find.text('New interaction'), findsNothing);
-    expect(find.byTooltip('Add interaction'), findsNothing);
-    // creating a MEETING still belongs only on the pending tab
-    expect(find.text('New Meeting'), findsOneWidget);
-
-    await openHistoryTab(tester);
-    expect(find.text('Add interaction'), findsNothing);
-    expect(find.text('New Meeting'), findsNothing);
-  });
-
   testWidgets('a student\'s Interactions page has no "New" button either; it says how to record one', (tester) async {
     await prepareApp(tester);
     await pumpScreen(tester, const InteractionLoggerPage(studentUid: 's4', studentName: 'Dhruva Nair'));
@@ -75,109 +54,9 @@ void main() {
     expect(find.textContaining('Tell the assistant about your next conversation'), findsOneWidget);
   });
 
-  testWidgets('the guide\'s note on a completed meeting shows in the History from the GUIDE-ONLY place (the association itself carries none)', (tester) async {
-    final db = await prepareApp(tester);
-    await db.collection('associations').add({
-      'studentUid': 's1', 'studentName': 'Arjun Kumar', 'guideId': 'G', 'status': 'completed', 'studentNotes': 'I wanted to ask about japa',
-      'confirmedDate': Timestamp.fromDate(DateTime(2026, 10, 20, 18)), 'scopeGuide': 'G', 'scopeTeam': 'G', 'scopeGender': 'male',
-    });
-    final id = (await db.collection('associations').where('status', isEqualTo: 'completed').get()).docs.first.id;
-    await db.collection('associationGuideNotes').doc(id).set({
-      'associationId': id, 'studentUid': 's1', 'notes': 'He is distracted; his father is ill.', 'scopeGuide': 'G', 'scopeTeam': 'G', 'scopeGender': 'male',
-    });
-    await openAssociations(tester);
-    await openHistoryTab(tester);
-    await tester.pumpAndSettle();
-    expect(find.text('He is distracted; his father is ill.'), findsOneWidget);
-    expect((await db.collection('associations').doc(id).get()).data()!.containsKey('guideNotes'), isFalse);
-  });
-
   // -------------------------------------------------------------------------
   // they show in the association history, and are counted
   // -------------------------------------------------------------------------
-  testWidgets('existing interaction logs show in the history, with a count',
-      (tester) async {
-    await prepareApp(tester);
-    await openAssociations(tester);
-    await openHistoryTab(tester);
-
-    expect(find.text('Interactions (1)'), findsOneWidget);
-    // the seeded note is about Arjun
-    expect(find.text('Arjun Kumar'), findsWidgets);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('a new interaction appears there too — the list is live',
-      (tester) async {
-    final db = await prepareApp(tester);
-    await openAssociations(tester);
-    await openHistoryTab(tester);
-    expect(find.text('Interactions (1)'), findsOneWidget);
-
-    await db.collection('interactionLogs').add({
-      'studentUid': 's2',
-      'studentName': 'Bhima Sen',
-      'guideId': 'G',
-      'status': 'approved',
-      'interactionDate': Timestamp.fromDate(DateTime.now()),
-      'rawDictation': 'Talked about his reading.',
-      'approvedSummary': {'recommendedNextAction': 'Check again next week'},
-    });
-    await tester.pumpAndSettle();
-
-    expect(find.text('Interactions (2)'), findsOneWidget);
-    expect(find.text('Check again next week'), findsOneWidget);
-  });
-
-  testWidgets('the card reads the summary MAP, never prints it raw',
-      (tester) async {
-    final db = await prepareApp(tester);
-    await db.collection('interactionLogs').add({
-      'studentUid': 's2',
-      'studentName': 'Bhima Sen',
-      'guideId': 'G',
-      'interactionDate': Timestamp.fromDate(DateTime.now()),
-      'approvedSummary': {'recommendedNextAction': 'Ring him on Friday'},
-    });
-    await openAssociations(tester);
-    await openHistoryTab(tester);
-
-    expect(find.text('Ring him on Friday'), findsOneWidget);
-    // no raw map ever reaches the screen
-    expect(find.textContaining('recommendedNextAction:'), findsNothing);
-    expect(find.textContaining('{'), findsNothing);
-  });
-
-  testWidgets('with no meetings at all, interactions still show', (tester) async {
-    final db = await prepareApp(tester, seeded: false);
-    await db.collection('users').doc('s9').set({
-      'name': 'Solo Student',
-      'role': 'Stay at FOLK',
-      'gender': 'male',
-      'guideId': 'G',
-      'teamGuide': 'G',
-    });
-    await db.collection('interactionLogs').add({
-      'studentUid': 's9',
-      'studentName': 'Solo Student',
-      'guideId': 'G',
-      'interactionDate': Timestamp.fromDate(DateTime.now()),
-      'rawDictation': 'A quiet chat.',
-    });
-    await openAssociations(tester);
-    await openHistoryTab(tester);
-
-    expect(find.text('Interactions (1)'), findsOneWidget);
-    expect(find.text('Nothing here yet'), findsNothing);
-  });
-
-  testWidgets('with nothing at all, the tab still says so', (tester) async {
-    await prepareApp(tester, seeded: false);
-    await openAssociations(tester);
-    await openHistoryTab(tester);
-    expect(find.text('Nothing here yet'), findsOneWidget);
-  });
-
   // -------------------------------------------------------------------------
   // counted on the student's own profile
   // -------------------------------------------------------------------------
@@ -292,7 +171,6 @@ void main() {
     final db = await prepareApp(tester);
     final before = (await db.collection('associations').get()).docs.length;
     await openAssociations(tester);
-    await openHistoryTab(tester);
     final after = (await db.collection('associations').get()).docs.length;
     expect(after, before, reason: 'showing interactions must not create any');
   });
@@ -306,7 +184,6 @@ void main() {
           '${dark ? 'dark' : 'light'}', (tester) async {
         await prepareApp(tester);
         await openAssociations(tester, scale: scale, dark: dark);
-        await openHistoryTab(tester);
         expect(tester.takeException(), isNull);
         expect(find.text('Add interaction'), findsNothing);
       });

@@ -13,6 +13,8 @@ import '../utils/UnseenAggregates.dart';
 import '../utils/UnseenDot.dart';
 import '../utils/Snackbar.dart';
 import '../utils/VoiceNote.dart';
+import '../agent/AgentGuideMe.dart';
+import '../widgets/Guide3dButton.dart';
 import '../widgets/GuideAppBar.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideSurface.dart';
@@ -61,6 +63,7 @@ class _AgentPageState extends State<AgentPage> {
   void initState() {
     super.initState();
     _c.addListener(_changed);
+    _c.loadMode();
     _seen = _c.entries.length;
     _opened = _c.entries.length;
   }
@@ -187,8 +190,73 @@ class _AgentPageState extends State<AgentPage> {
       ),
       body: Column(
         children: [
+          _modeToggle(context),
           Expanded(child: _c.entries.isEmpty ? _welcome(context) : _conversation(context)),
           _composer(context),
+        ],
+      ),
+    );
+  }
+
+  /// The mode toggle at the top: GUIDE ME (changes nothing, shows where to tap) or DO IT (does the task now). Both are labelled; the choice is remembered per admin.
+  Widget _modeToggle(BuildContext context) {
+    final g = context.g;
+    final t = context.gText;
+    Widget seg(AgentMode m, String label, IconData icon) {
+      final on = _c.mode == m;
+      return Expanded(
+        child: Semantics(
+          button: true,
+          selected: on,
+          label: label,
+          excludeSemantics: true,
+          child: InkWell(
+            key: ValueKey(m == AgentMode.guide ? 'agent-mode-guide' : 'agent-mode-do'),
+            borderRadius: BorderRadius.circular(12),
+            onTap: _c.busy ? null : () => _c.setMode(m),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 140),
+              constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              decoration: BoxDecoration(
+                color: on ? g.agentTop : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: on ? g.agent : Colors.transparent, width: 1.5),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 18, color: on ? g.onAgent : g.mutedText),
+                  const SizedBox(width: 6),
+                  Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.bodyStrong.copyWith(color: on ? g.onAgent : g.mutedText))),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      key: const ValueKey('agent-mode-toggle'),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(color: g.chipBackground.withValues(alpha: .6), borderRadius: BorderRadius.circular(14), border: Border.all(color: g.border)),
+            child: Row(children: [seg(AgentMode.guide, 'Guide me', Icons.near_me_outlined), const SizedBox(width: 4), seg(AgentMode.doIt, 'Do it', Icons.bolt_outlined)]),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+            child: Text(
+              _c.mode == AgentMode.guide ? 'Guide me: I only show you where to tap. Nothing is changed.' : 'Do it: I do it for you now, with an Undo.',
+              key: const ValueKey('agent-mode-hint'),
+              style: t.caption,
+            ),
+          ),
         ],
       ),
     );
@@ -302,6 +370,22 @@ class _AgentPageState extends State<AgentPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (e.text.isNotEmpty) AiText(e.text, selectable: true, style: t.body.copyWith(height: 1.45)),
+                  // GUIDE ME: one raised button for each instruction, opening the exact screen for that student (saved with the chat)
+                  if (e.buttons.isNotEmpty) ...[
+                    if (e.text.isNotEmpty) const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 4,
+                      children: [
+                        for (var i = 0; i < e.buttons.length; i++)
+                          Guide3dButton(
+                            key: ValueKey('agent-guide-btn-$i'),
+                            label: e.buttons[i].studentName.isEmpty ? e.buttons[i].label : '${e.buttons[i].label} · ${e.buttons[i].studentName}',
+                            onPressed: () => openGuideButton(context, e.buttons[i]),
+                          ),
+                      ],
+                    ),
+                  ],
                   if (e.links.isNotEmpty) ...[
                     if (e.text.isNotEmpty) const SizedBox(height: 10),
                     Wrap(

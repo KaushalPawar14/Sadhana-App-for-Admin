@@ -188,6 +188,34 @@ class AgentRead {
       );
 }
 
+/// A "Guide me" button: one instruction of the assistant's answer and the screen that does it (the same seven places as Today's buttons). It is only a
+/// pointer — the student, and a book title as a hint — so it can be saved with the chat and resolved when it is tapped.
+class GuideButton {
+  const GuideButton({required this.action, required this.label, required this.line, this.studentUid = '', this.studentName = '', this.hint = ''});
+
+  /// record_interaction | update_book | assign_book | change_commitment | answer_doubt | open_meeting | open_profile
+  final String action;
+  final String label;
+  final String line;
+  final String studentUid;
+  final String studentName;
+  final String hint;
+
+  static GuideButton? fromMap(Object? raw) {
+    if (raw is! Map) return null;
+    final action = (raw['action'] ?? '').toString();
+    if (action.isEmpty) return null;
+    return GuideButton(
+      action: action,
+      label: (raw['label'] ?? '').toString(),
+      line: (raw['line'] ?? '').toString(),
+      studentUid: (raw['studentUid'] ?? '').toString(),
+      studentName: (raw['studentName'] ?? '').toString(),
+      hint: (raw['hint'] ?? '').toString(),
+    );
+  }
+}
+
 enum AgentStatus { message, needReads, confirm, limit, full, question }
 
 /// The server's answer to one step.
@@ -206,7 +234,11 @@ class AgentReply {
     this.question,
     this.choices = const [],
     this.executed,
+    this.buttons = const [],
   });
+
+  /// "Guide me": the buttons of the answer (each opens a screen for a student).
+  final List<GuideButton> buttons;
 
   /// Changes the SERVER ran by itself (so they finish even if the app is closed): shown as a card that is already done, with its Undo.
   final ExecutedByServer? executed;
@@ -255,6 +287,7 @@ class AgentReply {
       question: m['question']?.toString(),
       choices: [for (final c in (m['choices'] as List? ?? const []).whereType<Map>()) AgentChoice.fromMap(c)],
       executed: m['executed'] is Map ? ExecutedByServer.fromMap(m['executed'] as Map) : null,
+      buttons: [for (final b in (m['buttons'] as List? ?? const [])) if (GuideButton.fromMap(b) case final x?) x],
     );
   }
 }

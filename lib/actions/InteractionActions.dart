@@ -88,6 +88,7 @@ Future<SavedInteraction> saveInteraction({
   Map<String, dynamic>? analysis,
   String source = 'assistant',
   bool skipAi = false,
+  bool notify = true,
 }) async {
   final initialSummary = {
     'interactionType': interactionType,
@@ -132,7 +133,8 @@ Future<SavedInteraction> saveInteraction({
     'approvedAt': FieldValue.serverTimestamp(),
   });
 
-  await notifyInteractionLogged(studentUid);
+  // [notify]: false for a held meeting, whose own save already is the event
+  if (notify) await notifyInteractionLogged(studentUid);
   return SavedInteraction(id: docRef.id);
 }
 
