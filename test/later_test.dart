@@ -281,6 +281,54 @@ void main() {
       expect(e.note, 'by mid-November');
       expect(e.studentUid, 't8');
       expect(e.source, kSourcePlan);
+      expect(e.done, isFalse, reason: 'still waiting');
+    });
+
+    test('DONE EARLY: the entry on its date is ticked and says what happened ("Done early: Testing — raise to 12 rounds", "Raised to 12 rounds, 31 Oct")', () async {
+      final db = FakeFirebaseFirestore();
+      await db.collection('topicPostponements').doc('t8__target:chanting').set({
+        'studentUid': 't8', 'studentName': 'Testing', 'label': 'raise to 12 rounds', 'date': '2026-11-15', 'note': 'by mid-November', 'scopeGuide': 'G',
+        'resolvedDay': '2026-10-31', 'resolvedText': 'Raised to 12 rounds',
+      });
+      final e = laterEvents((await db.collection('topicPostponements').get()).docs).single;
+      expect(e.title, '✓ Done early: Testing — raise to 12 rounds');
+      expect(e.done, isTrue);
+      expect(e.note, 'Raised to 12 rounds, 31 Oct');
+      expect(e.eventDate, DateTime(2026, 11, 15), reason: 'on the date it was planned for');
+    });
+  });
+
+  group('This week', () {
+    testWidgets('a postponed line that was DONE EARLY is ticked and struck through; a waiting one is plain', (tester) async {
+      await prepareApp(tester);
+      AdminProfileProvider.instance.debugSet(_me());
+      final data = _Fake();
+      PlanData.instance = data;
+      await pumpScreen(tester, const PlanPage(initialWeek: true), size: const Size(360, 3000));
+      data.controller.add(PlanDoc(
+        todayDate: '2026-10-30',
+        todayItems: const [],
+        weekOf: '2026-10-26',
+        intro: '',
+        sections: const [
+          PlanSection(id: 'othertasks', title: 'Other tasks', items: [
+            PlanItem(id: 'weeklater:a', kind: 'weekOther', title: 'Testing: raise to 12 rounds — postponed', scheduledFor: '2026-11-01'),
+            PlanItem(id: 'weeklater:b', kind: 'weekOther', title: 'Ravi: Gita — Done early (Finished "Gita", Sat 31 Oct)', scheduledFor: '2026-11-01', done: true),
+          ]),
+        ],
+        generatedAt: DateTime.utc(2026, 10, 30, 4, 10),
+        status: 'upToDate',
+        changedAt: DateTime.utc(2026, 10, 30, 4, 10),
+        progress: const PlanProgress(needed: 0, done: 0, left: 0, summary: '', bySource: []),
+      ));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('plan-week-other-done-weeklater:b')), findsOneWidget, reason: 'ticked');
+      expect(find.byKey(const ValueKey('plan-week-other-done-weeklater:a')), findsNothing, reason: 'waiting: no tick');
+      final done = tester.widget<Text>(find.text('Ravi: Gita — Done early (Finished "Gita", Sat 31 Oct)'));
+      expect(done.style?.decoration, TextDecoration.lineThrough);
+      final waiting = tester.widget<Text>(find.text('Testing: raise to 12 rounds — postponed'));
+      expect(waiting.style?.decoration, isNot(TextDecoration.lineThrough));
     });
   });
 }

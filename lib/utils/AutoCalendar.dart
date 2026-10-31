@@ -20,6 +20,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../Home/Calendar.dart';
 import '../Pages/AssociationManager.dart';
@@ -234,12 +235,16 @@ List<CalendarEvent> laterEvents(Iterable<QueryDocumentSnapshot<Map<String, dynam
     if (day == null) continue;
     final who = _s(m['studentName']).isEmpty ? 'a student' : _s(m['studentName']);
     final label = _s(m['label']).isEmpty ? 'a postponed topic' : _s(m['label']);
+    // DONE EARLY: it was finished before its day, so the entry on its date is ticked and says what happened ("Done early — Raised to 12 rounds, 31 Oct")
+    final early = DateTime.tryParse(_s(m['resolvedDay']));
+    final what = _s(m['resolvedText']);
     out.add(autoCalendarEvent(
       id: 'later_${d.id}',
       source: kSourcePlan,
       start: day,
-      title: '$who — $label',
-      note: _s(m['note']),
+      done: early != null,
+      title: early != null ? '✓ Done early: $who — $label' : '$who — $label',
+      note: early != null ? '${what.isEmpty ? 'Done' : what}, ${DateFormat('d MMM').format(early)}' : _s(m['note']),
       refId: d.id,
       studentUid: _s(m['studentUid']),
       studentName: who,

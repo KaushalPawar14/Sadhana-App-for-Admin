@@ -650,7 +650,9 @@ class _PlanPageState extends State<PlanPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   SizedBox(width: 78, child: Text(dayTitle(it.scheduledFor), style: t.caption.copyWith(fontWeight: FontWeight.w800))),
-                  Expanded(child: Text(it.title, style: t.body.copyWith(height: 1.35))),
+                  // a line that was already done (a postponed topic finished early) is ticked and struck through
+                  if (it.done) Padding(padding: const EdgeInsets.only(right: 6, top: 1), child: Icon(Icons.check_circle_rounded, key: ValueKey('plan-week-other-done-${it.id}'), size: 18, color: g.success)),
+                  Expanded(child: Text(it.title, style: t.body.copyWith(height: 1.35, decoration: it.done ? TextDecoration.lineThrough : null, color: it.done ? g.mutedText : null))),
                 ],
               ),
             ),
