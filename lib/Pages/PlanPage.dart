@@ -504,7 +504,9 @@ class _PlanPageState extends State<PlanPage> {
       (days[it.scheduledFor] ??= []).add(it);
     }
     final dayKeys = days.keys.toList()..sort((a, b) => (a.isEmpty ? '9999' : a).compareTo(b.isEmpty ? '9999' : b));
-    final tasks = held('targettasks')?.items ?? const <PlanItem>[];
+    // ONE combined picture of the targets ("Chanting 3 of 5 · Reading 2 of 4 · FOLK 1 of 3" with each student's combined next step): a target's own line it already says is not shown twice
+    final allTasks = held('targettasks')?.items ?? const <PlanItem>[];
+    final tasks = allTasks.any((x) => x.id == 'weekjourney') ? [for (final x in allTasks) if (!x.inCombined) x] : allTasks;
     final others = held('othertasks')?.items ?? const <PlanItem>[];
 
     Widget name(PlanItem it) {

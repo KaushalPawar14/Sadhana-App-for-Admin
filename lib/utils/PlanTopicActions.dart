@@ -286,6 +286,9 @@ String laterTopicName(PlanPoint p) => p.title.isNotEmpty ? p.title : p.text;
 Future<Map<String, dynamic>?> showLaterPanel(BuildContext context, PlanItem card, PlanPoint p) async {
   final key = laterKeyOf(p);
   if (key == null) return null;
+  // ONE topic or the WHOLE card: a card with other topics that can wait too offers to postpone them all together
+  final others = [for (final q in card.points) if (!identical(q, p) && isPostponable(q)) q];
+  var whole = false;
   final picks = laterQuickPicks(laterClock());
   String? chosen; // a quick pick's id, or 'custom'
   DateTime? date;
@@ -336,6 +339,13 @@ Future<Map<String, dynamic>?> showLaterPanel(BuildContext context, PlanItem card
                 Text('${card.studentName}: ${laterTopicName(p)}', key: const ValueKey('later-topic'), style: const TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
                 const Text('It leaves Today now and comes back on the day you choose.', key: ValueKey('later-hint')),
+                if (others.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Wrap(spacing: 8, runSpacing: 6, children: [
+                    GuideChoiceChip(key: const ValueKey('later-scope-one'), label: 'Only this topic', selected: !whole, onSelected: busy ? null : (_) => setState(() => whole = false)),
+                    GuideChoiceChip(key: const ValueKey('later-scope-all'), label: 'The whole card (${others.length + 1} topics)', selected: whole, onSelected: busy ? null : (_) => setState(() => whole = true)),
+                  ]),
+                ],
                 const SizedBox(height: 12),
                 Wrap(spacing: 8, runSpacing: 6, children: [for (final q in picks) chip(q.$1, q.$2, q.$3), chip('custom', 'Choose a date', null)]),
                 if (date != null) ...[
@@ -375,15 +385,19 @@ Future<Map<String, dynamic>?> showLaterPanel(BuildContext context, PlanItem card
                         error = null;
                       });
                       try {
-                        answer = await HierarchyApi.instance.postponeTopic(
-                          studentUid: card.studentUid,
-                          key: key,
-                          date: laterDayKey(date!),
-                          note: note,
-                          label: '',
-                          to: p.to,
-                          bookTitle: p.bookTitle.isEmpty ? null : p.bookTitle,
-                        );
+                        for (final q in [p, if (whole) ...others]) {
+                          final one = await HierarchyApi.instance.postponeTopic(
+                            studentUid: card.studentUid,
+                            key: laterKeyOf(q)!,
+                            date: laterDayKey(date!),
+                            note: note,
+                            label: '',
+                            to: q.to,
+                            bookTitle: q.bookTitle.isEmpty ? null : q.bookTitle,
+                          );
+                          answer = identical(q, p) ? one : {...?answer, 'postponedMore': ((answer?['postponedMore'] as int?) ?? 0) + 1};
+                        }
+                        if (whole && answer != null) answer = {...answer!, 'message': 'The whole card (${others.length + 1} topics) is postponed to ${DateFormat('EEE d MMM').format(date!)}.'};
                         if (dialogContext.mounted) Navigator.pop(dialogContext);
                       } catch (e) {
                         setState(() {

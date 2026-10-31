@@ -331,4 +331,68 @@ void main() {
       expect(waiting.style?.decoration, isNot(TextDecoration.lineThrough));
     });
   });
+
+  group('LATER ON A COMBINED CARD: one topic or the whole card', () {
+    Future<List<Map<String, dynamic>>> openCard(WidgetTester tester, List<PlanPoint> points, {int topic = 0}) async {
+      await prepareApp(tester);
+      laterClock = () => DateTime(2026, 10, 30, 10);
+      final calls = <Map<String, dynamic>>[];
+      HierarchyApi.useForTests((name, args) async {
+        calls.add({'_call': name, ...args});
+        return {'ok': true, 'message': 'Postponed.', 'afterTargetEnd': false};
+      });
+      final c = card('s1', 'Ravi', points);
+      await _open(tester, c);
+      await tester.tap(find.byKey(ValueKey('plan-later-${c.id}-$topic')));
+      await tester.pumpAndSettle();
+      return calls;
+    }
+
+    final combined = [
+      pt('target_chanting', 'Chanting target', 'Chanting: 12 → 16', to: 16, group: PlanGroup.target),
+      pt('target_folk', 'FOLK target', 'A gentle invitation', group: PlanGroup.target),
+      pt('bookDue', 'Book due', 'Gita', bookId: 'b1', bookTitle: 'Gita', group: PlanGroup.other),
+      pt('meeting', 'Meeting', 'Fri 5 pm', group: PlanGroup.other),
+    ];
+
+    testWidgets('a card with other topics that can wait offers the choice', (tester) async {
+      await openCard(tester, combined);
+      expect(find.byKey(const ValueKey('later-scope-one')), findsOneWidget);
+      expect(find.text('The whole card (3 topics)'), findsOneWidget, reason: 'the meeting cannot be postponed: it is not counted');
+    });
+
+    testWidgets('a card with one topic has no such choice', (tester) async {
+      await openCard(tester, [pt('target_chanting', 'Chanting target', 'x', to: 16, group: PlanGroup.target)]);
+      expect(find.byKey(const ValueKey('later-scope-one')), findsNothing);
+      expect(find.byKey(const ValueKey('later-scope-all')), findsNothing);
+    });
+
+    testWidgets('only this topic (the default): ONE postponeTopic call', (tester) async {
+      final calls = await openCard(tester, combined, topic: 1);
+      await tester.tap(find.byKey(const ValueKey('later-pick-week')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('later-postpone')));
+      await tester.pumpAndSettle();
+      final sent = calls.where((c) => c['_call'] == 'postponeTopic').toList();
+      expect(sent.map((c) => c['key']), ['target:folk']);
+      await tester.pump(const Duration(seconds: 4));
+    });
+
+    testWidgets('the WHOLE card: every topic that can wait goes to the same date with the same note; the answer says so', (tester) async {
+      final calls = await openCard(tester, combined, topic: 0);
+      await tester.tap(find.byKey(const ValueKey('later-scope-all')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('later-pick-mid')));
+      await tester.pump();
+      await tester.enterText(find.byKey(const ValueKey('later-note')), 'After his exams');
+      await tester.tap(find.byKey(const ValueKey('later-postpone')));
+      await tester.pumpAndSettle();
+      final sent = calls.where((c) => c['_call'] == 'postponeTopic').toList();
+      expect(sent.map((c) => c['key']), ['target:chanting', 'target:folk', 'bookDue:b1']);
+      expect({for (final c in sent) c['date']}, {'2026-11-15'});
+      expect({for (final c in sent) c['note']}, {'After his exams'});
+      expect(find.text('The whole card (3 topics) is postponed to Sun 15 Nov.'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 4));
+    });
+  });
 }

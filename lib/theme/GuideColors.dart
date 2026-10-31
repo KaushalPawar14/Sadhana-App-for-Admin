@@ -160,6 +160,17 @@ class GuideColors extends ThemeExtension<GuideColors> {
     end: Alignment.bottomRight,
     colors: [Color(0xFF0E3B2C), Color(0xFF1C5C42)],
   );
+  /// THE TARGETS PAGE cards: CHANTING golden, READING sky-blue, FOLK purple, a soft gradient in each theme (dark text on the light gradients, light text on the deep dark ones; 4.5:1 or better).
+  static const List<Color> targetGoldLight = [Color(0xFFF6DE98), Color(0xFFE2B84A)];
+  static const List<Color> targetGoldDark = [Color(0xFF86661A), Color(0xFF5E4713)];
+  static const List<Color> targetSkyLight = [Color(0xFFD3ECFB), Color(0xFF9DCFF1)];
+  static const List<Color> targetSkyDark = [Color(0xFF1F5282), Color(0xFF163C61)];
+  static const List<Color> targetPurpleLight = [Color(0xFFE6D9F7), Color(0xFFBFA3E8)];
+  static const List<Color> targetPurpleDark = [Color(0xFF51317F), Color(0xFF392260)];
+  static const Color targetCardTextLight = Color(0xFF14192B);
+  static const Color targetCardMutedLight = Color(0xFF3F4457);
+  static const Color targetCardTextDark = Color(0xFFF4F1EA);
+  static const Color targetCardMutedDark = Color(0xFFD9D4C8);
   /// The plain TARGET TILES (Home): off-white in light mode, soft grey in dark, a gentle top-to-bottom shade, raised by a soft shadow and a thin
   /// highlight. Text on them is the theme's own text colour (well over 4.5:1 on both).
   static const List<Color> targetTileLight = [Color(0xFFFAF8F3), Color(0xFFEDE9DF)];

@@ -8,7 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:folk_guide_app/Pages/AssociationManager.dart';
 import 'package:folk_guide_app/Pages/ChantingChallengeManager.dart';
 import 'package:folk_guide_app/Pages/ExpeditionManager.dart';
-import 'package:folk_guide_app/Pages/GoalHomePage.dart';
+import 'package:folk_guide_app/Pages/TargetsPage.dart';
 import 'package:folk_guide_app/Pages/GuideCalendarPage.dart';
 import 'package:folk_guide_app/Pages/InteractionLogger.dart';
 import 'package:folk_guide_app/theme/GuideColors.dart';
@@ -334,8 +334,8 @@ void main() {
 
   group('tap-through: each kind opens the screen where its item is edited', () {
     test('every automatic kind has a screen; a manual event has none (its own dialog edits it)', () {
-      expect(autoEventPage(_auto('a', kSourceTarget, _d(1), 't', guideId: 'G')), isA<GoalHomePage>());
-      expect(autoEventPage(_auto('a', kSourcePhase, _d(1), 't', guideId: 'G')), isA<GoalHomePage>());
+      expect(autoEventPage(_auto('a', kSourceTarget, _d(1), 't', guideId: 'G')), isA<TargetsPage>());
+      expect(autoEventPage(_auto('a', kSourcePhase, _d(1), 't', guideId: 'G')), isA<TargetsPage>());
       expect(autoEventPage(_auto('a', kSourceFollowUp, _d(1), 't', studentUid: 'u1', studentName: 'S')), isA<InteractionLoggerPage>());
       expect(autoEventPage(_auto('a', kSourceInteraction, _d(1), 't', studentUid: 'u1', studentName: 'S')), isA<InteractionLoggerPage>());
       expect(autoEventPage(_auto('a', kSourceMeeting, _d(1), 't')), isA<AssociationManagerPage>());

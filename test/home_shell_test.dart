@@ -177,15 +177,13 @@ void main() {
     expect(week('targets'), '2');
     expect(week('left'), '6');
     expect(week('done'), '2');
-    expect(find.text('Targets'), findsNWidgets(2), reason: 'the stat of THIS WEEK and of TODAY');
+    expect(find.text('Targets'), findsNWidgets(3), reason: 'the stat of THIS WEEK, the stat of TODAY and the Targets widget');
     expect(find.text('To contact'), findsNWidgets(2));
     expect(find.text('Overdue'), findsNothing, reason: 'the old hero stats are gone');
     expect(find.text('Follow-ups'), findsNothing, reason: "today's card has the same three stats as this week's");
     expect(find.textContaining('Phase 1 of 8'), findsNothing, reason: 'no per-target cards: status and progress are viewed in the plan');
-    expect(find.text('Chanting'), findsOneWidget);
-    expect(find.text('Reading'), findsOneWidget);
-    expect(find.text('FOLK'), findsOneWidget);
-    expect(find.text('Not set'), findsOneWidget, reason: 'chanting and books are set; FOLK is not');
+    expect(find.byKey(const ValueKey('home-targets-card')), findsNothing, reason: 'the old targets card (the three tiles) is replaced by the Targets widget');
+    expect(find.descendant(of: find.byKey(const ValueKey('home-targets-tile')), matching: find.text('2 active')), findsOneWidget, reason: 'chanting and books are active');
     expect(find.text('FOLK Boys Board'), findsOneWidget);
     expect(find.text('20 boys'), findsOneWidget);
     expect(find.text('Calendar'), findsOneWidget);
@@ -210,7 +208,7 @@ void main() {
       expect(find.text("TODAY'S TASKS"), findsOneWidget);
       expect(find.text('THIS WEEK'), findsOneWidget);
       expect(tester.getTopLeft(find.byKey(const ValueKey('home-this-week'))).dy, lessThan(tester.getTopLeft(find.byKey(const ValueKey('home-today-tasks'))).dy));
-      expect(tester.getTopLeft(find.byKey(const ValueKey('home-today-tasks'))).dy, lessThan(tester.getTopLeft(find.byKey(const ValueKey('home-targets-card'))).dy));
+      expect(tester.getTopLeft(find.byKey(const ValueKey('home-today-tasks'))).dy, lessThan(tester.getTopLeft(find.byKey(const ValueKey('home-targets-tile'))).dy));
       expect(find.text('Overdue'), findsNothing);
     });
 
@@ -430,14 +428,6 @@ void main() {
       expect(find.byKey(const ValueKey('home-pending-today')), findsOneWidget);
     });
 
-    testWidgets('A TARGET WHOSE END DATE HAS BEEN REACHED shows "Ended — choose" on the Home targets card (a running one shows its words)', (tester) async {
-      phone(tester, 1.0);
-      final today = DateTime.now();
-      await pumpShell(tester, data: FakeHomeData(targetList: [target('chanting', 5, 16, 1, 3, end: DateTime(today.year, today.month, today.day).subtract(const Duration(days: 3))), target('books', 3, 2, 1, 3, end: DateTime(today.year + 1, 1, 1))]));
-      expect(find.text('Ended — choose'), findsOneWidget, reason: 'the chanting target ended');
-      expect(find.textContaining('2 books'), findsOneWidget, reason: 'the reading target is still running');
-    });
-
     testWidgets('A HOD\'S HOME counts HIS OWN plan (his id, not the guide he picked); the guides\' summary lines are not tasks', (tester) async {
       phone(tester, 1.0);
       final asked = <String>[];
@@ -640,195 +630,6 @@ void main() {
       ]),
     );
     expect(find.text('Midterm'), findsOneWidget);
-  });
-
-  group('the TARGETS CARD: three plain themed tiles (Chanting, Reading, FOLK) with a tick or a cross; a Female Enabler has two', () {
-    Future<void> shell(WidgetTester tester, List<CompoundTarget> targets, {double scale = 1.0, bool dark = false, AdminProfile? me, Size? size}) async {
-      phone(tester, scale, size: size ?? const Size(360, 800));
-      await pumpShell(tester, data: FakeHomeData(targetList: targets), me: me);
-      if (dark) {
-        tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
-        addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
-        await tester.pump();
-      }
-    }
-
-    final end = DateTime(2026, 12, 31);
-    final chant = target('chanting', 10, 16, 1, 8, end: end);
-    final books = target('books', 10, 5, 2, 8, end: end);
-    final folk = target('folk', 6, 1, 1, 4, end: end);
-    bool isSet(WidgetTester tester, String m) => tester.widget<GuideTargetBadge>(find.byKey(ValueKey('home-target-badge-$m'))).isSet;
-
-    testWidgets('none set: three tiles, each "Not set" with a cross; a "Set a target" button', (tester) async {
-      await shell(tester, const []);
-      expect(find.byKey(const ValueKey('home-targets-card')), findsOneWidget);
-      for (final m in ['chanting', 'books', 'folk']) {
-        expect(find.byKey(ValueKey('home-target-$m')), findsOneWidget, reason: m);
-        expect(isSet(tester, m), isFalse, reason: m);
-      }
-      expect(find.text('Chanting'), findsOneWidget);
-      expect(find.text('Reading'), findsOneWidget);
-      expect(find.text('FOLK'), findsOneWidget);
-      expect(find.text('Not set'), findsNWidgets(3));
-      expect(find.text('Set a target'), findsOneWidget);
-      expect(find.byKey(const ValueKey('home-view-targets')), findsNothing);
-      expect(find.textContaining("You haven't set"), findsNothing, reason: 'the old text card is gone');
-    });
-
-    testWidgets('some set: a tick and what it says ("16 rounds by 31 Dec") on the set ones, a cross on the others', (tester) async {
-      await shell(tester, [chant, books]);
-      expect(isSet(tester, 'chanting'), isTrue);
-      expect(isSet(tester, 'books'), isTrue);
-      expect(isSet(tester, 'folk'), isFalse);
-      expect(find.text('16 rounds by 31 Dec'), findsOneWidget);
-      expect(find.text('5 books by 31 Dec'), findsOneWidget);
-      expect(find.text('Not set'), findsOneWidget);
-      expect(find.text('Set a target'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox());
-      await shell(tester, [folk]);
-      expect(isSet(tester, 'folk'), isTrue);
-      expect(find.text('6 FOLK residents by 31 Dec'), findsOneWidget);
-      expect(isSet(tester, 'chanting'), isFalse);
-      expect(find.text('Not set'), findsNWidgets(2));
-    });
-
-    testWidgets('all set: three ticks and "View targets" (no "Set a target"), which opens the targets in the plan', (tester) async {
-      await shell(tester, [chant, books, folk]);
-      for (final m in ['chanting', 'books', 'folk']) {
-        expect(isSet(tester, m), isTrue, reason: m);
-      }
-      expect(find.text('Not set'), findsNothing);
-      expect(find.byKey(const ValueKey('home-set-target')), findsNothing);
-      expect(find.text('View targets'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('home-view-targets')));
-      await tester.pumpAndSettle();
-      expect(tester.widget<PlanPage>(find.byType(PlanPage)).initialWeek, isTrue, reason: 'the targets are on This week');
-    });
-
-    testWidgets('a Female Enabler has two tiles: no FOLK tile (that target is boys only)', (tester) async {
-      final fe = profile('F', 'FEMALE_ENABLER');
-      await shell(tester, const [], me: fe);
-      expect(find.byKey(const ValueKey('home-target-folk')), findsNothing);
-      expect(find.text('FOLK'), findsNothing);
-      expect(find.text('Not set'), findsNWidgets(2));
-      await tester.pumpWidget(const SizedBox());
-      await shell(tester, [chant, books], me: fe);
-      expect(find.byKey(const ValueKey('home-target-folk')), findsNothing);
-      expect(find.text('View targets'), findsOneWidget, reason: 'both of hers are set');
-      expect(find.byKey(const ValueKey('home-set-target')), findsNothing);
-    });
-
-    testWidgets('a finished or abandoned target does not count as set', (tester) async {
-      final done = CompoundTarget.from('G', 'old', {'metric': 'chanting', 'status': 'completed', 'currentPhase': 1, 'totalPhases': 1});
-      await shell(tester, [done]);
-      expect(isSet(tester, 'chanting'), isFalse);
-      expect(find.text('Set a target'), findsOneWidget);
-    });
-
-    testWidgets('"Set a target" opens the create flow on the FIRST missing type', (tester) async {
-      for (final c in [
-        (<CompoundTarget>[chant, books], 'folk'),
-        (<CompoundTarget>[], 'chanting'),
-        (<CompoundTarget>[books], 'chanting'),
-        (<CompoundTarget>[chant], 'books'),
-      ]) {
-        await shell(tester, c.$1);
-        await tester.tap(find.byKey(const ValueKey('home-set-target')));
-        await tester.pumpAndSettle();
-        expect(tester.widget<CompoundGoalSetupPage>(find.byType(CompoundGoalSetupPage)).initialMetric, c.$2, reason: '${c.$1.length} set');
-        await tester.pumpWidget(const SizedBox());
-      }
-    });
-
-    testWidgets('a tile that is not set opens its create flow; a tile that is set opens that target', (tester) async {
-      await shell(tester, [chant]);
-      await tester.tap(find.byKey(const ValueKey('home-target-books')));
-      await tester.pumpAndSettle();
-      expect(tester.widget<CompoundGoalSetupPage>(find.byType(CompoundGoalSetupPage)).initialMetric, 'books');
-      await tester.pumpWidget(const SizedBox());
-      await shell(tester, [chant]);
-      await tester.tap(find.byKey(const ValueKey('home-target-chanting')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-      expect(find.byType(CompoundGoalProgressPage), findsOneWidget);
-      expect(tester.widget<CompoundGoalProgressPage>(find.byType(CompoundGoalProgressPage)).targetId, chant.targetId);
-      tester.takeException();
-    });
-
-    BoxDecoration? tileDecoration(WidgetTester tester, String m) {
-      for (final c in tester.widgetList<Container>(find.descendant(of: find.byKey(ValueKey('home-target-$m')), matching: find.byType(Container)))) {
-        final d = c.decoration;
-        if (d is BoxDecoration && d.gradient is LinearGradient && d.boxShadow != null && d.boxShadow!.isNotEmpty) return d;
-      }
-      return null;
-    }
-
-    for (final dark in [false, true]) {
-      for (final wide in [false, true]) {
-        testWidgets('PLAIN THEMED TILES (${dark ? 'dark: soft grey' : 'light: off-white'}, ${wide ? 'website 1280' : 'phone 360'}): all three alike, raised, the same height', (tester) async {
-          await shell(tester, [chant], dark: dark, size: wide ? const Size(1280, 900) : const Size(360, 800));
-          final want = dark ? GuideColors.targetTileDark : GuideColors.targetTileLight;
-          for (final m in ['chanting', 'books', 'folk']) {
-            final d = tileDecoration(tester, m)!;
-            expect((d.gradient as LinearGradient).colors, want, reason: '$m: one plain colour for every tile (no pastel per target)');
-            expect(d.boxShadow!.length, greaterThanOrEqualTo(2), reason: '$m: a raised edge: a soft shadow and a thin highlight');
-            expect(d.border, isNotNull);
-          }
-          final h = [for (final m in ['chanting', 'books', 'folk']) tester.getSize(find.byKey(ValueKey('home-target-$m'))).height];
-          expect(h[0], closeTo(h[1], 0.5));
-          expect(h[1], closeTo(h[2], 0.5));
-          // no pastel box any more
-          expect(find.descendant(of: find.byKey(const ValueKey('home-targets-card')), matching: find.byType(GuidePastelBox)), findsNothing, reason: 'the old colourful tiles are gone from the targets card');
-        });
-      }
-    }
-
-    testWidgets('the tile text reads: the theme text colour on the tile is 4.5:1 or better on both ends of the shade, in light and dark', (tester) async {
-      for (final dark in [false, true]) {
-        await shell(tester, [chant, books], dark: dark);
-        final want = dark ? GuideColors.targetTileDark : GuideColors.targetTileLight;
-        for (final m in ['chanting', 'books', 'folk']) {
-          for (final tx in tester.widgetList<Text>(find.descendant(of: find.byKey(ValueKey('home-target-$m')), matching: find.byType(Text)))) {
-            final c = tx.style?.color;
-            expect(c, isNotNull, reason: '${tx.data}');
-            for (final bg in want) {
-              expect(contrastRatio(c!, bg), greaterThanOrEqualTo(4.5), reason: '${tx.data} in ${dark ? 'dark' : 'light'} on ${bg.toARGB32().toRadixString(16)}');
-            }
-          }
-        }
-        await tester.pumpWidget(const SizedBox());
-      }
-    });
-
-    test('the tile colours are the theme\'s: off-white light, soft grey dark; the highlight and shadow differ per theme', () {
-      expect(GuideColors.targetTileLight.first.computeLuminance(), greaterThan(0.85));
-      expect(GuideColors.targetTileDark.first.computeLuminance(), lessThan(0.08));
-      expect(GuideColors.targetTileDark.first.computeLuminance(), greaterThan(0.02), reason: 'soft grey, not black');
-      expect(GuideColors.targetTileShadowDark, isNot(GuideColors.targetTileShadowLight));
-    });
-
-    for (final dark in [false, true]) {
-      for (final scale in kScales) {
-        for (final wide in [false, true]) {
-          testWidgets('${dark ? 'dark' : 'light'}, text scale $scale on ${wide ? '1280 dp' : '360 dp'}: none / some / all set: the card fits, nothing overflows, the button stays a target', (tester) async {
-            for (final state in [const <CompoundTarget>[], [chant], [chant, books, folk]]) {
-              await shell(tester, state, scale: scale, dark: dark, size: wide ? const Size(1280, 900) : const Size(360, 800));
-              expect(tester.takeException(), isNull, reason: '${state.length} set');
-              final card = tester.getRect(find.byKey(const ValueKey('home-targets-card')));
-              expect(card.width, lessThanOrEqualTo(wide ? 1280 : 360));
-              final button = tester.getRect(find.byKey(ValueKey(state.length == 3 ? 'home-view-targets' : 'home-set-target')));
-              expect(button.height, greaterThanOrEqualTo(42));
-              expect(button.right, lessThanOrEqualTo(card.right));
-              for (final m in ['chanting', 'books', 'folk']) {
-                final r = tester.getRect(find.byKey(ValueKey('home-target-$m')));
-                expect(card.contains(r.topLeft) && card.contains(r.bottomRight), isTrue, reason: '$m inside the card');
-              }
-              await tester.pumpWidget(const SizedBox());
-            }
-          });
-        }
-      }
-    }
   });
 
   group('the TICK and CROSS BADGES are drawn by hand: smooth curves, in both themes', () {

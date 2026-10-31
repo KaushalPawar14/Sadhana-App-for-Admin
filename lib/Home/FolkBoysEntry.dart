@@ -4,12 +4,10 @@ import 'package:flutter/material.dart';
 import '../utils/Responsive.dart';
 import 'package:intl/intl.dart';
 
-import '../Pages/CompoundGoalProgressPage.dart';
-import '../Pages/GoalSetup.dart';
-import '../widgets/GuideButtons.dart';
 import '../Pages/GuideCalendarPage.dart';
 import '../Pages/GuideSignIn.dart';
 import '../Pages/PlanPage.dart';
+import '../Pages/TargetsPage.dart';
 import '../Services/UpdateFCM.dart';
 import '../Services/UpdateToken.dart';
 import '../theme/GuideColors.dart';
@@ -19,7 +17,6 @@ import '../utils/AdminProfile.dart';
 import '../Services/HierarchyApi.dart';
 import '../utils/CalendarQueries.dart';
 import '../utils/GoalCompoundQueries.dart';
-import '../utils/GoalMetrics.dart';
 import '../utils/GuideLogout.dart';
 import '../utils/HomeData.dart';
 import '../utils/PlanData.dart';
@@ -32,9 +29,7 @@ import '../widgets/GuideEntry.dart';
 import '../widgets/GuideGhost.dart';
 import '../widgets/GuideStates.dart';
 import '../widgets/GuideSurface.dart';
-import '../theme/GuideTypography.dart';
 import '../widgets/GuideTiles.dart';
-import '../widgets/PressScale.dart';
 import 'FolkBoysWorkspace.dart';
 
 /// The Home tab: the guide's dashboard.
@@ -248,187 +243,6 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
           if (t.isActive && t.totalPhases > 0) t,
       ];
 
-  /// The targets this guide may have (chanting, book reading and, for everyone but a Female Enabler, FOLK residents), and which of
-  /// them are already set (an active one of that type).
-  List<String> get _targetsMissing {
-    final me = AdminProfileProvider.current;
-    final wanted = me == null ? const [kMetricChanting, kMetricBooks] : compoundMetricsFor(me);
-    final all = _targets ?? const <CompoundTarget>[];
-    return [for (final m in wanted) if (!all.any((t) => t.isActive && t.metric == m)) m];
-  }
-
-  static const _metricWords = {
-    kMetricChanting: 'chanting',
-    kMetricBooks: 'book-reading',
-    kMetricFolk: 'FOLK-residents',
-  };
-
-  /// "16 rounds by 31 Dec": what a set target says on its tile.
-  static String _targetWords(CompoundTarget x) {
-    final by = x.endDate == null ? '' : ' by ${DateFormat('d MMM').format(x.endDate!)}';
-    switch (x.metric) {
-      case kMetricChanting:
-        return '${x.perStudentValueGoal} rounds$by';
-      case kMetricBooks:
-        return '${x.perStudentValueGoal} book${x.perStudentValueGoal == 1 ? '' : 's'}$by';
-      default:
-        return '${x.studentCountGoal} FOLK resident${x.studentCountGoal == 1 ? '' : 's'}$by';
-    }
-  }
-
-  static const _tileLook = {
-    kMetricChanting: 'Chanting',
-    kMetricBooks: 'Reading',
-    kMetricFolk: 'FOLK',
-  };
-
-  /// THE TARGETS CARD: one rectangle with a small coloured tile for each target the admin may have (CHANTING, READING, and FOLK residents: not for a
-  /// Female Enabler, it is for boys), each with a curvy tick when it is set (and what it says: "16 rounds by 31 Dec") or a curvy cross and "Not
-  /// set". A tile opens that target, or the create flow when it is not set. Underneath: "Set a target" (the first missing one) while any is
-  /// missing, "View targets" (the targets in the plan) when all are set.
-  Widget _targetsCard({bool placeholder = false}) {
-    final t = context.gText;
-    final me = AdminProfileProvider.current;
-    final wanted = me == null ? const [kMetricChanting, kMetricBooks] : compoundMetricsFor(me);
-    final all = _targets ?? const <CompoundTarget>[];
-    CompoundTarget? setFor(String m) {
-      for (final x in all) {
-        if (x.isActive && x.metric == m) return x;
-      }
-      return null;
-    }
-
-    final missing = placeholder ? List<String>.of(wanted) : _targetsMissing;
-    final guide = _guide;
-    final scale = MediaQuery.textScalerOf(context).scale(1);
-    // narrow (a small phone, or large text): the tiles stack, one under the other, so no word is ever cut
-    final stacked = scale > 1.25 || MediaQuery.sizeOf(context).width < 340;
-
-    Widget tile(String metric) {
-      final look = _tileLook[metric]!;
-      final x = placeholder ? null : setFor(metric);
-      // a target whose end date has been reached waits for the guide: delete it, or extend it (in Today)
-      final end = x?.endDate;
-      final over = end != null && !DateTime(end.year, end.month, end.day).isAfter(DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day));
-      final words = over ? 'Ended — choose' : x != null ? _targetWords(x) : 'Not set';
-      final body = _raisedTile(
-        child: stacked
-            ? Row(
-                children: [
-                  Expanded(child: _tileText(look, words, t)),
-                  const SizedBox(width: 10),
-                  GuideTargetBadge(key: ValueKey('home-target-badge-$metric'), isSet: x != null),
-                ],
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Align(alignment: Alignment.centerRight, child: GuideTargetBadge(key: ValueKey('home-target-badge-$metric'), isSet: x != null)),
-                  const SizedBox(height: 4),
-                  _tileText(look, words, t),
-                ],
-              ),
-      );
-      return Semantics(
-        button: !placeholder,
-        label: '${look}: $words',
-        child: PressScale(
-          enabled: !placeholder && guide != null,
-          child: GestureDetector(
-            key: ValueKey('home-target-$metric'),
-            behavior: HitTestBehavior.opaque,
-            onTap: placeholder || guide == null
-                ? null
-                : () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => x != null ? CompoundGoalProgressPage(guideId: x.guideId, targetId: x.targetId) : CompoundGoalSetupPage(guideId: guide, initialMetric: metric)),
-                    ),
-            child: ExcludeSemantics(child: body),
-          ),
-        ),
-      );
-    }
-
-    final tiles = [for (final m in wanted) tile(m)];
-    return GuideCard(
-      key: const ValueKey('home-targets-card'),
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Your targets', style: t.cardTitleSmall),
-          const SizedBox(height: 10),
-          if (stacked)
-            Column(children: [for (var i = 0; i < tiles.length; i++) ...[if (i > 0) const SizedBox(height: 8), tiles[i]]])
-          else
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [for (var i = 0; i < tiles.length; i++) ...[if (i > 0) const SizedBox(width: 8), Expanded(child: tiles[i])]],
-              ),
-            ),
-          const SizedBox(height: 12),
-          if (missing.isNotEmpty)
-            GuideSecondaryButton(
-              key: const ValueKey('home-set-target'),
-              label: 'Set a target',
-              onPressed: placeholder || guide == null
-                  ? null
-                  : () => Navigator.push(context, MaterialPageRoute(builder: (_) => CompoundGoalSetupPage(guideId: guide, initialMetric: missing.first))),
-            )
-          else
-            GuideSecondaryButton(
-              key: const ValueKey('home-view-targets'),
-              label: 'View targets',
-              onPressed: placeholder ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlanPage(initialWeek: true))),
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// A plain themed tile: off-white (light) or soft grey (dark), a gentle shade and a raised ("bumpy") edge: a soft shadow below and a thin highlight
-  /// above. The same on a phone and on the website.
-  Widget _raisedTile({required Widget child}) {
-    final g = context.g;
-    final dark = g.isDark;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: dark ? GuideColors.targetTileDark : GuideColors.targetTileLight),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: g.border),
-        boxShadow: [
-          BoxShadow(color: dark ? GuideColors.targetTileShadowDark : GuideColors.targetTileShadowLight, blurRadius: 8, offset: const Offset(0, 3)),
-          BoxShadow(color: dark ? GuideColors.targetTileHighlightDark : GuideColors.targetTileHighlightLight, blurRadius: 1, offset: const Offset(0, -1)),
-        ],
-      ),
-      child: child,
-    );
-  }
-
-  /// A tile's words: the name, and what it says (two lines are always reserved, so the tiles are the same height).
-  Widget _tileText(String name, String words, GuideTypography t) {
-    final g = context.g;
-    final small = t.small.copyWith(color: g.text);
-    final line = MediaQuery.textScalerOf(context).scale((small.fontSize ?? 13) * 1.3);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.cardTitleSmall.copyWith(color: g.text)),
-        const SizedBox(height: 3),
-        ConstrainedBox(
-          constraints: BoxConstraints(minHeight: 2 * line),
-          child: Text(words, maxLines: 3, overflow: TextOverflow.ellipsis, style: small.copyWith(height: 1.3)),
-        ),
-      ],
-    );
-  }
-
-  /// "chanting, book-reading and FOLK-residents".
-  static String _joinWords(List<String> w) => w.length <= 1 ? w.join() : '${w.sublist(0, w.length - 1).join(', ')} and ${w.last}';
-
   String _boardSubtitle() {
     final n = _studentCount;
     if (n == null) return '';
@@ -466,17 +280,11 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     return _planLoaded ? GuideLoad.content : GuideLoad.loading;
   }
 
-  GuideLoad get _targetsState {
-    if (_targetsFailed) return GuideLoad.error;
-    if (_targets == null) return GuideLoad.loading;
-    return _activeTargets.isEmpty ? GuideLoad.empty : GuideLoad.content;
-  }
-
   /// The two tiles: ghosts until the board count and the calendar load. If a source
   /// fails the tiles still appear (without a subtitle): they are the way into the
   /// Board and the Calendar and must not be lost to a failed count.
   bool get _tilesReady =>
-      _guide != null && ((_studentCount != null || _countFailed) && (_events != null || _eventsFailed));
+      _guide != null && ((_studentCount != null || _countFailed) && (_events != null || _eventsFailed) && (_targets != null || _targetsFailed));
 
   /// THIS WEEK (navy): opens the Plan page on its This week tab (the full plan, target progress, phases and what to do this week). Every count is
   /// always there: a zero is "0", never a missing number.
@@ -567,15 +375,33 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     );
   }
 
-  /// One of the two square tiles. [side] is the square's side: the tile is at least that
-  /// tall, and both tiles of the pair grow together if the text needs more room.
-  Widget _tile(String guide, {required bool board, required double side, bool placeholder = false}) {
-    if (board) {
+  /// One of the three tiles of the row: the FOLK Boys board, the Calendar and the TARGETS. [side] is the square's side: the tile is at least that
+  /// tall, and the tiles of the row grow together if the text needs more room.
+  Widget _tile(String guide, {required String kind, required double side, bool placeholder = false}) {
+    if (kind == 'targets') {
+      return GuideGradientTile(
+        key: const ValueKey('home-targets-tile'),
+        pastel: GuidePastel.sage,
+        icon: Icons.flag_outlined,
+        title: 'Targets',
+        subtitle: placeholder ? '0 active' : _targetsSubtitle(),
+        minHeight: side,
+        large: true,
+        showChevron: false,
+        onTap: placeholder
+            ? null
+            : () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => TargetsPage(guideId: guide, planOwner: _planOwner.isEmpty ? null : _planOwner)),
+                ),
+      );
+    }
+    if (kind == 'board') {
       final tile = GuideGradientTile(
         pastel: GuidePastel.slate,
         icon: Icons.groups_2_outlined,
         title: 'FOLK Boys Board',
-        subtitle: placeholder ? '0 students' : _boardSubtitle(),
+        subtitle: placeholder ? '00 boys' : _boardSubtitle(),
         minHeight: side,
         large: true,
         showChevron: false,
@@ -621,10 +447,20 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     return placeholder ? tile : HomeData.instance.calendarBadge(child: tile);
   }
 
-  Widget _tilesRow(String guide) => GuideSquarePair(
-        left: (side) => _tile(guide, board: true, side: side),
-        right: (side) => _tile(guide, board: false, side: side),
+  /// THREE widgets side by side in ONE row, the same size and style: FOLK Boys board · Calendar · Targets.
+  Widget _tilesRow(String guide) => GuideTileRow(
+        tiles: [
+          (side) => _tile(guide, kind: 'board', side: side),
+          (side) => _tile(guide, kind: 'calendar', side: side),
+          (side) => _tile(guide, kind: 'targets', side: side),
+        ],
       );
+
+  /// "2 active" / "None set" (the Targets page has the detail).
+  String _targetsSubtitle() {
+    final n = _activeTargets.length;
+    return n == 0 ? 'None set' : '$n active';
+  }
 
   /// A wide window keeps the Home content in a centred column (a phone: the whole width, as before).
   @override
@@ -712,34 +548,20 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
           padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 12, GuideSpace.pagePadding, 0),
           child: GuideEntry(
             index: 3,
-            child: GuideStateView(
-              state: _targetsState == GuideLoad.empty ? GuideLoad.content : _targetsState,
-              ghost: GuideGhostOf(radius: GuideShape.tileRadius, placeholder: _targetsCard(placeholder: true)),
-              content: _targetsCard(),
-              errorMessage: 'Could not load your targets. Check your connection and try again.',
-              onRetry: _retry,
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(GuideSpace.pagePadding, 12, GuideSpace.pagePadding, 0),
-          child: GuideEntry(
-            index: 4,
             child: GuideCrossFade(
               child: _tilesReady
                   ? KeyedSubtree(key: const ValueKey('tiles'), child: _tilesRow(guide!))
                   : KeyedSubtree(
                       key: const ValueKey('tiles-ghost'),
                       child: GuideGhostArea(
-                        child: GuideSquarePair(
-                          left: (side) => GuideGhostOf(
-                            radius: GuideShape.tileRadius,
-                            placeholder: _tile('', board: true, side: side, placeholder: true),
-                          ),
-                          right: (side) => GuideGhostOf(
-                            radius: GuideShape.tileRadius,
-                            placeholder: _tile('', board: false, side: side, placeholder: true),
-                          ),
+                        child: GuideTileRow(
+                          tiles: [
+                            for (final k in const ['board', 'calendar', 'targets'])
+                              (side) => GuideGhostOf(
+                                    radius: GuideShape.tileRadius,
+                                    placeholder: _tile('', kind: k, side: side, placeholder: true),
+                                  ),
+                          ],
                         ),
                       ),
                     ),

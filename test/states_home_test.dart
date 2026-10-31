@@ -139,8 +139,8 @@ void main() {
       expect(tiles.height, closeTo(tilesGhost.height, .01));
       expect((tiles.top - tilesGhost.top).abs(), lessThan(60));
       expect(tester.getSize(find.byType(ListView)).height, listHeight);
-      // the one targets card has the ghost's size (same layout, invisible)
-      expect(find.byKey(const ValueKey('home-targets-card')), findsOneWidget);
+      // the Targets widget is the third tile of the row
+      expect(find.byKey(const ValueKey('home-targets-tile')), findsOneWidget);
       expect(tester.binding.transientCallbackCount, 0, reason: 'no ticker once the ghosts are gone');
       expect(GhostClock.instance.running, isFalse);
       expect(scrollExtent, greaterThanOrEqualTo(0));
@@ -173,8 +173,7 @@ void main() {
     data.countC.add(0);
     data.eventsC.complete(<CalendarEvent>[]);
     await tester.pumpAndSettle();
-    expect(find.text('Not set'), findsNWidgets(3), reason: 'three tiles, none set');
-    expect(find.text('Set a target'), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const ValueKey('home-targets-tile')), matching: find.text('None set')), findsOneWidget, reason: 'the Targets widget says so');
     expect(tester.binding.transientCallbackCount, 0, reason: 'a still ghost holds no ticker');
   });
 
@@ -229,7 +228,7 @@ void main() {
 
   for (final dark in [false, true]) {
     for (final scale in kScales) {
-      testWidgets('Board and Calendar tiles: equal, side by side, square (${dark ? 'dark' : 'light'}, text scale $scale)', (tester) async {
+      testWidgets('Board, Calendar and Targets tiles: ONE row, equal, square (${dark ? 'dark' : 'light'}, text scale $scale)', (tester) async {
         final data = await pumpHome(tester, scale: scale, dark: dark);
         data.targetsC.add([target('chanting', 2)]);
         data.plan.c.add(planDoc());
@@ -239,26 +238,31 @@ void main() {
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
         final tiles = find.descendant(of: find.byKey(const ValueKey('tiles')), matching: find.byType(GuideGradientTile));
-        expect(tiles, findsNWidgets(2));
+        expect(tiles, findsNWidgets(3));
         final a = tester.getRect(tiles.at(0));
         final b = tester.getRect(tiles.at(1));
-        expect(a.top, b.top, reason: 'side by side');
-        expect(a.size, b.size, reason: 'exactly the same size');
-        expect(a.width, closeTo(154, 0.5));
+        final c = tester.getRect(tiles.at(2));
+        expect([a.top, b.top], [c.top, c.top], reason: 'ONE row');
+        for (final r in [a, b]) {
+          expect(r.width, closeTo(c.width, 0.01), reason: 'exactly the same size and style');
+          expect(r.height, closeTo(c.height, 0.01), reason: 'exactly the same size and style');
+        }
+        expect(a.width, closeTo((360 - 40 - 24) / 3, 0.5));
         expect(a.height, greaterThanOrEqualTo(a.width));
-        if (scale == 1.0) expect(a.height, closeTo(a.width, 0.5), reason: 'perfectly square');
         expect(b.left - a.right, closeTo(12, 0.5));
+        expect(c.left - b.right, closeTo(12, 0.5));
         // nothing is clipped: the whole text of both is inside its tile
-        for (final text in ['FOLK Boys Board', 'Calendar', '24 boys', 'Nothing due today']) {
+        for (final text in ['FOLK Boys Board', 'Calendar', '24 boys', 'Nothing due today', 'Targets', '1 active']) {
           final r = tester.getRect(find.descendant(of: tiles, matching: find.text(text)).first);
-          expect(a.contains(r.topLeft) || b.contains(r.topLeft), isTrue, reason: text);
-          expect(r.bottom, lessThanOrEqualTo((a.contains(r.topLeft) ? a : b).bottom + 0.5), reason: '$text is clipped');
+          final home = [a, b, c].firstWhere((x) => x.contains(r.topLeft), orElse: () => Rect.zero);
+          expect(home, isNot(Rect.zero), reason: text);
+          expect(r.bottom, lessThanOrEqualTo(home.bottom + 0.5), reason: '$text is clipped');
         }
       });
     }
   }
 
-  testWidgets('with the dot showing, the two tiles are still the same size', (tester) async {
+  testWidgets('with the dot showing, the three tiles are still the same size', (tester) async {
     final data = await pumpHome(tester);
     data.targetsC.add([]);
     data.plan.c.add(planDoc());
@@ -267,6 +271,9 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
     final tiles = find.descendant(of: find.byKey(const ValueKey('tiles')), matching: find.byType(GuideGradientTile));
-    expect(tester.getSize(tiles.at(0)), tester.getSize(tiles.at(1)));
+    for (var i = 1; i < 3; i++) {
+      expect(tester.getSize(tiles.at(i)).width, closeTo(tester.getSize(tiles.at(0)).width, 0.01));
+      expect(tester.getSize(tiles.at(i)).height, closeTo(tester.getSize(tiles.at(0)).height, 0.01));
+    }
   });
 }

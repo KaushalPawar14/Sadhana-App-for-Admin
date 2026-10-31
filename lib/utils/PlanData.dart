@@ -129,7 +129,10 @@ class PlanPoint {
 
 /// One student's step in a target ("Testing 12 → 16").
 class PlanStep {
-  const PlanStep({required this.name, required this.from, required this.to, this.done = false, this.book = '', this.due = ''});
+  const PlanStep({required this.name, required this.from, required this.to, this.done = false, this.book = '', this.due = '', this.label = ''});
+
+  /// The words the server wrote for a COMBINED step ("Amit — 12 → 16 · invite to FOLK (direct)"); empty for a step of one target.
+  final String label;
 
   /// A book target's step also names the book he is reading ("Testing — 📖 Bhagavad-gita"), the same words as his topic in Today.
   final String book;
@@ -149,7 +152,7 @@ class PlanStep {
   }
 
   /// The words of the step in This week and the calendar: "Testing 12 → 16", and for a book "Testing — 📖 Bhagavad-gita (1 → 2)", with "on track — due 30 Nov" while his book is not due yet.
-  String get words => (book.isEmpty ? '$name $from → $to' : '$name — 📖 $book ($from → $to)') + (onTrack ? ' · on track — due $dueShort' : '');
+  String get words => label.isNotEmpty ? label : (book.isEmpty ? '$name $from → $to' : '$name — 📖 $book ($from → $to)') + (onTrack ? ' · on track — due $dueShort' : '');
   final String name;
   final int from;
   final int to;
@@ -186,6 +189,7 @@ class PlanItem {
     this.points = const [],
     this.cardGroups = const [],
     this.steps = const [],
+    this.inCombined = false,
     this.also = '',
     this.calNote = '',
     this.targetId = '',
@@ -216,6 +220,9 @@ class PlanItem {
 
   /// This week's target line: each student's step ("Testing 12 → 16", "Amit 8 → 12"), the done ones ticked.
   final List<PlanStep> steps;
+
+  /// A target's own line in This week that the one combined "Chanting 3 of 5 · Reading 2 of 4 · FOLK 1 of 3" line already says (the calendar still draws its band).
+  final bool inCombined;
 
   final String id;
   final String kind;
@@ -338,10 +345,11 @@ class PlanItem {
         targetId: (m['targetId'] ?? '').toString(),
         achieved: m['achieved'] == true,
         result: (m['result'] ?? '').toString(),
+        inCombined: m['inCombined'] == true,
         steps: [
           if (m['steps'] is List)
             for (final e in (m['steps'] as List))
-              if (e is Map) PlanStep(name: (e['name'] ?? '').toString(), from: e['from'] is num ? (e['from'] as num).round() : 0, to: e['to'] is num ? (e['to'] as num).round() : 0, done: e['done'] == true, book: (e['book'] ?? '').toString(), due: (e['due'] ?? '').toString()),
+              if (e is Map) PlanStep(name: (e['name'] ?? '').toString(), from: e['from'] is num ? (e['from'] as num).round() : 0, to: e['to'] is num ? (e['to'] as num).round() : 0, done: e['done'] == true, book: (e['book'] ?? '').toString(), due: (e['due'] ?? '').toString(), label: (e['label'] ?? '').toString()),
         ],
         cardGroups: [
           if (m['groups'] is List)

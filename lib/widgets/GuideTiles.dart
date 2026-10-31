@@ -797,6 +797,53 @@ class GuideSquarePair extends StatelessWidget {
   }
 }
 
+/// THREE (or any number of) tiles in ONE row, all exactly the same size and style (the Home row: FOLK Boys board, Calendar, Targets): each is as wide as its share of the row ([sideOf]) and
+/// at least that tall; if the text of any needs more room (a large text size) ALL grow to the tallest, so they always match and never clip. On a wide window the tiles stay tile-sized
+/// ([kTileMaxSide]) and sit left-aligned. No LayoutBuilder: the side comes from the screen width and the page padding.
+class GuideTileRow extends StatelessWidget {
+  const GuideTileRow({super.key, required this.tiles});
+
+  /// Each builds its tile for the given square [side] (use it as `minHeight`).
+  final List<Widget Function(double side)> tiles;
+
+  /// The side of one tile for the current screen.
+  static double sideOf(BuildContext context, int count) {
+    final side = (MediaQuery.sizeOf(context).width - 2 * GuideSpace.pagePadding - (count - 1) * GuideSpace.cardGap) / count;
+    return context.isWide && side > kTileMaxSide ? kTileMaxSide : side;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final side = sideOf(context, tiles.length);
+    Widget gap() => const SizedBox(width: GuideSpace.cardGap);
+    if (context.isWide) {
+      // at most tile-sized each, but they share a narrower column (a computer with the assistant panel open) equally instead of overflowing it
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: tiles.length * side + (tiles.length - 1) * GuideSpace.cardGap),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < tiles.length; i++) ...[if (i > 0) gap(), Expanded(child: tiles[i](side))],
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < tiles.length; i++) ...[if (i > 0) gap(), Expanded(child: tiles[i](side))],
+        ],
+      ),
+    );
+  }
+}
+
 /// Navigation cards (and a [GuideSquarePair]) on a WIDE window: they flow into a grid, about three cards per row, each a comfortable
 /// [kCardGridWidth] wide, instead of stretching across the window. [selfSized] are the indexes of children that size themselves (a
 /// [GuideSquarePair]). On a phone the page keeps its own single column; this is only built for a wide window.

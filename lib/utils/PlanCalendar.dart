@@ -47,21 +47,25 @@ List<CalendarEvent> planCalendarEvents(PlanDoc? plan) {
         if (day == null || it.studentUid.isEmpty) continue;
         final isToday = day.year == today.year && day.month == today.month && day.day == today.day;
         if (isToday && inToday.contains(it.studentUid)) continue;
+        // a student coming for a target (a chanting / reading step, a FOLK invitation) is a TARGET day: his one entry says which targets, and sits with the target tasks
+        final targetLabels = [for (final l in it.topicLabels) if (l.toLowerCase().contains('target')) l];
         out.add(autoCalendarEvent(
           id: 'plan_week_${it.studentUid}_${it.scheduledFor}',
           source: kSourcePlan,
           start: day,
-          title: 'Interaction: ${it.studentName}',
+          title: targetLabels.isEmpty ? 'Interaction: ${it.studentName}' : 'Interaction: ${it.studentName} — ${targetLabels.join(', ')}',
           note: it.calNote,
           refId: it.id,
           studentUid: it.studentUid,
           studentName: it.studentName,
           done: it.done,
-          section: kSectionFollowUps,
+          section: targetLabels.isEmpty ? kSectionFollowUps : kSectionTargets,
         ));
       }
     } else if (sec.id == 'targettasks' && weekOf != null) {
       for (final it in sec.items) {
+        // the combined "Chanting 3 of 5 · Reading 2 of 4 · FOLK 1 of 3" line is This week's picture; the calendar draws each target's own band
+        if (it.id == 'weekjourney') continue;
         final steps = [for (final s in it.steps) s.words];
         out.add(autoCalendarEvent(
           id: 'plan_target_${it.id}',

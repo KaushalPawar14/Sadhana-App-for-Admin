@@ -28,7 +28,7 @@ import '../Pages/PlanPage.dart';
 import '../Pages/StudentProfilePage.dart';
 import '../Pages/ChantingChallengeManager.dart';
 import '../Pages/ExpeditionManager.dart';
-import '../Pages/GoalHomePage.dart';
+import '../Pages/TargetsPage.dart';
 import '../Pages/InteractionLogger.dart';
 import 'AdminProfile.dart';
 import 'CalendarQueries.dart';
@@ -250,7 +250,8 @@ List<CalendarEvent> laterEvents(Iterable<QueryDocumentSnapshot<Map<String, dynam
       studentUid: _s(m['studentUid']),
       studentName: who,
       guideId: _s(m['scopeGuide']),
-      section: 'followups',
+      // a postponed TARGET topic (chanting / reading / FOLK) comes back among the target tasks
+      section: _s(m['key']).startsWith('target') ? 'targets' : 'followups',
     ));
   }
   return out;
@@ -308,27 +309,65 @@ List<CalendarEvent> competitionEvents(Iterable<QueryDocumentSnapshot<Map<String,
   return out;
 }
 
-/// A target's deadline, and the end of the phase now running (a phase runs a week from when it started; never past the deadline).
-List<CalendarEvent> targetEvents(String guideId, CompoundTarget t, CompoundPhase? running) {
+/// EVERY DATE OF A TARGET, live: when it started, the end of each phase (a phase runs a week from when it started; the ones still to come are planned a week after each other; never past
+/// the deadline) and its end date, which reads "Target ended — choose" once it has been reached (the guide deletes or extends it). [phases] are all of the target's phases (when
+/// they are known); [running] alone gives only the one now running. [today] defaults to now.
+List<CalendarEvent> targetEvents(String guideId, CompoundTarget t, CompoundPhase? running, {List<CompoundPhase> phases = const [], DateTime? today}) {
   if (!t.isActive) return const [];
-  final label = t.metric == 'books' ? 'books' : 'chanting';
+  final label = t.metric == 'books' ? 'books' : t.metric == 'folk' ? 'FOLK' : 'chanting';
+  final now = _day(today ?? DateTime.now());
   final out = <CalendarEvent>[];
   final deadline = t.endDate;
-  if (deadline != null) {
-    out.add(autoCalendarEvent(id: 'target_${guideId}_${t.targetId}', source: kSourceTarget, start: deadline, title: 'Target deadline: $label', refId: t.targetId, guideId: guideId));
+  final created = t.createdAt;
+  if (created != null) {
+    out.add(autoCalendarEvent(id: 'targetstart_${guideId}_${t.targetId}', source: kSourceTarget, start: created, title: 'Target starts: $label', refId: t.targetId, guideId: guideId, section: 'targets'));
   }
-  final started = running?.startedAt;
-  if (running != null && started != null && running.status == kCompoundPhaseActive) {
-    var end = _day(started).add(const Duration(days: 6));
-    if (deadline != null && end.isAfter(_day(deadline))) end = _day(deadline);
+  if (deadline != null) {
+    final ended = !_day(deadline).isAfter(now);
     out.add(autoCalendarEvent(
-      id: 'phase_${guideId}_${t.targetId}_${running.phaseNumber}',
-      source: kSourcePhase,
-      start: end,
-      title: 'Phase ${running.phaseNumber} ends: $label',
+      id: 'target_${guideId}_${t.targetId}',
+      source: kSourceTarget,
+      start: deadline,
+      title: ended ? 'Target ended — choose: $label' : 'Target deadline: $label',
+      note: ended ? 'Delete it or extend its end date.' : '',
       refId: t.targetId,
       guideId: guideId,
+      section: 'targets',
     ));
+  }
+  final all = <CompoundPhase>[...phases];
+  if (running != null && !all.any((p) => p.phaseNumber == running.phaseNumber)) all.add(running);
+  all.sort((x, y) => x.phaseNumber.compareTo(y.phaseNumber));
+  DateTime? lastEnd;
+  CompoundPhase? runningPhase = running;
+  for (final p in all) {
+    if (p.status == kCompoundPhaseActive) runningPhase = p;
+  }
+  for (final p in all) {
+    DateTime? end;
+    var planned = false;
+    final started = p.startedAt;
+    if (started != null) {
+      end = _day(started).add(const Duration(days: 6));
+    } else if (lastEnd != null && runningPhase != null && p.phaseNumber > runningPhase.phaseNumber) {
+      end = lastEnd.add(const Duration(days: 7));
+      planned = true;
+    }
+    if (end == null) continue;
+    if (deadline != null && end.isAfter(_day(deadline))) end = _day(deadline);
+    lastEnd = end;
+    if (p.status == kCompoundPhaseActive || p.startedAt != null || planned) {
+      out.add(autoCalendarEvent(
+        id: 'phase_${guideId}_${t.targetId}_${p.phaseNumber}',
+        source: kSourcePhase,
+        start: end,
+        title: 'Phase ${p.phaseNumber} ends: $label${planned ? ' (planned)' : ''}',
+        refId: t.targetId,
+        guideId: guideId,
+        section: 'targets',
+        done: p.status == kCompoundPhaseAchieved,
+      ));
+    }
   }
   return out;
 }
@@ -338,7 +377,8 @@ Widget? autoEventPage(CalendarEvent e) {
   switch (e.source) {
     case kSourceTarget:
     case kSourcePhase:
-      return GoalHomePage(guideId: e.guideId);
+      // a target's date opens the Targets page (its card, then the target itself)
+      return TargetsPage(guideId: e.guideId);
     case kSourceFollowUp:
     case kSourceInteraction:
       return e.studentUid.isEmpty ? null : InteractionLoggerPage(studentUid: e.studentUid, studentName: e.studentName);
@@ -404,11 +444,14 @@ class AutoCalendarFeed {
         for (final doc in (await compoundTargetsRef(guide).get()).docs) {
           final t = CompoundTarget.from(guide, doc.id, doc.data());
           CompoundPhase? running;
+          var phases = <CompoundPhase>[];
           if (t.isActive) {
-            final p = await compoundPhasesRef(guide, doc.id).doc('${t.currentPhase}').get();
-            if (p.exists) running = CompoundPhase.from(p.id, p.data() ?? const {});
+            phases = [for (final p in (await compoundPhasesRef(guide, doc.id).get()).docs) CompoundPhase.from(p.id, p.data())];
+            for (final p in phases) {
+              if (p.phaseNumber == t.currentPhase) running = p;
+            }
           }
-          events.addAll(targetEvents(guide, t, running));
+          events.addAll(targetEvents(guide, t, running, phases: phases, today: _clock()));
         }
         return events;
       });
@@ -482,7 +525,7 @@ class AutoCalendarFeed {
         for (final guide in guides) {
           subs.add(compoundTargetsStream(guide).listen(
             (targets) {
-              parts['targets_$guide'] = [for (final t in targets) ...targetEvents(guide, t, null)];
+              parts['targets_$guide'] = [for (final t in targets) ...targetEvents(guide, t, null, today: _clock())];
               emit();
               for (final k in phaseSubs.keys.where((k) => k.startsWith('${guide}_')).toList()) {
                 phaseSubs.remove(k)?.cancel();
@@ -497,7 +540,7 @@ class AutoCalendarFeed {
                     }
                     parts['targets_$guide'] = [
                       ...(parts['targets_$guide'] ?? const <CalendarEvent>[]).where((e) => e.refId != t.targetId),
-                      ...targetEvents(guide, t, running),
+                      ...targetEvents(guide, t, running, phases: phases, today: _clock()),
                     ];
                     emit();
                   },

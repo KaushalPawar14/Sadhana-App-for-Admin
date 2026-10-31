@@ -23,16 +23,17 @@ const String kSectionFollowUps = 'followups';
 const String kSectionTargets = 'targets';
 const String kSectionOthers = 'others';
 
-/// The section a task belongs to: a student's card in his most important one; a target task / phase end / deadline in Target tasks; the doubts waiting
+/// The section a task belongs to: a student's card in his most important one (worries, then targets, then follow-ups, then others); a target task / phase end / deadline in Target tasks; the doubts waiting
 /// in Follow-ups; everything else in Other tasks.
 String todaySectionOf(PlanItem it) {
   if (it.isCard) {
-    final g = it.inGroups.first;
-    return switch (g) {
-      PlanGroup.worry || PlanGroup.followUp => kSectionFollowUps,
-      PlanGroup.target => kSectionTargets,
-      PlanGroup.other => kSectionOthers,
-    };
+    // ONE card per student with all his topics, placed by the most important: a WORRY first (Follow-ups), then anything about a TARGET (chanting, reading, a FOLK invitation: Target tasks),
+    // then the other follow-ups (a doubt, a poor sadhana), then Other tasks
+    final gs = it.inGroups.toSet();
+    if (gs.contains(PlanGroup.worry)) return kSectionFollowUps;
+    if (gs.contains(PlanGroup.target)) return kSectionTargets;
+    if (gs.contains(PlanGroup.followUp)) return kSectionFollowUps;
+    return kSectionOthers;
   }
   if (it.kind == 'targetTask' || it.kind == 'phaseTask' || it.kind == 'targetDeadline' || it.kind == 'targetEnded') return kSectionTargets;
   if (it.kind == 'doubtsToAnswer') return kSectionFollowUps;
