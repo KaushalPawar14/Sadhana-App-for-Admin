@@ -4,6 +4,7 @@
 ///   follow-up                     an approved interaction's `approvedSummary.followUpDate`
 ///   interaction                   an interaction dated after the day it was logged (planned ahead)
 ///   meeting                       a confirmed association (`confirmedDate`)
+///   later                         a topic postponed to a day (`topicPostponements`: "Testing — raise to 12 rounds")
 ///   trip (a range)                `expeditions` (`tripDate` .. `endDate`)
 ///   chanting competition (range)  `chantingChallenges` (`startDate` .. `endDate`)
 ///
@@ -224,6 +225,31 @@ List<CalendarEvent> bookDueEvents(Iterable<QueryDocumentSnapshot<Map<String, dyn
   return out;
 }
 
+/// LATER: a topic the guide postponed to a day ("Testing — raise to 12 rounds"), on that day, with the note he left. It is a task of the plan (a follow-up), drawn like the others.
+List<CalendarEvent> laterEvents(Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> postponed) {
+  final out = <CalendarEvent>[];
+  for (final d in postponed) {
+    final m = d.data();
+    final day = DateTime.tryParse(_s(m['date']));
+    if (day == null) continue;
+    final who = _s(m['studentName']).isEmpty ? 'a student' : _s(m['studentName']);
+    final label = _s(m['label']).isEmpty ? 'a postponed topic' : _s(m['label']);
+    out.add(autoCalendarEvent(
+      id: 'later_${d.id}',
+      source: kSourcePlan,
+      start: day,
+      title: '$who — $label',
+      note: _s(m['note']),
+      refId: d.id,
+      studentUid: _s(m['studentUid']),
+      studentName: who,
+      guideId: _s(m['scopeGuide']),
+      section: 'followups',
+    ));
+  }
+  return out;
+}
+
 /// Trips: a range from the trip date to its last day (archived and cancelled ones are not shown).
 List<CalendarEvent> tripEvents(Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> trips) {
   final out = <CalendarEvent>[];
@@ -351,6 +377,7 @@ class AutoCalendarFeed {
       return [...followUpEvents(logs), ...plannedInteractionEvents(logs, now: _clock())];
     });
     await part(() async => meetingEvents((await scope.historyGet('associations')).docs));
+    await part(() async => laterEvents((await scope.historyGet('topicPostponements')).docs));
     await part(() async {
       final names = {for (final d in (await scope.studentsGet()).docs) d.id: _s(d.data()['name'])};
       return bookDueEvents((await scope.historyGet('booksRead')).docs, names);
@@ -418,6 +445,8 @@ class AutoCalendarFeed {
         listen('followUps', scope.historyStream('interactionLogs'), (s) => followUpEvents(s.docs));
         listen('interactions', scope.historyStream('interactionLogs'), (s) => plannedInteractionEvents(s.docs, now: _clock()));
         listen('meetings', scope.historyStream('associations'), (s) => meetingEvents(s.docs));
+        // what the guide postponed to a day (Later): on that day, with his note
+        listen('later', scope.historyStream('topicPostponements'), (s) => laterEvents(s.docs));
         // EVERYTHING I HAVE TO DO: the plan's own tasks (Today and This week), live with the plan
         listen('plan', PlanData.instance.plan(profile.id), planCalendarEvents);
         // every book's due date, with the students' names (read once; the books stream live)

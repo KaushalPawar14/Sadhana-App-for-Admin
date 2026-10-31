@@ -430,6 +430,14 @@ void main() {
       expect(find.byKey(const ValueKey('home-pending-today')), findsOneWidget);
     });
 
+    testWidgets('A TARGET WHOSE END DATE HAS BEEN REACHED shows "Ended — choose" on the Home targets card (a running one shows its words)', (tester) async {
+      phone(tester, 1.0);
+      final today = DateTime.now();
+      await pumpShell(tester, data: FakeHomeData(targetList: [target('chanting', 5, 16, 1, 3, end: DateTime(today.year, today.month, today.day).subtract(const Duration(days: 3))), target('books', 3, 2, 1, 3, end: DateTime(today.year + 1, 1, 1))]));
+      expect(find.text('Ended — choose'), findsOneWidget, reason: 'the chanting target ended');
+      expect(find.textContaining('2 books'), findsOneWidget, reason: 'the reading target is still running');
+    });
+
     testWidgets('A HOD\'S HOME counts HIS OWN plan (his id, not the guide he picked); the guides\' summary lines are not tasks', (tester) async {
       phone(tester, 1.0);
       final asked = <String>[];

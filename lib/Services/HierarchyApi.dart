@@ -205,6 +205,55 @@ class HierarchyApi {
     return r['previous'] is num ? (r['previous'] as num).round() : 4;
   }
 
+  /// LATER: postpone a topic of Today to [date] (YYYY-MM-DD, after today). [key] is the topic's own key (see `laterKeyOf`); the server hides the topic until the date, puts it in the
+  /// calendar and This week, and brings it back in Today on the date with the [note]. A date after the end of the target the topic belongs to takes the student out of that target
+  /// (the answer says so: `afterTargetEnd`). Nothing goes into the student's history for the postponement itself.
+  Future<Map<String, dynamic>> postponeTopic({
+    required String studentUid,
+    required String key,
+    required String date,
+    String note = '',
+    String label = '',
+    int? to,
+    String? bookTitle,
+  }) =>
+      _call('postponeTopic', {
+        'studentUid': studentUid,
+        'key': key,
+        'date': date,
+        if (note.trim().isNotEmpty) 'note': note.trim(),
+        if (label.trim().isNotEmpty) 'label': label.trim(),
+        if (to != null) 'to': to,
+        if (bookTitle != null && bookTitle.trim().isNotEmpty) 'bookTitle': bookTitle.trim(),
+      });
+
+  /// The assistant's form: the topic by NAME (`target_chanting`, `book_due` ...), the server finds the key (and the book by its title).
+  Future<Map<String, dynamic>> postponeTopicByName({required String studentUid, required String topic, required String date, String note = '', String? bookTitle}) => _call('postponeTopic', {
+        'studentUid': studentUid,
+        'topic': topic,
+        'date': date,
+        if (note.trim().isNotEmpty) 'note': note.trim(),
+        if (bookTitle != null && bookTitle.trim().isNotEmpty) 'bookTitle': bookTitle.trim(),
+      });
+
+  /// Bring a postponed topic back into Today now ([restore]: put an earlier date back instead, for an Undo).
+  Future<String> unpostponeTopic({required String studentUid, String? key, String? topic, String? bookTitle, Map<String, dynamic>? restore}) async {
+    final r = await _call('unpostponeTopic', {
+      'studentUid': studentUid,
+      if (key != null) 'key': key,
+      if (topic != null) 'topic': topic,
+      if (bookTitle != null && bookTitle.trim().isNotEmpty) 'bookTitle': bookTitle.trim(),
+      if (restore != null) 'restore': restore,
+    });
+    return (r['message'] ?? 'Done.').toString();
+  }
+
+  /// Put a student back into a target he was taken out of (`chanting` | `books` | `folk`): the target is planned again with him.
+  Future<String> includeInTarget({required String studentUid, required String metric}) async {
+    final r = await _call('includeInTarget', {'studentUid': studentUid, 'metric': metric});
+    return (r['message'] ?? 'Done.').toString();
+  }
+
   /// The admin opened the app: the FIRST call of the day makes the server write the AI questions for Today's students (his batch, and whoever joined it);
   /// every other call that day, and a day he never opens the app, costs nothing. Never throws: the plan simply stays as it is.
   Future<void> openPlan() async {

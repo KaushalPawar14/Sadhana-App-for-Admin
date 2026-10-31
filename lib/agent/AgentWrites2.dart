@@ -75,7 +75,14 @@ Future<AgentResult> targetSetEndDate(Map<String, dynamic> a, AgentEnv env) async
   final t = await _targetId(a['targetId']);
   final d = agentDay(a['endDate']);
   await updateTargetEndDate(guideId: t.guide, targetId: t.target, endDate: d);
-  return _done('Target end date moved to ${_day.format(d)}.');
+  // the target continues: a new plan is made at once for what is left (phases never more than the weeks left), as when the guide extends it in Today
+  var replanned = true;
+  try {
+    await callRegenerateCompoundPlan(guideId: t.guide, targetId: t.target, note: 'The end date was moved to ${_day.format(d)}: plan what is left for the students who have not reached the goal.');
+  } catch (_) {
+    replanned = false;
+  }
+  return _done('Target end date moved to ${_day.format(d)}${replanned ? ' and the plan was made again for what is left' : ' (the new plan could not be made just now: ask me to regenerate it)'}.');
 }
 
 /// The agent's tasks as the app's own, after checking every student named is one this guide may see.
@@ -215,6 +222,37 @@ Future<AgentResult> studentNoteAdd(Map<String, dynamic> a, AgentEnv env) async {
   return _done('$message (${_s(s['name'])}: "${_s(a['text'])}")', undo: () async {
     await HierarchyApi.instance.studentGuideNote(studentUid: uid, kind: 'note_undo');
   });
+}
+
+/// "Remind me about Testing's 12 rounds on 15 Nov", "postpone Ayush's book till next week", "he will increase to 12 in the middle of next month": the topic goes to that date (LATER).
+/// The server hides it until the date, puts it in the calendar and This week, and brings it back in Today with the note; a date after the target's end takes him out of the target.
+Future<AgentResult> topicPostpone(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _s(a['studentUid']);
+  final s = await env.student(uid);
+  final r = await HierarchyApi.instance.postponeTopicByName(studentUid: uid, topic: _s(a['topic']), date: _s(a['date']), note: _s(a['note']), bookTitle: a['bookTitle'] == null ? null : _s(a['bookTitle']));
+  final undo = r['undo'];
+  return _done('${r['message'] ?? 'Done.'} (${_s(s['name'])})', undo: () async {
+    if (undo is Map) {
+      final data = Map<String, dynamic>.from(undo['data'] as Map);
+      await HierarchyApi.instance.unpostponeTopic(studentUid: uid, key: _s(data['key']), restore: data['restore'] is Map ? Map<String, dynamic>.from(data['restore'] as Map) : null);
+    }
+  });
+}
+
+/// "Bring Ayush's book back": the postponed topic is simply not hidden any more.
+Future<AgentResult> topicReturn(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _s(a['studentUid']);
+  final s = await env.student(uid);
+  final message = await HierarchyApi.instance.unpostponeTopic(studentUid: uid, topic: _s(a['topic']), bookTitle: a['bookTitle'] == null ? null : _s(a['bookTitle']));
+  return _done('$message (${_s(s['name'])})');
+}
+
+/// "Put Ayush back into the chanting target": he is in its pool again, the target is planned again with him.
+Future<AgentResult> targetStudentInclude(Map<String, dynamic> a, AgentEnv env) async {
+  final uid = _s(a['studentUid']);
+  final s = await env.student(uid);
+  final message = await HierarchyApi.instance.includeInTarget(studentUid: uid, metric: _s(a['metric']));
+  return _done('$message (${_s(s['name'])})');
 }
 
 /// "Remove the interactions for Amit": the plan entries and the reasons in Interactions needed go, it is noted in his history, and nothing
@@ -663,6 +701,9 @@ final Map<String, AgentRun> kAgentWritesB = {
   'target_proposal_reject': targetProposalReject,
   'target_suggest_plan': targetSuggestPlan,
   'target_check_advance': targetCheckAdvance,
+  'topic_postpone': topicPostpone,
+  'topic_return': topicReturn,
+  'target_student_include': targetStudentInclude,
   'student_note_add': studentNoteAdd,
   'student_folk_interest_set': studentFolkInterestSet,
   'student_advice_set': studentAdviceSet,

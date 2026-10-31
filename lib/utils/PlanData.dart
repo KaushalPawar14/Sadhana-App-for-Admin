@@ -81,7 +81,18 @@ class PlanPoint {
     this.since = '',
     this.carriedOver = false,
     this.late = false,
+    this.to,
+    this.targetEnd = '',
+    this.bookTitle = '',
+    this.laterNote = '',
   });
+
+  /// What LATER needs to know about a topic: its step (`to`, "raise to 12 rounds"), the day its target ends (the panel warns when the chosen date is after it), the book's title,
+  /// and the note the guide left when he postponed it (shown on the topic when it returns).
+  final int? to;
+  final String targetEnd;
+  final String bookTitle;
+  final String laterNote;
 
   /// A confirmed meeting whose day has PASSED without "Completed" or "Cancelled": it stays in Today every day, with a Completed and a Cancelled button.
   final bool late;
@@ -112,13 +123,19 @@ class PlanPoint {
     if (raw is! Map) return null;
     final text = (raw['text'] ?? '').toString();
     if (text.isEmpty) return null;
-    return PlanPoint(text: text, group: PlanGroup.parse(raw['group']) ?? PlanGroup.followUp, done: raw['done'] == true, kind: (raw['kind'] ?? '').toString(), id: (raw['id'] ?? '').toString(), title: (raw['title'] ?? '').toString(), bookId: (raw['bookId'] ?? '').toString(), assocId: (raw['assocId'] ?? '').toString(), doubtId: (raw['doubtId'] ?? '').toString(), metric: (raw['metric'] ?? '').toString(), since: (raw['since'] ?? '').toString(), carriedOver: raw['carriedOver'] == true, late: raw['late'] == true, sub: [for (final x in (raw['sub'] as List? ?? const [])) if (PlanSub.fromMap(x) case final y?) y]);
+    return PlanPoint(text: text, group: PlanGroup.parse(raw['group']) ?? PlanGroup.followUp, done: raw['done'] == true, kind: (raw['kind'] ?? '').toString(), id: (raw['id'] ?? '').toString(), title: (raw['title'] ?? '').toString(), bookId: (raw['bookId'] ?? '').toString(), assocId: (raw['assocId'] ?? '').toString(), doubtId: (raw['doubtId'] ?? '').toString(), metric: (raw['metric'] ?? '').toString(), since: (raw['since'] ?? '').toString(), carriedOver: raw['carriedOver'] == true, late: raw['late'] == true, to: raw['to'] is num ? (raw['to'] as num).round() : null, targetEnd: (raw['targetEnd'] ?? '').toString(), bookTitle: (raw['bookTitle'] ?? '').toString(), laterNote: (raw['laterNote'] ?? '').toString(), sub: [for (final x in (raw['sub'] as List? ?? const [])) if (PlanSub.fromMap(x) case final y?) y]);
   }
 }
 
 /// One student's step in a target ("Testing 12 → 16").
 class PlanStep {
-  const PlanStep({required this.name, required this.from, required this.to, this.done = false});
+  const PlanStep({required this.name, required this.from, required this.to, this.done = false, this.book = ''});
+
+  /// A book target's step also names the book he is reading ("Testing — 📖 Bhagavad-gita"), the same words as his topic in Today.
+  final String book;
+
+  /// The words of the step in This week and the calendar: "Testing 12 → 16", and for a book "Testing — 📖 Bhagavad-gita (1 → 2)".
+  String get words => book.isEmpty ? '$name $from → $to' : '$name — 📖 $book ($from → $to)';
   final String name;
   final int from;
   final int to;
@@ -157,7 +174,16 @@ class PlanItem {
     this.steps = const [],
     this.also = '',
     this.calNote = '',
+    this.targetId = '',
+    this.achieved = false,
+    this.result = '',
   });
+
+  /// A target whose END DATE has been reached (kind `targetEnded`): which target, whether its goal was reached ("Target achieved"), and how it ended ("Reached 3 of 5 boys at 16 rounds").
+  /// It stays in Today until the guide deletes the target or extends its end date.
+  final String targetId;
+  final bool achieved;
+  final String result;
 
   /// The calendar event that shapes this interaction ("Exams 31 Dec–17 Jan"): shown as a small note on the item.
   final String calNote;
@@ -295,10 +321,13 @@ class PlanItem {
         ],
         also: (m['also'] ?? '').toString(),
         calNote: (m['calNote'] ?? '').toString(),
+        targetId: (m['targetId'] ?? '').toString(),
+        achieved: m['achieved'] == true,
+        result: (m['result'] ?? '').toString(),
         steps: [
           if (m['steps'] is List)
             for (final e in (m['steps'] as List))
-              if (e is Map) PlanStep(name: (e['name'] ?? '').toString(), from: e['from'] is num ? (e['from'] as num).round() : 0, to: e['to'] is num ? (e['to'] as num).round() : 0, done: e['done'] == true),
+              if (e is Map) PlanStep(name: (e['name'] ?? '').toString(), from: e['from'] is num ? (e['from'] as num).round() : 0, to: e['to'] is num ? (e['to'] as num).round() : 0, done: e['done'] == true, book: (e['book'] ?? '').toString()),
         ],
         cardGroups: [
           if (m['groups'] is List)

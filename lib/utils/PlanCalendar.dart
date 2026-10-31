@@ -62,7 +62,7 @@ List<CalendarEvent> planCalendarEvents(PlanDoc? plan) {
       }
     } else if (sec.id == 'targettasks' && weekOf != null) {
       for (final it in sec.items) {
-        final steps = [for (final s in it.steps) '${s.name} ${s.from} → ${s.to}'];
+        final steps = [for (final s in it.steps) s.words];
         out.add(autoCalendarEvent(
           id: 'plan_target_${it.id}',
           source: kSourcePlan,

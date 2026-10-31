@@ -568,7 +568,7 @@ class _PlanPageState extends State<PlanPage> {
                               for (var i = 0; i < it.steps.length; i++)
                                 KeyedSubtree(
                                   key: ValueKey('plan-week-step-${it.id}-$i'),
-                                  child: PlanChip(label: '${it.steps[i].name} ${it.steps[i].from} → ${it.steps[i].to}', color: g.eventTarget, done: it.steps[i].done),
+                                  child: PlanChip(label: it.steps[i].words, color: g.eventTarget, done: it.steps[i].done),
                                 ),
                             ],
                           ),
@@ -804,7 +804,20 @@ class _PlanPageState extends State<PlanPage> {
                               for (var i = 0; i < it.points.length; i++) _topicLine(context, it, i),
                               if (it.also.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(it.also, key: ValueKey('plan-also-${it.id}'), style: t.caption.copyWith(height: 1.3))),
                             ] else if (it.detail.isNotEmpty)
-                              Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(it.detail, style: struck(t.small.copyWith(height: 1.35)))),
+                              Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(it.detail, key: ValueKey('plan-detail-${it.id}'), style: struck(t.small.copyWith(height: 1.35)))),
+                            // a target whose end date has been reached: delete it, or extend its end date
+                            if (isEndedTarget(it))
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Wrap(
+                                  spacing: 8,
+                                  runSpacing: 6,
+                                  children: [
+                                    Guide3dButton(key: ValueKey('plan-target-delete-${it.id}'), label: 'Delete target', onPressed: () => runDeleteEndedTarget(context, _me, it)),
+                                    Guide3dButton(key: ValueKey('plan-target-extend-${it.id}'), label: 'Extend end date', onPressed: () => runExtendEndedTarget(context, _me, it)),
+                                  ],
+                                ),
+                              ),
                             if (it.carriedOver || (it.checkWithHim && !it.isCard))
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 6),
@@ -938,7 +951,15 @@ class _PlanPageState extends State<PlanPage> {
                     padding: const EdgeInsets.only(top: 6),
                     child: Align(
                       alignment: Alignment.centerLeft,
-                      child: Guide3dButton(key: ValueKey('plan-action-${it.id}-$i'), label: kTopicActionLabels[topicActionOf(p)]!, onPressed: () => runTopicAction(context, it, p)),
+                      // the topic's own button, and (where postponing makes sense) the second one: Later
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          Guide3dButton(key: ValueKey('plan-action-${it.id}-$i'), label: kTopicActionLabels[topicActionOf(p)]!, onPressed: () => runTopicAction(context, it, p)),
+                          if (isPostponable(p)) Guide3dButton(key: ValueKey('plan-later-${it.id}-$i'), label: 'Later', onPressed: () => showLaterPanel(context, it, p)),
+                        ],
+                      ),
                     ),
                   ),
               ],

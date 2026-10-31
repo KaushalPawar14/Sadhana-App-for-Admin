@@ -307,7 +307,10 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     Widget tile(String metric) {
       final look = _tileLook[metric]!;
       final x = placeholder ? null : setFor(metric);
-      final words = x != null ? _targetWords(x) : 'Not set';
+      // a target whose end date has been reached waits for the guide: delete it, or extend it (in Today)
+      final end = x?.endDate;
+      final over = end != null && !DateTime(end.year, end.month, end.day).isAfter(DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day));
+      final words = over ? 'Ended — choose' : x != null ? _targetWords(x) : 'Not set';
       final body = _raisedTile(
         child: stacked
             ? Row(

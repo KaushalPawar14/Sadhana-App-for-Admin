@@ -106,7 +106,7 @@ void main() {
 
   test('the table covers every executor (nothing is left untested by omission)', () {
     // the names exercised below, plus the ones whose callables the test phone cannot reach
-    expect(all.length, 100 + 0, reason: 'a change was added or removed: update this file');
+    expect(all.length, 103 + 0, reason: 'a change was added or removed: update this file');
   });
 
   group('students', () {
@@ -234,6 +234,21 @@ void main() {
       expect(c['studentUid'], 'u1');
       expect(c['kind'], 'note');
       expect(c['text'], 'keen on service, loves cooking');
+    });
+    test('topic_postpone: the topic by name, the date the assistant worked out and the note go to the server (LATER); the undo brings it back', () async {
+      final r = await all['topic_postpone']!({'studentUid': 'u1', 'topic': 'target_chanting', 'date': '2026-11-15', 'note': 'He will move to 12 rounds by mid-November'}, env());
+      expect(r.ok, isTrue);
+      final c = calls.singleWhere((c) => c['_call'] == 'postponeTopic');
+      expect([c['studentUid'], c['topic'], c['date'], c['note']], ['u1', 'target_chanting', '2026-11-15', 'He will move to 12 rounds by mid-November']);
+      expect(c.containsKey('key'), isFalse, reason: 'the server finds the key from the topic name');
+    });
+    test('topic_postpone for a book names the book; topic_return brings a topic back; target_student_include puts him back into a target', () async {
+      await all['topic_postpone']!({'studentUid': 'u1', 'topic': 'book_due', 'date': '2026-11-05', 'bookTitle': 'Nectar of Devotion'}, env());
+      expect(calls.last['bookTitle'], 'Nectar of Devotion');
+      await all['topic_return']!({'studentUid': 'u1', 'topic': 'book_due'}, env());
+      expect([calls.last['_call'], calls.last['topic']], ['unpostponeTopic', 'book_due']);
+      await all['target_student_include']!({'studentUid': 'u1', 'metric': 'chanting'}, env());
+      expect([calls.last['_call'], calls.last['studentUid'], calls.last['metric']], ['includeInTarget', 'u1', 'chanting']);
     });
     test('student_folk_interest_set: not interested / open again, reversible, with the reason', () async {
       final e = env();

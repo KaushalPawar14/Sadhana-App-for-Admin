@@ -34,7 +34,7 @@ String todaySectionOf(PlanItem it) {
       PlanGroup.other => kSectionOthers,
     };
   }
-  if (it.kind == 'targetTask' || it.kind == 'phaseTask' || it.kind == 'targetDeadline') return kSectionTargets;
+  if (it.kind == 'targetTask' || it.kind == 'phaseTask' || it.kind == 'targetDeadline' || it.kind == 'targetEnded') return kSectionTargets;
   if (it.kind == 'doubtsToAnswer') return kSectionFollowUps;
   return kSectionOthers;
 }
