@@ -88,6 +88,15 @@ String surrenderPoints(double v) {
   return r == r.roundToDouble() ? r.round().toString() : r.toStringAsFixed(1);
 }
 
+/// "2026-10-30" -> "30 Oct" (the day as it is written when it cannot be read).
+String surrenderDayLabel(String day) {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  final m = RegExp(r'^\d{4}-(\d{2})-(\d{2})$').firstMatch(day);
+  if (m == null) return day;
+  final mo = int.parse(m.group(1)!);
+  return mo < 1 || mo > 12 ? day : '${int.parse(m.group(2)!)} ${months[mo - 1]}';
+}
+
 /// The breakdown: each part (its points earned of the points possible) with the reason, the trend, and the residence limit.
 Future<void> showSurrenderBreakdown(BuildContext context, String name, SurrenderInfo info) => showDialog<void>(
       context: context,
@@ -105,6 +114,18 @@ Future<void> showSurrenderBreakdown(BuildContext context, String name, Surrender
                   '${info.stage}${info.trend == null ? '' : info.trend == 0 ? ' · the same as last week' : ' · ${info.trend! > 0 ? '↑ up' : '↓ down'} ${info.trend!.abs()} since last week'}',
                   style: t.caption,
                 ),
+                // THE HISTORY: the % of each recent week joined ("52 → 61 → 70 → 80 → 70"), and the 10% marks crossed, newest first, each with its cause
+                if (info.weeklyLine() != null || info.events.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text('Over time', style: t.bodyStrong),
+                  if (info.weeklyLine() != null) Text(info.weeklyLine()!, key: const ValueKey('surrender-weekly'), style: t.body.copyWith(fontSize: 13, color: g.brass)),
+                  for (final e in info.events.reversed.take(6))
+                    Padding(
+                      key: ValueKey('surrender-event-${e.day}-${e.from}-${e.to}'),
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Text('${surrenderDayLabel(e.day)} · ${e.label} · ${e.causeWords}', style: t.caption.copyWith(color: e.up ? g.success : g.warning)),
+                    ),
+                ],
                 const SizedBox(height: 10),
                 for (final p in info.parts)
                   Padding(

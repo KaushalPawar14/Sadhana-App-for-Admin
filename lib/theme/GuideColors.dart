@@ -176,6 +176,9 @@ class GuideColors extends ThemeExtension<GuideColors> {
   static const Color heroText = Color(0xFFF4F1EA);
   static const Color heroMuted = Color(0xB8F4F1EA); // rgba(244,241,234,.72)
   static const Color heroLabel = Color(0xFFE3C071);
+  /// A small muted-gold note (Today's "Up to N students a day ..."): darker on the light theme, lighter on the dark one.
+  static const Color noteGoldLight = Color(0xFF9A7B2F);
+  static const Color noteGoldDark = Color(0xFFD2B773);
   static const Color heroDivider = Color(0x29F4F1EA); // .16
   static const Color heroShadow = Color(0x381B2A4A); // rgba(27,42,74,.22)
   static const List<Color> heroRings = [

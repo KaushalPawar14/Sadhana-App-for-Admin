@@ -61,8 +61,55 @@ class SurrenderPart {
   }
 }
 
+/// One 10% mark crossed, from the student's Surrender history: when, from level to level, up or down, and what caused it (new reports, LIT, an interaction, the formula changing ...).
+class SurrenderEvent {
+  const SurrenderEvent({required this.day, required this.from, required this.to, required this.up, required this.fromLevel, required this.toLevel, required this.cause});
+
+  final String day;
+  final int from;
+  final int to;
+  final bool up;
+  final int fromLevel;
+  final int toLevel;
+  final String cause;
+
+  /// "70 → 80 ↑" / "80 → 70 ↓".
+  String get label => '$fromLevel → $toLevel ${up ? '↑' : '↓'}';
+
+  /// The cause in plain words (the same words the server writes in the history line).
+  String get causeWords => const {
+        'reports': 'new daily reports',
+        'lit': 'a new LIT assessment',
+        'interaction': 'an interaction',
+        'meeting': 'a meeting',
+        'commitment': 'a change of his commitment',
+        'category': 'a change of his category',
+        'ignore': 'ignoring his missing reports',
+        'formula': 'the formula changed',
+        'earlier': 'earlier records',
+      }[cause] ?? cause;
+
+  static SurrenderEvent? fromMap(Object? raw) {
+    if (raw is! Map) return null;
+    int n(Object? v) => v is num ? v.round() : 0;
+    final day = (raw['day'] ?? '').toString();
+    if (day.isEmpty) return null;
+    return SurrenderEvent(day: day, from: n(raw['from']), to: n(raw['to']), up: raw['dir'] != 'down', fromLevel: n(raw['fromLevel']), toLevel: n(raw['toLevel']), cause: (raw['cause'] ?? '').toString());
+  }
+}
+
 class SurrenderInfo {
-  const SurrenderInfo({required this.percent, required this.trend, required this.parts, required this.cap, required this.complete, required this.residence, this.noData = false, this.gender = '', this.name = ''});
+  const SurrenderInfo({required this.percent, required this.trend, required this.parts, required this.cap, required this.complete, required this.residence, this.noData = false, this.gender = '', this.name = '', this.weekly = const [], this.events = const []});
+
+  /// The % at the end of each recent week, oldest first ("52 → 61 → 70 → 80 → 70"), and the 10% marks crossed, oldest first.
+  final List<int> weekly;
+  final List<SurrenderEvent> events;
+
+  /// "52 → 61 → 70 → 80 → 70": the last [max] weeks (null when there is nothing to compare, fewer than two points).
+  String? weeklyLine({int max = 8}) {
+    final w = weekly.length > max ? weekly.sublist(weekly.length - max) : weekly;
+    return w.length < 2 ? null : w.join(' → ');
+  }
 
   /// The student's gender and name, so the notes about him or her say the right words (the server writes them with the record).
   final String gender;
@@ -105,6 +152,14 @@ class SurrenderInfo {
       cap: d['cap']?.toString(),
       complete: d['complete'] == true,
       residence: (d['residence'] ?? '').toString(),
+      weekly: [
+        for (final w in (d['weekly'] as List? ?? const []))
+          if (w is Map && w['pct'] is num) (w['pct'] as num).round().clamp(0, 100),
+      ],
+      events: [
+        for (final e in (d['events'] as List? ?? const []))
+          if (SurrenderEvent.fromMap(e) case final ev?) ev,
+      ],
     );
   }
 }

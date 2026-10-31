@@ -111,6 +111,35 @@ void main() {
     expect(tester.getTopLeft(find.byKey(const ValueKey('plan-summary'))).dy, lessThan(tester.getTopLeft(find.byKey(const ValueKey('plan-section-followups'))).dy));
   });
 
+  testWidgets('THE DAILY NUMBER NOTE (muted gold, above the summary): the number limits only the guide\'s targets; it follows the guide\'s number; a HOD\'s plan (no batch) has none', (tester) async {
+    await _open(tester, _plan([_ravi, _amit]));
+    const text = 'Up to 4 students a day for your targets. To change this number, ask the AI.';
+    final note = tester.widget<Text>(find.descendant(of: find.byKey(const ValueKey('plan-batch-note')), matching: find.byType(Text)));
+    expect(note.data, text);
+    final gold = note.style!.color!;
+    expect(gold, const Color(0xFF9A7B2F), reason: 'a muted gold, not the grey of the other small texts');
+    expect(tester.getTopLeft(find.byKey(const ValueKey('plan-batch-note'))).dy, lessThan(tester.getTopLeft(find.byKey(const ValueKey('plan-summary'))).dy), reason: 'at the top of Today');
+    expect(find.byKey(const ValueKey('plan-size-less')), findsNothing, reason: 'still no stepper or buttons');
+    // dark theme: a lighter gold that stays readable
+    await tester.pumpWidget(const SizedBox());
+    await _open(tester, _plan([_ravi]), dark: true);
+    expect(tester.widget<Text>(find.descendant(of: find.byKey(const ValueKey('plan-batch-note')), matching: find.byType(Text))).style!.color, const Color(0xFFD2B773));
+    // another number
+    await tester.pumpWidget(const SizedBox());
+    final base = _plan([_ravi]);
+    final seven = PlanDoc(
+      todayDate: base.todayDate, todayItems: base.todayItems, weekOf: base.weekOf, intro: base.intro, sections: base.sections, generatedAt: base.generatedAt, status: base.status, changedAt: base.changedAt,
+      batch: const PlanBatch(size: 7, round: 1, members: 1, carried: 0, nextReady: false, done: 0, left: 1),
+    );
+    await _open(tester, seven);
+    expect(tester.widget<Text>(find.descendant(of: find.byKey(const ValueKey('plan-batch-note')), matching: find.byType(Text))).data, 'Up to 7 students a day for your targets. To change this number, ask the AI.');
+    // a HOD's plan has no batch: no note
+    await tester.pumpWidget(const SizedBox());
+    final hod = PlanDoc(todayDate: base.todayDate, todayItems: base.todayItems, weekOf: base.weekOf, intro: base.intro, sections: base.sections, generatedAt: base.generatedAt, status: base.status, changedAt: base.changedAt);
+    await _open(tester, hod);
+    expect(find.byKey(const ValueKey('plan-batch-note')), findsNothing);
+  });
+
   testWidgets('THREE BLOCKS in order, each with an icon, its name, done/total and a circular check; OPEN to begin with; a tap on the header collapses (and expands) them; dividers between', (tester) async {
     await _open(tester, _plan([_ravi, _amit, _mohit, _meeting]));
     expect([_text(tester, 'plan-section-count-followups'), _text(tester, 'plan-section-count-targets'), _text(tester, 'plan-section-count-others')], ['1/2', '0/1', '0/1']);

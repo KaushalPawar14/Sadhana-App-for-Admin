@@ -327,9 +327,17 @@ class _PlanPageState extends State<PlanPage> {
     final g = context.g;
     final view = TodayView.of(plan);
     var n = 0;
+    // the daily number limits ONLY the students coming for the guide's own targets; everything else is in Today at once (a HOD's plan has no batch, so no note)
+    final gold = Theme.of(context).brightness == Brightness.dark ? GuideColors.noteGoldDark : GuideColors.noteGoldLight;
     final out = <Widget>[
+      if (plan.batch != null)
+        Padding(
+          key: const ValueKey('plan-batch-note'),
+          padding: const EdgeInsets.fromLTRB(4, 2, 4, 0),
+          child: Text('Up to ${plan.batch!.size} students a day for your targets. To change this number, ask the AI.', style: t.small.copyWith(color: gold)),
+        ),
       Padding(
-        padding: const EdgeInsets.only(top: 4),
+        padding: const EdgeInsets.only(top: 8),
         child: GuideCard(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           child: Text(view.summaryText, key: const ValueKey('plan-summary'), style: t.cardTitleSmall),
