@@ -350,6 +350,10 @@ class PlanItem {
           if (m['steps'] is List)
             for (final e in (m['steps'] as List))
               if (e is Map) PlanStep(name: (e['name'] ?? '').toString(), from: e['from'] is num ? (e['from'] as num).round() : 0, to: e['to'] is num ? (e['to'] as num).round() : 0, done: e['done'] == true, book: (e['book'] ?? '').toString(), due: (e['due'] ?? '').toString(), label: (e['label'] ?? '').toString()),
+          // the ONE combined This-week line: each student's combined next step (older plans drew them as steps; an older app shows the title only)
+          if (m['combined'] is List)
+            for (final e in (m['combined'] as List))
+              if (e is Map) PlanStep(name: (e['name'] ?? '').toString(), from: 0, to: 0, done: e['done'] == true, label: (e['label'] ?? '').toString()),
         ],
         cardGroups: [
           if (m['groups'] is List)

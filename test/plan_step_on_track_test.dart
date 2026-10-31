@@ -31,4 +31,21 @@ void main() {
     expect([steps[0].onTrack, steps[1].onTrack], [true, false]);
     expect(steps[0].dueShort, '30 Nov');
   });
+
+  test('THE COMBINED LINE: the server sends the next steps in "combined" (and no steps, so an older app shows only its title); the app reads them as steps with their words', () {
+    final doc = PlanDoc.fromMap({
+      'today': {'date': '2026-10-30', 'items': []},
+      'week': {'weekOf': '2026-10-26', 'sections': [
+        {'id': 'targettasks', 'title': 'Target tasks', 'items': [
+          {'id': 'weekjourney', 'kind': 'weekTask', 'title': 'Chanting 3 of 5 · FOLK 1 of 3', 'steps': [], 'combined': [
+            {'uid': 'a', 'name': 'Amit', 'from': 0, 'to': 0, 'done': false, 'label': 'Amit — 12 → 16 · invite to FOLK (direct)'},
+            {'uid': 'b', 'name': 'Bala', 'from': 0, 'to': 0, 'done': true, 'label': 'Bala — step done'},
+          ]},
+        ]},
+      ]},
+    });
+    final steps = doc.sections.firstWhere((s) => s.id == 'targettasks').items.single.steps;
+    expect(steps.map((s) => s.words), ['Amit — 12 → 16 · invite to FOLK (direct)', 'Bala — step done']);
+    expect(steps.map((s) => s.done), [false, true]);
+  });
 }
