@@ -5,6 +5,7 @@ import '../utils/AdminProfile.dart';
 import '../utils/PlanData.dart';
 import '../utils/PlanTopicActions.dart';
 import '../utils/Snackbar.dart';
+import '../widgets/RecordInteractionDialog.dart';
 import 'AgentTypes.dart';
 
 /// The assistant's two modes. GUIDE ME: it changes nothing; it answers with the shortest instruction and buttons that open the exact screen. DO IT (the
@@ -96,6 +97,11 @@ Future<void> openGuideButton(BuildContext context, GuideButton b) async {
   final action = topicActionFromWire(b.action);
   if (action == null) return;
   if (b.studentUid.isEmpty) {
+    // recording an interaction without a named student: the form opens with its student picker (the guide chooses there)
+    if (action == TopicAction.recordInteraction) {
+      await showRecordInteractionFor(context);
+      return;
+    }
     showSnackbar(context, 'Tell me which student, and I will open it.', Colors.blue, Icons.info);
     return;
   }

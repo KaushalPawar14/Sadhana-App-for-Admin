@@ -19,6 +19,7 @@ import '../theme/GuideTheme.dart';
 import '../widgets/GuideSurface.dart';
 import '../utils/GuideDb.dart';
 import '../widgets/GuideAppBar.dart';
+import '../widgets/RecordInteractionDialog.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideWait.dart';
 import '../widgets/GuideSheet.dart';
@@ -299,8 +300,7 @@ class _AssociationManagerPageState extends State<AssociationManagerPage> {
   // Guide-initiated meeting
   // ---------------------------------------------------------------------------
 
-  // There is no add-interaction button here any more: interactions are recorded only by telling the assistant what happened (typed or dictated
-  // in the chat), which saves the same `interactionLogs` record with a confirmation. The history below, and deleting an interaction, stay.
+  // "Add interaction" (the button at the bottom) opens the shared form with a student picker; the assistant (Do it / Guide me) and Today save the very same record.
 
   Future<void> _openCreateMeetingSheet(String guide) async {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> students;
@@ -967,15 +967,31 @@ class _AssociationManagerPageState extends State<AssociationManagerPage> {
             ],
           ),
           body: guide == null ? const GuideWait() : ContentWidth(maxWidth: 760, child: _buildSections(guide)),
-          // a new meeting can be created from here, as before
+          // a new meeting, or an interaction (pick the student, then the same form the assistant and Today open), can be added from here
           floatingActionButton: guide == null
               ? null
-              : FloatingActionButton.extended(
-                  heroTag: 'newMeeting',
-                  backgroundColor: context.g.brass,
-                  onPressed: () => _openCreateMeetingSheet(guide),
-                  icon: Icon(Icons.add, color: context.g.onPrimary),
-                  label: Text("New Meeting", style: TextStyle(color: context.g.onPrimary)),
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    FloatingActionButton.extended(
+                      key: const ValueKey('assoc-add-interaction'),
+                      heroTag: 'newInteraction',
+                      backgroundColor: context.g.surface,
+                      foregroundColor: context.g.text,
+                      onPressed: () => showRecordInteractionFor(context),
+                      icon: Icon(Icons.record_voice_over_outlined, color: context.g.text),
+                      label: Text("Add interaction", style: TextStyle(color: context.g.text)),
+                    ),
+                    const SizedBox(height: 12),
+                    FloatingActionButton.extended(
+                      heroTag: 'newMeeting',
+                      backgroundColor: context.g.brass,
+                      onPressed: () => _openCreateMeetingSheet(guide),
+                      icon: Icon(Icons.add, color: context.g.onPrimary),
+                      label: Text("New Meeting", style: TextStyle(color: context.g.onPrimary)),
+                    ),
+                  ],
                 ),
         );
       },

@@ -152,6 +152,21 @@ void main() {
       expect(calls.any((c) => c['_call'] == 'sendStudentNotification' && c['kind'] == 'interaction_logged'), isTrue);
       expect(calls.any((c) => '${c['_call']}'.contains('gemini')), isFalse);
     });
+    test('interaction_add for a student a guide added by hand: ONE record for HIM, ONE notification, and the answer says only what is true (history; no plan item to tick)', () async {
+      await db.collection('users').doc('manual_m1').set({'name': 'Hemant', 'gender': 'male', 'guideId': 'G', 'teamGuide': 'G', 'role': 'Stay at Hostel', 'isManualEntry': true});
+      final r = await all['interaction_add']!({'studentUid': 'manual_m1', 'notes': 'He is keen on KC and attends every session', 'interactionType': 'Live (in-person)', 'date': '2026-10-31'}, env());
+      expect(r.ok, isTrue);
+      final d = (await db.collection('interactionLogs').where('studentUid', isEqualTo: 'manual_m1').get()).docs;
+      expect(d.length, 1, reason: 'a real interaction record for that student');
+      expect([d.single.data()['studentName'], d.single.data()['status'], d.single.data()['source']], ['Hemant', 'approved', 'assistant']);
+      expect(calls.where((c) => c['_call'] == 'sendStudentNotification' && c['kind'] == 'interaction_logged' && c['studentUid'] == 'manual_m1').length, 1, reason: 'notified once, after the record exists');
+      expect((r.data as Map)['done'], contains('saved in his history'));
+      expect((r.data as Map)['done'], isNot(contains('plan item')), reason: 'he has no plan item: nothing is promised that cannot happen');
+    });
+    test('interaction_add for a registered student promises the plan tick and the cleared reasons', () async {
+      final r = await all['interaction_add']!({'studentUid': 'u1', 'notes': 'Spoke today', 'interactionType': 'Call', 'date': '2026-10-31'}, env());
+      expect((r.data as Map)['done'], contains('the plan item is ticked'));
+    });
     test('interaction_add: the REPORT-BACK carries what he answered per topic, his willingness and whether it covered the plan', () async {
       final r = await all['interaction_add']!({
         'studentUid': 'u1',

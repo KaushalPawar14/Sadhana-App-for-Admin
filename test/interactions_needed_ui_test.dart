@@ -384,9 +384,10 @@ void main() {
 
   // ------------------------------------------------------------------------------------------------ the removed buttons
   group('interactions are recorded only through the assistant', () {
-    test('no "Add interaction" / "New interaction" button or sheet is left in the app', () {
+    test('no separate "New interaction" sheet is left in the app: the Add interaction button opens the shared form', () {
       final assoc = File('lib/Pages/AssociationManager.dart').readAsStringSync();
-      expect(assoc.contains('"Add interaction"'), isFalse);
+      // the old hand-made sheet is gone; the "Add interaction" button that is there now opens the SHARED form (student picker), the same save as the assistant's
+      expect(assoc.contains('showRecordInteractionFor(context)'), isTrue);
       expect(assoc.contains('_openAddInteractionSheet'), isFalse);
       expect(assoc.contains("heroTag: 'addInteraction'"), isFalse);
       final logger = File('lib/Pages/InteractionLogger.dart').readAsStringSync();

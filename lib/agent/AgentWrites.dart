@@ -171,7 +171,9 @@ Future<AgentResult> interactionAdd(Map<String, dynamic> a, AgentEnv env) async {
     addressed: a['addressed'] == null ? true : a['addressed'] == true,
     analysis: _analysisOf(a['analysis']),
   );
-  return _done('Interaction with ${_s(s['name'])} recorded for ${_when.format(when)}. ${pronouned('It is saved in his history, the plan item is ticked and his reasons are cleared from Interactions needed.', _s(s['gender']), name: _s(s['name']))}',
+  // a student a guide added by hand (not registered yet) has a history but no plan, Surrender % or Interactions-needed list: say only what is true
+  final manual = uid.startsWith('manual_');
+  return _done('Interaction with ${_s(s['name'])} recorded for ${_when.format(when)}. ${pronouned(manual ? 'It is saved in his history.' : 'It is saved in his history, the plan item is ticked and his reasons are cleared from Interactions needed.', _s(s['gender']), name: _s(s['name']))}',
       entities: [AgentEntity('interaction', saved.id, 'Interaction with ${_s(s['name'])} on ${_day.format(when)}')]);
 }
 

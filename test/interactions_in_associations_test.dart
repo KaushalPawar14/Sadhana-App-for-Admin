@@ -185,7 +185,9 @@ void main() {
         await prepareApp(tester);
         await openAssociations(tester, scale: scale, dark: dark);
         expect(tester.takeException(), isNull);
-        expect(find.text('Add interaction'), findsNothing);
+        // the Add interaction button is back (it opens the shared form with a student picker): it must fit at every size, beside New Meeting
+        expect(find.text('Add interaction'), findsOneWidget);
+        expect(find.text('New Meeting'), findsOneWidget);
       });
     }
   }
