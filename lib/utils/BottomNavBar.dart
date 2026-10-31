@@ -106,26 +106,14 @@ class _CurvedNavBarState extends State<CurvedNavBar> {
     // Was the "Folk analysis" tab's dot.
     // The phone layout and the computer layout both show these dots; a window can be resized across the breakpoint, so each stream may be
     // listened to again by the other layout (broadcast, and the source stays open).
-    _analysisUnseen = _both(UnseenAggregates.anyOf([
-      UnseenAggregates.associationsUnseen(guide, isHod),
-      UnseenAggregates.expeditionReflectionsUnseen(guide, isHod),
-      UnseenAggregates.serviceAssignmentsUnseen(guide, isHod),
-      UnseenAggregates.flaggedMessagesUnseen(guide, isHod),
-      UnseenAggregates.studentDoubtsUnseen(guide, isHod),
-      UnseenAggregates.goalProposalsUnseen(guide),
-      // The Assistant log (HOD only) lives in Analysis now: its new entries light the Analysis tab, the card and the entries.
-      if (isHod) UnseenAggregates.assistantLogUnseen(AdminProfileProvider.current?.id ?? ''),
-    ]));
+    // The dots of a tab are exactly the dots of its cards (UnseenAggregates.analysisTrail / homeTrail): one definition, the children's own streams.
+    _analysisUnseen = _both(UnseenAggregates.analysisTrail(guide, isHod, adminId: AdminProfileProvider.current?.id ?? ''));
 
     // The Tasks tab no longer hosts anything with unseen state.
     _tasksUnseen = _both(Stream.value(false));
 
     // Was the "FOLK Boys" tab's dot.
-    _homeUnseen = _both(UnseenAggregates.anyOf([
-      UnseenAggregates.calendarEventsUnseen(guide),
-      UnseenAggregates.studentCommentsRosterUnseen(guide, isHod),
-      UnseenAggregates.bookCommitmentsRosterUnseen(guide, isHod),
-    ]));
+    _homeUnseen = _both(UnseenAggregates.homeTrail(guide, isHod));
   }
 
   Widget _pageFor(int index) {

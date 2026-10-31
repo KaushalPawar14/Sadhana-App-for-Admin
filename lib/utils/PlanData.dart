@@ -80,7 +80,11 @@ class PlanPoint {
     this.sub = const [],
     this.since = '',
     this.carriedOver = false,
+    this.late = false,
   });
+
+  /// A confirmed meeting whose day has PASSED without "Completed" or "Cancelled": it stays in Today every day, with a Completed and a Cancelled button.
+  final bool late;
 
   /// The Surrender check's lines (what to discuss, the gaps to fill), the day it first appeared and whether it has been carried over from an earlier day.
   final List<PlanSub> sub;
@@ -108,7 +112,7 @@ class PlanPoint {
     if (raw is! Map) return null;
     final text = (raw['text'] ?? '').toString();
     if (text.isEmpty) return null;
-    return PlanPoint(text: text, group: PlanGroup.parse(raw['group']) ?? PlanGroup.followUp, done: raw['done'] == true, kind: (raw['kind'] ?? '').toString(), id: (raw['id'] ?? '').toString(), title: (raw['title'] ?? '').toString(), bookId: (raw['bookId'] ?? '').toString(), assocId: (raw['assocId'] ?? '').toString(), doubtId: (raw['doubtId'] ?? '').toString(), metric: (raw['metric'] ?? '').toString(), since: (raw['since'] ?? '').toString(), carriedOver: raw['carriedOver'] == true, sub: [for (final x in (raw['sub'] as List? ?? const [])) if (PlanSub.fromMap(x) case final y?) y]);
+    return PlanPoint(text: text, group: PlanGroup.parse(raw['group']) ?? PlanGroup.followUp, done: raw['done'] == true, kind: (raw['kind'] ?? '').toString(), id: (raw['id'] ?? '').toString(), title: (raw['title'] ?? '').toString(), bookId: (raw['bookId'] ?? '').toString(), assocId: (raw['assocId'] ?? '').toString(), doubtId: (raw['doubtId'] ?? '').toString(), metric: (raw['metric'] ?? '').toString(), since: (raw['since'] ?? '').toString(), carriedOver: raw['carriedOver'] == true, late: raw['late'] == true, sub: [for (final x in (raw['sub'] as List? ?? const [])) if (PlanSub.fromMap(x) case final y?) y]);
   }
 }
 

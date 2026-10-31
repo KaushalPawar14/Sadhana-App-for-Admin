@@ -48,16 +48,8 @@ class _CompetitionPageState extends State<CompetitionPage> {
       if (!mounted || guide == null || guide.isEmpty) return;
       final isHod = AdminProfileProvider.viewerIsHod;
       setState(() {
-        _abcdeUnseen = UnseenAggregates.anyOf([
-          UnseenAggregates.associationsUnseen(guide, isHod),
-          UnseenAggregates.serviceAssignmentsUnseen(guide, isHod),
-          UnseenAggregates.expeditionReflectionsUnseen(guide, isHod),
-        ]);
-        _priorityStudentsUnseen = UnseenAggregates.anyOf([
-          UnseenAggregates.flaggedMessagesUnseen(guide, isHod),
-          UnseenAggregates.studentDoubtsUnseen(guide, isHod),
-          UnseenAggregates.priorityReasonsUnseen(guide, isHod),
-        ]);
+        _abcdeUnseen = UnseenAggregates.abcdeTrail(guide, isHod);
+        _priorityStudentsUnseen = UnseenAggregates.priorityTrail(guide, isHod);
       });
     });
   }

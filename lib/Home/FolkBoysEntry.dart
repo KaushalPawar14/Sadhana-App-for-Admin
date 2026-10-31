@@ -23,6 +23,7 @@ import '../utils/GoalMetrics.dart';
 import '../utils/GuideLogout.dart';
 import '../utils/HomeData.dart';
 import '../utils/PlanData.dart';
+import '../utils/PlanToday.dart';
 import '../utils/PlanningQueries.dart';
 import '../utils/UnseenAggregates.dart';
 import '../utils/UnseenDot.dart';
@@ -534,17 +535,18 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
         MaterialPageRoute(builder: (_) => PlanPage(section: section)),
       );
 
-  /// TODAY'S TASKS: the same card as THIS WEEK (size, shape, layout, texture), in dark green, with three live counts (Follow-ups, Target tasks,
-  /// Other tasks); a zero shows as "0". The card, or any one count, opens the Plan page on TODAY at that section.
+  /// TODAY'S TASKS: the same card as THIS WEEK (size, shape, layout, texture; only the colour is green) with the same three stats, as today's numbers:
+  /// TARGETS (the target tasks of today), TO CONTACT (what is left) and DONE (every task finished today) - the Plan page's "Total · Done · Left" (`TodayView`).
+  /// A zero shows as "0". The card, or the Done / To contact stat, opens the Plan page on Today; the Targets stat on its Target tasks.
   Widget _todayCard({bool placeholder = false}) {
-    final counts = PlanCounts.of(placeholder ? null : _plan);
+    final view = TodayView.of(placeholder ? null : _plan);
     String n(int v) => placeholder ? '–' : '$v';
-    GuideHeroStat stat(PlanGroup group, String key, String label, int value) => GuideHeroStat(
+    GuideHeroStat stat(String key, String label, int value, [PlanGroup? section]) => GuideHeroStat(
           n(value),
           label,
           valueKey: ValueKey('home-today-$key-count'),
           tapKey: ValueKey('home-today-$key'),
-          onTap: placeholder ? null : () => _openToday(group),
+          onTap: placeholder ? null : () => _openToday(section),
         );
     return GuideHeroCard(
       key: const ValueKey('home-today-tasks'),
@@ -555,9 +557,9 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
       onTap: placeholder ? null : () => _openToday(),
       footer: placeholder || _pending.count == 0 ? null : _pendingLine('today'),
       stats: [
-        stat(PlanGroup.followUp, 'followups', 'Follow-ups', counts.followUpsAndWorries),
-        stat(PlanGroup.target, 'targets', 'Target tasks', counts.targets),
-        stat(PlanGroup.other, 'other', 'Other tasks', counts.others),
+        stat('targets', 'Targets', view.section(kSectionTargets).total, PlanGroup.target),
+        stat('left', 'To contact', view.left),
+        stat('done', 'Done', view.done),
       ],
     );
   }

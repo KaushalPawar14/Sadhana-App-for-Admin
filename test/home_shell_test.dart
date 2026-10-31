@@ -25,6 +25,7 @@ import 'package:folk_guide_app/utils/HomeData.dart';
 import 'package:folk_guide_app/utils/SeenMarkers.dart';
 import 'package:folk_guide_app/utils/UnseenAggregates.dart';
 import 'package:folk_guide_app/utils/PlanData.dart';
+import 'package:folk_guide_app/utils/PlanToday.dart';
 import 'package:folk_guide_app/widgets/GuideNav.dart';
 import 'package:folk_guide_app/widgets/GuideTiles.dart';
 import 'package:provider/provider.dart';
@@ -176,10 +177,10 @@ void main() {
     expect(week('targets'), '2');
     expect(week('left'), '6');
     expect(week('done'), '2');
-    expect(find.text('Targets'), findsOneWidget, reason: 'the hero stat');
-    expect(find.text('To contact'), findsOneWidget);
+    expect(find.text('Targets'), findsNWidgets(2), reason: 'the stat of THIS WEEK and of TODAY');
+    expect(find.text('To contact'), findsNWidgets(2));
     expect(find.text('Overdue'), findsNothing, reason: 'the old hero stats are gone');
-    expect(find.text('Follow-ups'), findsOneWidget, reason: "today's tasks: the count's name, once");
+    expect(find.text('Follow-ups'), findsNothing, reason: "today's card has the same three stats as this week's");
     expect(find.textContaining('Phase 1 of 8'), findsNothing, reason: 'no per-target cards: status and progress are viewed in the plan');
     expect(find.text('Chanting'), findsOneWidget);
     expect(find.text('Reading'), findsOneWidget);
@@ -213,28 +214,54 @@ void main() {
       expect(find.text('Overdue'), findsNothing);
     });
 
-    testWidgets('THE THREE COUNTS: follow-ups (interactions students need), target tasks (made by the targets), other tasks; a done one is not counted', (tester) async {
+    testWidgets('THE THREE STATS are the same as THIS WEEK: Targets, To contact, Done, with today numbers that match the Plan page Total, Done and Left', (tester) async {
       phone(tester, 1.0);
       await pumpShell(tester);
-      // homePlan(): Ravi (sadhana), Amit (doubts + target: a follow-up), Sohan (concern, DONE), Mohit (target only), a meeting, a calendar item
-      // a student is ONE card; a section counts every card with a topic in it (Amit's card has a doubt AND a target topic: counted in both)
-      expect(count(tester, 'followups'), '2');
-      expect(count(tester, 'targets'), '2');
-      expect(count(tester, 'other'), '2');
-      expect(find.text('Follow-ups'), findsOneWidget);
-      expect(find.text('Target tasks'), findsOneWidget);
-      expect(find.text('Other tasks'), findsOneWidget);
+      final view = TodayView.of(homePlan());
+      expect(count(tester, 'targets'), '${view.section(kSectionTargets).total}');
+      expect(count(tester, 'left'), '${view.left}', reason: 'To contact = Left');
+      expect(count(tester, 'done'), '${view.done}', reason: 'Done = every task finished today');
+      expect(view.total, view.done + view.left, reason: 'Total = Done + Left, exactly the Plan page summary');
+      expect(view.done, greaterThan(0), reason: 'the fixture has a finished task');
+      final card = find.byKey(const ValueKey('home-today-tasks'));
+      expect(find.descendant(of: card, matching: find.text('Targets')), findsOneWidget);
+      expect(find.descendant(of: card, matching: find.text('To contact')), findsOneWidget);
+      expect(find.descendant(of: card, matching: find.text('Done')), findsOneWidget);
+      for (final old in ['Follow-ups', 'Other tasks', 'Target tasks']) {
+        expect(find.descendant(of: card, matching: find.text(old)), findsNothing, reason: old);
+      }
+      final week = find.byKey(const ValueKey('home-this-week'));
+      for (final w in ['Targets', 'To contact', 'Done']) {
+        expect(find.descendant(of: week, matching: find.text(w)), findsOneWidget, reason: w);
+      }
+    });
+
+    testWidgets('SAME SIZE, SAME LAYOUT as THIS WEEK: the two cards have the same size, and their three stats sit in the same places', (tester) async {
+      for (final scale in [1.0, 1.6]) {
+        phone(tester, scale);
+        await pumpShell(tester);
+        final week = find.byKey(const ValueKey('home-this-week'));
+        final today = find.byKey(const ValueKey('home-today-tasks'));
+        expect(tester.getSize(today), tester.getSize(week), reason: 'scale $scale');
+        for (final k in [['home-week-targets-count', 'home-today-targets-count'], ['home-week-left-count', 'home-today-left-count'], ['home-week-done-count', 'home-today-done-count']]) {
+          final w = tester.getTopLeft(find.byKey(ValueKey(k[0]))) - tester.getTopLeft(week);
+          final t = tester.getTopLeft(find.byKey(ValueKey(k[1]))) - tester.getTopLeft(today);
+          expect(t, w, reason: '${k[1]} sits where ${k[0]} does (scale $scale)');
+        }
+      }
     });
 
     testWidgets('the counts are LIVE: a tick lowers one, a new item raises one, with nothing to reopen', (tester) async {
       phone(tester, 1.0);
       final live = ManualPlanData();
       await pumpShell(tester, planData: live);
-      expect(count(tester, 'followups'), '–', reason: 'a dash until the plan is there');
+      expect(count(tester, 'left'), '–', reason: 'a dash until the plan is there');
       live.c.add(homePlan());
       await tester.pump();
       await tester.pump();
-      expect(count(tester, 'followups'), '2');
+      final first = TodayView.of(homePlan());
+      expect(count(tester, 'left'), '${first.left}');
+      expect(count(tester, 'done'), '${first.done}');
       // Ravi is ticked, a new doubt shows up in Other tasks, a new target task appears
       live.c.add(planDoc(left: 5, done: 3, today: [
         interactionItem('u1', 'Ravi', ['sadhana'], done: true),
@@ -247,16 +274,26 @@ void main() {
       ]));
       await tester.pump();
       await tester.pump();
-      expect(count(tester, 'followups'), '1');
-      expect(count(tester, 'targets'), '3');
-      expect(count(tester, 'other'), '3');
+      final next = TodayView.of(planDoc(left: 5, done: 3, today: [
+        interactionItem('u1', 'Ravi', ['sadhana'], done: true),
+        interactionItem('u2', 'Amit', ['doubts', 'target']),
+        interactionItem('u4', 'Mohit', ['target']),
+        interactionItem('u5', 'Hari', ['target']),
+        const PlanItem(id: 'doubts::x', kind: 'doubtsToAnswer', title: '1 doubt waiting'),
+        const PlanItem(id: 'meeting:u9:2026-10-30', kind: 'meeting', title: 'Meet Harsh', forYou: true),
+        const PlanItem(id: 'calendar::x', kind: 'calendar', title: 'Midterm'),
+      ]));
+      expect(count(tester, 'left'), '${next.left}');
+      expect(count(tester, 'done'), '${next.done}', reason: 'Ravi was ticked');
+      expect(count(tester, 'targets'), '${next.section(kSectionTargets).total}');
+      expect(next.done, 1, reason: 'Ravi is the one done task');
       expect(tester.binding.transientCallbackCount, 0, reason: 'a live update replays nothing');
     });
 
     testWidgets('a quiet day shows 0 0 0, not blanks', (tester) async {
       phone(tester, 1.0);
       await pumpShell(tester, plan: planDoc());
-      expect([count(tester, 'followups'), count(tester, 'targets'), count(tester, 'other')], ['0', '0', '0']);
+      expect([count(tester, 'targets'), count(tester, 'left'), count(tester, 'done')], ['0', '0', '0']);
     });
 
     testWidgets('THIS WEEK opens the Plan page on its This week tab', (tester) async {
@@ -281,8 +318,8 @@ void main() {
       expect(find.byKey(const ValueKey('plan-summary')), findsOneWidget, reason: 'the Today tab is showing');
     });
 
-    for (final e in {'followups': PlanGroup.followUp, 'targets': PlanGroup.target, 'other': PlanGroup.other}.entries) {
-      testWidgets('tapping the ${e.key} count opens Today at that section', (tester) async {
+    for (final e in {'targets': PlanGroup.target, 'left': null, 'done': null}.entries) {
+      testWidgets('tapping the ${e.key} stat opens Today (the Targets stat at the Target tasks section)', (tester) async {
         phone(tester, 1.0);
         await pumpShell(tester);
         await tester.tap(find.byKey(ValueKey('home-today-${e.key}')));
@@ -290,7 +327,8 @@ void main() {
         final page = tester.widget<PlanPage>(find.byType(PlanPage));
         expect(page.section, e.value);
         expect(page.initialWeek, isFalse);
-        expect(find.byKey(ValueKey('plan-section-${e.key == 'other' ? 'others' : e.key}')), findsOneWidget);
+        expect(find.byKey(const ValueKey('plan-summary')), findsOneWidget, reason: 'the Today tab');
+        if (e.key == 'targets') expect(find.byKey(const ValueKey('plan-section-targets')), findsOneWidget);
       });
     }
 
@@ -311,9 +349,10 @@ void main() {
       );
       const amit = PlanItem(id: 'student:u2:2026-10-30', kind: 'student', title: 'Amit', studentName: 'Amit', studentUid: 'u2', points: [PlanPoint(text: 'Meeting with him today', group: PlanGroup.other)], cardGroups: [PlanGroup.other]);
       await pumpShell(tester, plan: planDoc(left: 1, today: const [ravi, amit]));
-      expect(count(tester, 'followups'), '1', reason: 'Ravi once (his worry and his doubt are inside his card)');
-      expect(count(tester, 'targets'), '1');
-      expect(count(tester, 'other'), '1', reason: 'Amit');
+      final view = TodayView.of(planDoc(left: 1, today: const [ravi, amit]));
+      expect(count(tester, 'left'), '2', reason: 'two students to contact: Ravi once (his worry, doubt and target are inside his card) and Amit');
+      expect(count(tester, 'done'), '0');
+      expect(count(tester, 'targets'), '${view.section(kSectionTargets).total}');
       final c = PlanCounts.of(planDoc(left: 1, today: const [ravi, amit]));
       expect([c.students, c.cards, c.tasks, c.total], [2, 2, 0, 2], reason: 'two students: two cards, not five topics');
     });
@@ -412,9 +451,9 @@ void main() {
       )), asked);
       await pumpShell(tester, me: profile('HOD1', 'HOD'), planData: data);
       expect(asked.toSet(), {'HOD1'}, reason: 'the plan read is the HOD\'s own, not the guide G picked');
-      expect(find.byKey(const ValueKey('home-today-followups-count')), findsWidgets);
-      expect(tester.widget<Text>(find.byKey(const ValueKey('home-today-followups-count'))).data, '1');
-      expect(tester.widget<Text>(find.byKey(const ValueKey('home-today-other-count'))).data, '0', reason: 'two guide summaries are not tasks');
+      expect(find.byKey(const ValueKey('home-today-left-count')), findsWidgets);
+      expect(tester.widget<Text>(find.byKey(const ValueKey('home-today-left-count'))).data, '1');
+      expect(tester.widget<Text>(find.byKey(const ValueKey('home-today-done-count'))).data, '0', reason: 'two guide summaries are not tasks');
     });
 
     testWidgets('the FIRST OPEN OF THE DAY tells the server once (that is what makes it write Today\'s AI questions); never again that day', (tester) async {
@@ -442,7 +481,7 @@ void main() {
       addTearDown(() => HierarchyApi.useForTests(null));
       await pumpShell(tester);
       expect(tester.takeException(), isNull);
-      expect(find.byKey(const ValueKey('home-today-followups-count')), findsWidgets);
+      expect(find.byKey(const ValueKey('home-today-left-count')), findsWidgets);
     });
 
     testWidgets('THE OLD WEEKLY PLANNING PAGE IS GONE: no file, no agent route, no helper', (tester) async {
@@ -485,7 +524,7 @@ void main() {
             expect(today.height, closeTo(week.height, 0.5), reason: 'same height');
             expect(today.left, closeTo(week.left, 0.5), reason: 'same left edge');
             if (wide) expect(today.width, lessThan(700), reason: 'a compact column on a wide screen');
-            for (final k in ['followups', 'targets', 'other']) {
+            for (final k in ['targets', 'left', 'done']) {
               final r = tester.getRect(find.byKey(ValueKey('home-today-$k')));
               expect(r.height, greaterThanOrEqualTo(48), reason: k);
               expect(r.left >= today.left && r.right <= today.right && r.top >= today.top && r.bottom <= today.bottom, isTrue, reason: '$k inside the card');
@@ -502,14 +541,14 @@ void main() {
       await pumpShell(tester, me: profile('H', 'HOD'), data: FakeHomeData(targetList: [target('chanting', 10, 16, 1, 8)]), plan: planDoc());
       String week(String k) => tester.widget<Text>(find.byKey(ValueKey('home-week-$k-count'))).data!;
       expect([week('targets'), week('left'), week('done')], ['1', '0', '0']);
-      expect([count(tester, 'followups'), count(tester, 'targets'), count(tester, 'other')], ['0', '0', '0']);
-      expect(find.text('To contact'), findsOneWidget);
-      expect(find.text('Done'), findsOneWidget);
+      expect([count(tester, 'targets'), count(tester, 'left'), count(tester, 'done')], ['0', '0', '0']);
+      expect(find.text('To contact'), findsNWidgets(2));
+      expect(find.text('Done'), findsNWidgets(2));
       // and with no target and no plan document at all
       await tester.pumpWidget(const SizedBox());
       await pumpShell(tester, data: FakeHomeData(targetList: const []), planData: FixedPlanData(null));
       expect([week('targets'), week('left'), week('done')], ['0', '0', '0']);
-      expect([count(tester, 'followups'), count(tester, 'targets'), count(tester, 'other')], ['0', '0', '0']);
+      expect([count(tester, 'targets'), count(tester, 'left'), count(tester, 'done')], ['0', '0', '0']);
     });
   });
 
@@ -564,10 +603,10 @@ void main() {
           Color colorOf(Finder f) => tester.widget<Text>(f).style!.color!;
           final card = find.byKey(const ValueKey('home-today-tasks'));
           expect(colorOf(find.descendant(of: card, matching: find.text("TODAY'S TASKS"))), GuideColors.heroLabel);
-          for (final k in ['followups', 'targets', 'other']) {
+          for (final k in ['targets', 'left', 'done']) {
             expect(colorOf(find.byKey(ValueKey('home-today-$k-count'))), GuideColors.heroText, reason: k);
           }
-          expect(colorOf(find.descendant(of: card, matching: find.text('Follow-ups'))), GuideColors.heroMuted);
+          expect(colorOf(find.descendant(of: card, matching: find.text('To contact'))), GuideColors.heroMuted);
           // measured on what is rendered: every text of the card against the lighter end of the gradient
           for (final tx in tester.widgetList<Text>(find.descendant(of: card, matching: find.byType(Text)))) {
             final c = tx.style?.color;

@@ -45,6 +45,38 @@ class UnseenAggregates {
     });
   }
 
+  // ---- THE DOT TRAILS: a parent dot is exactly "any child dot". Each trail below is defined ONCE, from the very streams the children use, so a parent can never show a dot that
+  // has no child behind it, nor miss one that has.
+
+  /// Analysis -> ABCDE: its three children (Association, Devotional service, Expeditions).
+  static Stream<bool> abcdeTrail(String guide, bool isHod) => anyOf([
+        associationsUnseen(guide, isHod),
+        serviceAssignmentsUnseen(guide, isHod),
+        expeditionReflectionsUnseen(guide, isHod),
+      ]);
+
+  /// Analysis -> Interactions needed: its three children (Interactions needed, Flagged messages, Students' doubts).
+  static Stream<bool> priorityTrail(String guide, bool isHod) => anyOf([
+        priorityReasonsUnseen(guide, isHod),
+        flaggedMessagesUnseen(guide, isHod),
+        studentDoubtsUnseen(guide, isHod),
+      ]);
+
+  /// The Analysis tab: its cards (ABCDE, Interactions needed, and for a HOD the Assistant log). Nothing else lights it.
+  static Stream<bool> analysisTrail(String guide, bool isHod, {String adminId = ''}) => anyOf([
+        abcdeTrail(guide, isHod),
+        priorityTrail(guide, isHod),
+        if (isHod) assistantLogUnseen(adminId),
+      ]);
+
+  /// The Home tab: the calendar, the students' comments and book commitments on the board, and the targets (a proposal waiting).
+  static Stream<bool> homeTrail(String guide, bool isHod) => anyOf([
+        calendarEventsUnseen(guide),
+        studentCommentsRosterUnseen(guide, isHod),
+        bookCommitmentsRosterUnseen(guide, isHod),
+        goalProposalsUnseen(guide),
+      ]);
+
   /// ORs any number of already-hoisted boolean streams together.
   static Stream<bool> anyOf(List<Stream<bool>> sources) {
     if (sources.isEmpty) return Stream.value(false);

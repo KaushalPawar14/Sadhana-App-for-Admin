@@ -184,3 +184,40 @@ class _UnseenFeatureBadgeState extends State<UnseenFeatureBadge> {
     );
   }
 }
+
+/// The dot of ONE target with a proposal waiting (a HOD's or a guide's edit to its phases): shown while the proposal is newer than this admin's own cursor for THIS
+/// target (`seenMarkers.{admin}.goalProposals.{targetId}`, written when its page is opened). It is the child behind the Home targets strip's dot and the Home tab's dot
+/// (`UnseenAggregates.goalProposalsUnseen`, the same comparison for every target). Hoisted in [initState], never built in `build()`.
+class GoalProposalDot extends StatefulWidget {
+  const GoalProposalDot({super.key, required this.guideId, required this.targetId, required this.proposedAt, required this.child});
+
+  final String guideId;
+  final String targetId;
+  final DateTime? proposedAt;
+  final Widget child;
+
+  @override
+  State<GoalProposalDot> createState() => _GoalProposalDotState();
+}
+
+class _GoalProposalDotState extends State<GoalProposalDot> {
+  late Stream<bool> _unseen = _make();
+
+  Stream<bool> _make() {
+    final at = widget.proposedAt;
+    if (at == null || widget.guideId.isEmpty) return Stream.value(false);
+    return SeenMarkers.seenAtSub(widget.guideId, 'goalProposals', widget.targetId).map((seen) => seen == null || at.isAfter(seen.toDate()));
+  }
+
+  @override
+  void didUpdateWidget(GoalProposalDot old) {
+    super.didUpdateWidget(old);
+    if (old.proposedAt != widget.proposedAt || old.targetId != widget.targetId || old.guideId != widget.guideId) _unseen = _make();
+  }
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder<bool>(
+        stream: _unseen,
+        builder: (context, snap) => UnseenBadge(key: const ValueKey('goal-proposal-dot'), show: snap.data ?? false, offset: const Offset(2, -2), child: widget.child),
+      );
+}

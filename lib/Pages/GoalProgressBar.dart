@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../utils/GoalCompoundQueries.dart';
+import '../utils/UnseenAggregates.dart';
+import '../utils/UnseenDot.dart';
 import 'GoalHomePage.dart';
 import '../theme/GuideTheme.dart';
 
@@ -24,10 +26,26 @@ import '../theme/GuideTheme.dart';
 /// already show the real per-target detail; this strip's only job is "you
 /// have active targets, tap to see them", exactly like the old bar's own
 /// "renders nothing when irrelevant" property.
-class GoalProgressBar extends StatelessWidget {
+class GoalProgressBar extends StatefulWidget {
   final String guideId;
 
   const GoalProgressBar({super.key, required this.guideId});
+
+  @override
+  State<GoalProgressBar> createState() => _GoalProgressBarState();
+}
+
+class _GoalProgressBarState extends State<GoalProgressBar> {
+  String get guideId => widget.guideId;
+
+  /// A proposal waiting that this admin has not opened yet: the dot of this strip (the Home tab's dot is made of it). Hoisted once.
+  late Stream<bool> _proposalUnseen = UnseenAggregates.goalProposalsUnseen(guideId);
+
+  @override
+  void didUpdateWidget(GoalProgressBar old) {
+    super.didUpdateWidget(old);
+    if (old.guideId != guideId) _proposalUnseen = UnseenAggregates.goalProposalsUnseen(guideId);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +71,10 @@ class GoalProgressBar extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(Icons.flag, size: 15, color: context.g.success),
+                StreamBuilder<bool>(
+                  stream: _proposalUnseen,
+                  builder: (context, snap) => UnseenBadge(key: const ValueKey('goal-strip-dot'), show: snap.data ?? false, offset: const Offset(2, -2), child: Icon(Icons.flag, size: 15, color: context.g.success)),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(

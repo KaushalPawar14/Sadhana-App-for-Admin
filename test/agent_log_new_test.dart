@@ -234,7 +234,9 @@ void main() {
     await expectLater(UnseenAggregates.assistantLogUnseen('H').timeout(const Duration(seconds: 3)), emits(true));
     final nav = File('lib/utils/BottomNavBar.dart').readAsStringSync();
     expect(nav.contains('_tasksUnseen = _both(Stream.value(false))'), isTrue, reason: 'Tasks hosts nothing with unseen state any more');
-    expect(nav.contains('if (isHod) UnseenAggregates.assistantLogUnseen'), isTrue, reason: "the Analysis tab carries the log's dot");
+    expect(nav.contains('UnseenAggregates.analysisTrail(guide, isHod, adminId:'), isTrue, reason: "the Analysis tab is made of its cards' dots");
+    final agg = File('lib/utils/UnseenAggregates.dart').readAsStringSync();
+    expect(agg.contains('if (isHod) assistantLogUnseen(adminId)'), isTrue, reason: "the Analysis tab carries the log's dot");
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
   });

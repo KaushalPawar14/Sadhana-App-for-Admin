@@ -920,7 +920,20 @@ class _PlanPageState extends State<PlanPage> {
                 // THE SURRENDER CHECK: what to discuss (the AI's points, prepared once for the crossing) and the data gaps to fill, each with its own button
                 for (var j = 0; j < p.sub.length; j++) _subLine(context, it, p, i, j),
                 // ONE 3D button per open topic: it opens the place to do it by hand; it never ticks (the topic ticks when the real record is saved there)
-                if (!p.done && it.isCard && it.studentUid.isNotEmpty)
+                // a confirmed meeting that was never marked: TWO buttons, Completed and Cancelled
+                if (!p.done && it.isCard && it.studentUid.isNotEmpty && isUnmarkedMeeting(p))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        Guide3dButton(key: ValueKey('plan-meeting-completed-${it.id}-$i'), label: 'Completed', onPressed: () => runMeetingCompleted(context, it, p)),
+                        Guide3dButton(key: ValueKey('plan-meeting-cancelled-${it.id}-$i'), label: 'Cancelled', onPressed: () => runMeetingCancelled(context, it, p)),
+                      ],
+                    ),
+                  )
+                else if (!p.done && it.isCard && it.studentUid.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: Align(

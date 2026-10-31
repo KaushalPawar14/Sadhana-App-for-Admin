@@ -4,10 +4,8 @@ import '../theme/GuideColors.dart';
 import '../theme/GuideTheme.dart';
 import '../theme/GuideTokens.dart';
 import '../utils/AdminProfile.dart';
-import '../utils/StudentScope.dart';
 import '../utils/UnseenAggregates.dart';
 import '../utils/UnseenDot.dart';
-import '../utils/UnseenFeatureBadge.dart';
 import '../widgets/GuideSurface.dart';
 import '../widgets/GuideTiles.dart';
 import 'FlaggedMessages.dart';
@@ -43,11 +41,20 @@ class _PriorityHubPageState extends State<PriorityHubPage> {
   /// "Is any student's doubt waiting for me" - hoisted once (never built in `build()`).
   Stream<bool>? _doubtsUnseen;
 
+  /// The other two children, each from the same stream the parent card (Analysis -> Interactions needed) is made of.
+  Stream<bool>? _needsUnseen;
+  Stream<bool>? _flaggedUnseen;
+
   @override
   void initState() {
     super.initState();
     final me = AdminProfileProvider.current?.id ?? '';
-    if (me.isNotEmpty) _doubtsUnseen = UnseenAggregates.studentDoubtsUnseen(me, AdminProfileProvider.viewerIsHod);
+    if (me.isNotEmpty) {
+      final isHod = AdminProfileProvider.viewerIsHod;
+      _doubtsUnseen = UnseenAggregates.studentDoubtsUnseen(me, isHod);
+      _needsUnseen = UnseenAggregates.priorityReasonsUnseen(me, isHod);
+      _flaggedUnseen = UnseenAggregates.flaggedMessagesUnseen(me, isHod);
+    }
   }
 
   /// Opens a destination with the fade this hub has always used.
@@ -85,12 +92,21 @@ class _PriorityHubPageState extends State<PriorityHubPage> {
                   index: 1,
                   child: Padding(
                   padding: const EdgeInsets.only(top: 12),
-                  child: GuidePastelRow(
-                    pastel: GuidePastel.slate,
-                    icon: Icons.flag_outlined,
-                    title: "Interactions needed",
-                    description: "Targets, sadhana, doubts and worries, surrender steps",
-                    onTap: () => _open(context, const PriorityStudentsPage()),
+                  // a NEW reason a student needs an interaction since this list was last opened (this child's own dot: the parent card's dot is made of it)
+                  child: StreamBuilder<bool>(
+                    stream: _needsUnseen,
+                    builder: (context, snap) => UnseenBadge(
+                      key: const ValueKey('needs-hub-dot'),
+                      show: snap.data ?? false,
+                      offset: const Offset(10, 10),
+                      child: GuidePastelRow(
+                        pastel: GuidePastel.slate,
+                        icon: Icons.flag_outlined,
+                        title: "Interactions needed",
+                        description: "Targets, sadhana, doubts and worries, surrender steps",
+                        onTap: () => _open(context, const PriorityStudentsPage()),
+                      ),
+                    ),
                   ),
                 ),
                 ),
@@ -101,12 +117,12 @@ class _PriorityHubPageState extends State<PriorityHubPage> {
                   // Master Task 2026-09-10, Part 6 — unseen = a flagged message
                   // since this guide last opened the list. Mirrors
                   // `FlaggedMessagesPage._stream`'s own scoped query exactly.
-                  child: UnseenFeatureBadge(
-                    featureKey: 'flaggedMessages',
-                    timestampField: 'createdAt',
-                    dotOffset: const Offset(10, 10),
-                    latestQuery: (guide) =>
-                        StudentScope.current().historyStream('flaggedChatMessages'),
+                  child: StreamBuilder<bool>(
+                    stream: _flaggedUnseen,
+                    builder: (context, snap) => UnseenBadge(
+                    key: const ValueKey('flagged-hub-dot'),
+                    show: snap.data ?? false,
+                    offset: const Offset(10, 10),
                     child: GuidePastelRow(
                       pastel: GuidePastel.clay,
                       icon: Icons.chat_bubble_outline_rounded,
@@ -114,6 +130,7 @@ class _PriorityHubPageState extends State<PriorityHubPage> {
                       description: "Distress signals and pastoral notes from chat",
                       onTap: () => _open(context, const FlaggedMessagesPage()),
                     ),
+                  ),
                   ),
                 ),
                 ),

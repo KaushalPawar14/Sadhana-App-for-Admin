@@ -8,6 +8,7 @@ import '../utils/GoalData.dart';
 import '../utils/GoalMetrics.dart';
 import '../utils/AdminProfile.dart';
 import '../utils/Snackbar.dart';
+import '../utils/UnseenFeatureBadge.dart';
 import '../widgets/GuideButtons.dart';
 import '../widgets/GuideDialog.dart';
 import '../widgets/GuideEntry.dart';
@@ -345,19 +346,25 @@ class _CompoundTargetCardState extends State<_CompoundTargetCard> {
                     icon: Icon(Icons.delete_outline, size: 18, color: g.mutedText),
                     onPressed: _confirmDelete,
                   ),
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    gradient: g.pastel(pastel),
-                    borderRadius: BorderRadius.circular(GuideShape.iconTileRadius),
-                  ),
-                  child: Icon(
-                    target.metric == kMetricBooks
-                        ? Icons.menu_book_outlined
-                        : Icons.self_improvement_outlined,
-                    size: 20,
-                    color: GuideColors.onPastel,
+                // a proposal waiting that this admin has not opened yet: this target's own dot (the Home targets strip and the Home tab are made of it)
+                GoalProposalDot(
+                  guideId: widget.guideId,
+                  targetId: target.targetId,
+                  proposedAt: target.pendingProposal?.proposedAt,
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      gradient: g.pastel(pastel),
+                      borderRadius: BorderRadius.circular(GuideShape.iconTileRadius),
+                    ),
+                    child: Icon(
+                      target.metric == kMetricBooks
+                          ? Icons.menu_book_outlined
+                          : Icons.self_improvement_outlined,
+                      size: 20,
+                      color: GuideColors.onPastel,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),

@@ -188,6 +188,68 @@ void main() {
       expect(find.byKey(ValueKey('plan-point-tick-${c.id}-1')), findsNothing);
     });
 
+    PlanPoint lateMeeting({bool done = false}) => const PlanPoint(
+        id: 'meeting:a1', kind: 'meeting', group: PlanGroup.other, title: 'Meeting on Thu 29 Oct — not marked completed', assocId: 'a1', late: true,
+        text: 'Meeting on Thu 29 Oct (Thu 29 Oct, 5:00 PM) — not marked completed. Was it held? Mark it Completed, with your notes, or Cancelled.');
+
+    testWidgets('A CONFIRMED MEETING NEVER MARKED: its topic has TWO buttons, Completed and Cancelled (48 dp); a normal meeting keeps its one button; a done one has none', (tester) async {
+      await prepareApp(tester);
+      final c = card('s1', 'Ravi', [lateMeeting(), _topics[3]]);
+      await _open(tester, planDoc(today: [c], left: 0));
+      expect(find.textContaining('not marked completed').evaluate().length, greaterThan(0));
+      for (final k in ['completed', 'cancelled']) {
+        expect(find.byKey(ValueKey('plan-meeting-$k-${c.id}-0')), findsOneWidget, reason: k);
+        expect(tester.getSize(find.byKey(ValueKey('plan-meeting-$k-${c.id}-0'))).height, greaterThanOrEqualTo(48));
+      }
+      expect(find.descendant(of: find.byKey(ValueKey('plan-meeting-completed-${c.id}-0')), matching: find.text('Completed')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(ValueKey('plan-meeting-cancelled-${c.id}-0')), matching: find.text('Cancelled')), findsOneWidget);
+      expect(find.byKey(ValueKey('plan-action-${c.id}-0')), findsNothing, reason: 'not the single Open meeting button');
+      expect(find.byKey(ValueKey('plan-action-${c.id}-1')), findsOneWidget, reason: 'the meeting of today keeps its Open meeting button');
+      expect(isUnmarkedMeeting(lateMeeting()), isTrue);
+      final done = card('s1', 'Ravi', [const PlanPoint(id: 'meeting:a1', kind: 'meeting', group: PlanGroup.other, title: 'x', text: 'y', assocId: 'a1', late: true, done: true)]);
+      await _open(tester, planDoc(today: [done], left: 0));
+      expect(find.byKey(ValueKey('plan-meeting-completed-${done.id}-0')), findsNothing);
+      expect(find.byKey(ValueKey('plan-meeting-cancelled-${done.id}-0')), findsNothing);
+    });
+
+    testWidgets('"Completed" asks for the notes and completes the meeting (status completed, the notes of the guide saved); the topic ticks when the server sends it done', (tester) async {
+      final db = await prepareApp(tester);
+      await db.collection('associations').doc('a1').set({'studentUid': 's1', 'studentName': 'Ravi', 'status': 'confirmed', 'requestedBy': 'student'});
+      await db.collection('users').doc('s1').set({'name': 'Ravi', 'commitmentRounds': 12, 'readingCommitmentMinutes': 30, 'guideId': 'G', 'teamGuide': 'G', 'gender': 'male'});
+      final c = card('s1', 'Ravi', [lateMeeting()]);
+      await _open(tester, planDoc(today: [c], left: 0));
+      await tester.tap(find.byKey(ValueKey('plan-meeting-completed-${c.id}-0')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('plan-meeting-completed-title')), findsOneWidget);
+      await tester.enterText(find.byKey(const ValueKey('plan-meeting-notes')), 'Spoke about his japa');
+      await tester.tap(find.byKey(const ValueKey('plan-meeting-completed-save')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect((await db.collection('associations').doc('a1').get()).data()!['status'], 'completed');
+      expect((await db.collection('associationGuideNotes').doc('a1').get()).data()?.values.join(' ') ?? '', contains('Spoke about his japa'));
+      expect(find.byKey(ValueKey('plan-point-tick-${c.id}-0')), findsNothing, reason: 'the app does not tick: the server does');
+      await _finish(tester);
+    });
+
+    testWidgets('"Cancelled" asks first (Keep it changes nothing), then deletes the meeting', (tester) async {
+      final db = await prepareApp(tester);
+      await db.collection('associations').doc('a1').set({'studentUid': 's1', 'studentName': 'Ravi', 'status': 'confirmed', 'requestedBy': 'student'});
+      final c = card('s1', 'Ravi', [lateMeeting()]);
+      await _open(tester, planDoc(today: [c], left: 0));
+      await tester.tap(find.byKey(ValueKey('plan-meeting-cancelled-${c.id}-0')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('plan-meeting-cancelled-no')));
+      await tester.pumpAndSettle();
+      expect((await db.collection('associations').doc('a1').get()).exists, isTrue, reason: 'Keep it: nothing changed');
+      await tester.tap(find.byKey(ValueKey('plan-meeting-cancelled-${c.id}-0')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('plan-meeting-cancelled-yes')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect((await db.collection('associations').doc('a1').get()).exists, isFalse, reason: 'cancelled: deleted');
+      await _finish(tester);
+    });
+
     testWidgets('"Record interaction" opens the form with the student and the open topics ticked; the topic stays unticked until the SERVER sends it done', (tester) async {
       final db = await prepareApp(tester);
       final c = card('s1', 'Ravi', [_topics[0], _topics[7], _topics[1]]);

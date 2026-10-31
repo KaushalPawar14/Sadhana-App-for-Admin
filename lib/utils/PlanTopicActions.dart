@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../Home/Calendar.dart';
+import '../actions/AssociationActions.dart';
+import '../theme/GuideTheme.dart';
+import '../widgets/GuideDialog.dart';
+import 'Snackbar.dart';
 import '../Pages/AssociationManager.dart';
 import '../Pages/LitAssessment.dart';
 import '../Pages/StudentDoubtsPage.dart';
@@ -138,3 +142,70 @@ Future<void> runTopicAction(BuildContext context, PlanItem card, PlanPoint p) =>
       doubtId: p.doubtId,
       topics: recordTopicsOf(card),
     );
+
+/// A confirmed meeting whose day has passed without "Completed" (see [PlanPoint.late]): its topic has TWO buttons, Completed and Cancelled.
+bool isUnmarkedMeeting(PlanPoint p) => p.kind == 'meeting' && p.late && !p.done && p.assocId.isNotEmpty;
+
+/// "Completed": the guide's notes, then the meeting is completed exactly as in the meeting manager (a held meeting counts as an interaction; the server ticks the topic).
+Future<void> runMeetingCompleted(BuildContext context, PlanItem card, PlanPoint p) async {
+  var notes = '';
+  final saved = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => GuideDialog(
+      title: const Text('Meeting completed', key: ValueKey('plan-meeting-completed-title')),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(card.studentName, style: const TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 12),
+          TextField(
+            key: const ValueKey('plan-meeting-notes'),
+            minLines: 3,
+            maxLines: 6,
+            decoration: const InputDecoration(hintText: 'What was discussed (only you see this)'),
+            onChanged: (v) => notes = v,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(key: const ValueKey('plan-meeting-completed-no'), onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+        ElevatedButton(
+          key: const ValueKey('plan-meeting-completed-save'),
+          style: ElevatedButton.styleFrom(backgroundColor: dialogContext.g.brass),
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: Text('Save', style: TextStyle(color: dialogContext.g.onPrimary)),
+        ),
+      ],
+    ),
+  );
+  if (saved != true) return;
+  try {
+    await completeMeeting(p.assocId, notes: notes);
+    if (context.mounted) showSnackbar(context, 'Meeting completed', Colors.blue, Icons.check_circle);
+  } catch (_) {
+    if (context.mounted) showSnackbar(context, 'Could not save', Colors.red, Icons.error);
+  }
+}
+
+/// "Cancelled": after a confirmation the meeting is deleted and the student told, exactly as in the meeting manager; the topic goes.
+Future<void> runMeetingCancelled(BuildContext context, PlanItem card, PlanPoint p) async {
+  final yes = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => GuideDialog(
+      title: const Text('Cancel this meeting?', key: ValueKey('plan-meeting-cancelled-title')),
+      content: Text('The meeting with ${card.studentName} will be deleted completely and the student told.'),
+      actions: [
+        TextButton(key: const ValueKey('plan-meeting-cancelled-no'), onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Keep it')),
+        TextButton(key: const ValueKey('plan-meeting-cancelled-yes'), onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete meeting')),
+      ],
+    ),
+  );
+  if (yes != true) return;
+  try {
+    await cancelAndDeleteMeeting(p.assocId, studentUid: card.studentUid);
+    if (context.mounted) showSnackbar(context, 'Meeting cancelled and deleted', Colors.orange, Icons.cancel);
+  } catch (_) {
+    if (context.mounted) showSnackbar(context, 'Could not cancel', Colors.red, Icons.error);
+  }
+}
