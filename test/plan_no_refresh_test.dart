@@ -34,15 +34,14 @@ void main() {
     expect(found, isEmpty, reason: 'the plan updates by itself: no refresh UI may be left');
   });
 
-  test('the Plan page keeps "Updated <time>", counts what is NEW and marks it seen when the admin LEAVES the page', () {
+  test('the Plan page keeps "Updated <time>", counts what is NEW, clears the badge at once when the admin LOOKS (opens the page or the list) and again when he LEAVES', () {
     final plan = File('lib/Pages/PlanPage.dart').readAsStringSync();
     expect(plan, contains("return 'Updated \$stamp';"));
-    expect(plan, contains('PlanData.instance.markPlanSeen(_me)'));
-    expect(plan, contains('PlanData.instance.newChanges(_me)'));
-    // leaving (dispose) marks it, opening does not
+    expect(plan, contains('PlanData.instance.newChanges(_me, forPage: true)'));
+    // looking (opening the page, opening the list) clears the badge at once, locally; leaving does it once more for what arrived meanwhile
     final dispose = plan.substring(plan.indexOf('void dispose()'), plan.indexOf('Widget build(BuildContext context)'));
-    expect(dispose, contains('markPlanSeen'));
+    expect(dispose, contains('PlanData.instance.leftPlan(_me)'));
     final init = plan.substring(plan.indexOf('void initState()'), plan.indexOf('void dispose()'));
-    expect(init, isNot(contains('markPlanSeen')));
+    expect(init, contains('PlanData.instance.looked(_me, save: false)'));
   });
 }

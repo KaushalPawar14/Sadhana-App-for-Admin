@@ -90,6 +90,7 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
 
   /// What is NEW (not seen yet: since he last left the Plan page): the badge on both plan widgets; a tap lists them.
   NewChanges _pending = NewChanges.none;
+  String _planOwner = '';
   int? _studentCount;
   List<CalendarEvent>? _events;
   final List<StreamSubscription<Object?>> _subs = [];
@@ -141,6 +142,7 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     // the plan widgets are the signed-in admin's OWN (a HOD's too: his own targets, tasks and students; the guides' summaries are on the Plan page)
     final me = AdminProfileProvider.current;
     final planOwner = me != null && me.isHod && me.id.isNotEmpty ? me.id : guide;
+    _planOwner = planOwner;
     _openedTheApp(planOwner);
     _subs.add(data.targets(guide).listen((t) {
       if (mounted) setState(() => _targets = t);
@@ -509,15 +511,22 @@ class _FolkBoysEntryScreenState extends State<FolkBoysEntryScreen> {
     return GestureDetector(
       key: ValueKey('home-pending-$id'),
       behavior: HitTestBehavior.opaque,
-      onTap: () => showNewChanges(context, _pending),
+      onTap: _showPending,
       child: Row(
         children: [
-          PendingBadge(count: _pending.count, onDark: true, onTap: () => showNewChanges(context, _pending)),
+          PendingBadge(count: _pending.count, onDark: true, onTap: _showPending),
           const SizedBox(width: 8),
           Expanded(child: Text('new — tap to see', style: t.heroCaption, maxLines: 2, overflow: TextOverflow.ellipsis)),
         ],
       ),
     );
+  }
+
+  /// The list of the new changes: looking at it clears the badge at once (the save to the server goes on in the background).
+  void _showPending() {
+    final shown = _pending;
+    PlanData.instance.looked(_planOwner);
+    showNewChanges(context, shown);
   }
 
   void _openToday([PlanGroup? section]) => Navigator.push(

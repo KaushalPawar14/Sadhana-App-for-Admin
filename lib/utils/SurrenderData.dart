@@ -1,13 +1,13 @@
 import 'GuideDb.dart';
 
 /// A student's SURRENDER % — for guides and HODs only; students never see it. Worked out daily by the server (`functions/surrender.js`,
-/// weights in one config there) from his commitment (10%), the sadhana he actually did (40%: four equal pieces of 10 from the daily report forms, the last
-/// 30 days: reporting regularity, chanting, reading, timings), association with his guide (20%), his
+/// weights in one config there) from his commitment (10%), the sadhana he actually did (40%: regularity × (chanting 15 + reading 15 + timings 10), from the daily report forms, the last
+/// 30 days), association with his guide (20%), his
 /// attitude and willingness (10%) and his LIT (20%); a student not living in FOLK is held at 90%. NO FREE MARKS: a part with nothing to
 /// show yet scores 0 and the others are not scaled up. The board card shows the bar; a tap shows each part, its points earned of the
 /// points possible, and its reason.
 class SurrenderPart {
-  const SurrenderPart({required this.key, required this.label, required this.weight, required this.score, required this.reason, this.effectiveWeight, this.points, this.missing = false, this.sub = const []});
+  const SurrenderPart({required this.key, required this.label, required this.weight, required this.score, required this.reason, this.effectiveWeight, this.points, this.missing = false, this.multiplier = false, this.sub = const []});
 
   final String key;
   final String label;
@@ -26,8 +26,11 @@ class SurrenderPart {
   final double? points;
   final bool missing;
 
+  /// A MULTIPLIER row (the Sadhana part's reporting regularity): its [score] (0..1) multiplies the pieces after it, so it is shown as a percent ("× 50%"), not as points.
+  final bool multiplier;
+
   /// The BONUS part is four pieces of 2.5 (extraordinary chanting, extraordinary reading, chanting above his commitment, reading above it), shown the same way.
-  /// The Sadhana part is FOUR EQUAL PIECES of 10 (reporting regularity, chanting, reading, timings), each with its points and reason ("Reported 3 of 30 days → 1 of 10").
+  /// The Sadhana part is R × (C + Rd + T): reporting regularity R (a multiplier row), then chanting (max 15), reading (max 15) and timings (max 10), each with its points and reason.
   /// Empty for the other parts and for a record written before the pieces.
   final List<SurrenderPart> sub;
 
@@ -49,6 +52,7 @@ class SurrenderPart {
       effectiveWeight: raw['effectiveWeight'] is num ? (raw['effectiveWeight'] as num).toDouble() : null,
       points: raw['points'] is num ? (raw['points'] as num).toDouble() : null,
       missing: raw['missing'] == true,
+      multiplier: raw['multiplier'] == true,
       sub: [
         for (final e in (raw['sub'] as List? ?? const []))
           if (SurrenderPart.fromMap(e) case final p?) p,

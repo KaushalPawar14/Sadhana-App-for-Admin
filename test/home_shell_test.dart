@@ -359,6 +359,38 @@ void main() {
       expect(find.byKey(const ValueKey('home-pending-today')), findsNothing);
     });
 
+    testWidgets('NO FLICKER: looking at the "N new" list clears the line on Home at once and it does not come back (an echo of the same list, a slow save); a real new change still shows', (tester) async {
+      phone(tester, 1.0);
+      final live = ManualPlanData();
+      await pumpShell(tester, planData: live);
+      live.c.add(homePlan());
+      live.pendingC.add(pendingOf(['New worry: Ravi', 'New doubt: Testing']));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('home-pending-today')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('home-pending-today')));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('home-pending-today')), findsNothing, reason: 'cleared in the very next frame, before any answer from the server');
+      await tester.pumpAndSettle();
+      expect(find.text('2 new'), findsOneWidget, reason: 'the list shows what he looked at');
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('home-pending-today')), findsNothing, reason: 'back from the list: still clear');
+      // the same list arrives again (a snapshot echo while the save is on its way): still clear
+      live.pendingC.add(pendingOf(['New worry: Ravi', 'New doubt: Testing']));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('home-pending-today')), findsNothing, reason: 'no flash');
+      // a really new change shows normally
+      live.pendingC.add(PendingChanges([
+        PendingChange(type: 'doubt', text: 'New doubt: Someone', at: DateTime(2026, 10, 30, 11, 0)),
+        ...pendingOf(['New worry: Ravi', 'New doubt: Testing']).items,
+      ]));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('home-pending-today')), findsOneWidget);
+    });
+
     testWidgets('A HOD\'S HOME counts HIS OWN plan (his id, not the guide he picked); the guides\' summary lines are not tasks', (tester) async {
       phone(tester, 1.0);
       final asked = <String>[];

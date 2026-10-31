@@ -27,13 +27,13 @@ SurrenderInfo info({bool long = false, String? cap}) => SurrenderInfo(
           key: 'sadhana',
           label: 'Sadhana actually done',
           weight: 40,
-          score: 0.775,
-          points: 31,
-          reason: long ? 'Last 30 days: rounds 70% of 16, reading 20 minutes on average, early rising 12 of 30 days. ' * 6 : 'From the daily report forms, the last 30 days: 31 of 40.',
+          score: 0.1,
+          points: 4,
+          reason: long ? 'Last 30 days: rounds 70% of 16, reading 20 minutes on average, early rising 12 of 30 days. ' * 6 : 'Reported 3 of 30 days (10%) × (chanting 15 + reading 15 + timings 10 = 40) → 4 of 40. From the daily report forms, the last 30 days.',
           sub: const [
-            SurrenderPart(key: 'sadhana_regularity', label: 'Reporting regularity', weight: 10, score: 0.1, points: 1, reason: 'Reported 3 of 30 days → 1 of 10'),
-            SurrenderPart(key: 'sadhana_chanting', label: 'Chanting', weight: 10, score: 1, points: 10, reason: 'Averaging 16 of 16 rounds on the days reported → 10 of 10'),
-            SurrenderPart(key: 'sadhana_reading', label: 'Reading', weight: 10, score: 1, points: 10, reason: 'Averaging 60 of 60 min of reading on the days reported → 10 of 10'),
+            SurrenderPart(key: 'sadhana_regularity', label: 'Reporting regularity (multiplies the three below)', weight: 1, score: 0.1, points: 0.1, multiplier: true, reason: 'Reported 3 of 30 days (10%)'),
+            SurrenderPart(key: 'sadhana_chanting', label: 'Chanting', weight: 15, score: 1, points: 15, reason: 'Averaging 16 of 16 rounds on the days reported → 15 of 15'),
+            SurrenderPart(key: 'sadhana_reading', label: 'Reading', weight: 15, score: 1, points: 15, reason: 'Averaging 60 of 60 min of reading on the days reported → 15 of 15'),
             SurrenderPart(key: 'sadhana_timings', label: 'Timings', weight: 10, score: 1, points: 10, reason: 'Timings on the days reported: 100% of the best (wake-up, sleep, japa finish) → 10 of 10'),
           ],
         ),
@@ -98,13 +98,15 @@ void main() {
             // the dialog's card is opaque (fully faded in) and its parts can be reached by scrolling
             final first = find.byKey(const ValueKey('surrender-part-commitment'));
             expect(first, findsOneWidget);
-            // THE SADHANA PART: its four equal pieces, each with its points and reason
+            // THE SADHANA PART: regularity (a multiplier shown as a percent) and its three pieces, each with its reason
             for (final k in ['regularity', 'chanting', 'reading', 'timings']) {
               expect(find.byKey(ValueKey('surrender-sub-sadhana_$k')), findsOneWidget, reason: k);
             }
             expect(find.byKey(const ValueKey('surrender-points-sadhana_regularity')), findsOneWidget);
-            expect(tester.widget<Text>(find.byKey(const ValueKey('surrender-points-sadhana_regularity'))).data, '1 of 10');
-            expect(find.text('Reported 3 of 30 days → 1 of 10'), findsOneWidget);
+            expect(tester.widget<Text>(find.byKey(const ValueKey('surrender-points-sadhana_regularity'))).data, '× 10%');
+            expect(tester.widget<Text>(find.byKey(const ValueKey('surrender-points-sadhana_chanting'))).data, '15 of 15');
+            expect(tester.widget<Text>(find.byKey(const ValueKey('surrender-points-sadhana_timings'))).data, '10 of 10');
+            expect(find.text('Reported 3 of 30 days (10%)'), findsOneWidget);
             // THE BONUS: its four pieces of 2.5, each with its points and reason
             for (final k in ['chanting', 'reading', 'chanting_commitment', 'reading_commitment']) {
               expect(find.byKey(ValueKey('surrender-sub-bonus_$k')), findsOneWidget, reason: k);
@@ -113,7 +115,7 @@ void main() {
             expect(tester.widget<Text>(find.byKey(const ValueKey('surrender-points-bonus'))).data, '2.5 of 10');
             expect(find.text('Bonus: 52 rounds on 12 Oct → +2.5'), findsOneWidget);
             expect(find.text('Association — attitude & willingness'), findsOneWidget);
-            expect(tester.widget<Text>(find.byKey(const ValueKey('surrender-points-sadhana'))).data, '31 of 40');
+            expect(tester.widget<Text>(find.byKey(const ValueKey('surrender-points-sadhana'))).data, '4 of 40');
             final opacity = tester.widgetList<FadeTransition>(find.ancestor(of: title, matching: find.byType(FadeTransition))).map((f) => f.opacity.value);
             expect(opacity.every((o) => o == 1.0), isTrue, reason: 'faded in all the way: $opacity');
             await tester.scrollUntilVisible(find.text('Close'), 200, scrollable: find.byType(Scrollable).last);

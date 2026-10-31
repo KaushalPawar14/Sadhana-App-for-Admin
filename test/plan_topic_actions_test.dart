@@ -160,6 +160,20 @@ void main() {
       expect(tester.getSize(find.byKey(ValueKey('plan-action-${c.id}-0'))).height, greaterThanOrEqualTo(48));
     });
 
+    testWidgets('AN OVERDUE BOOK: the "Overdue book" topic shows the title, the old due date and the question, with the Update book button; ticked once finished or re-dated (no button)', (tester) async {
+      final open = pt('bookDue', 'Overdue book', 'Bhagavad-gita, due Wed 28 Oct. Overdue by 2 days — has he finished it? If not, when will he finish? Set a new date.', group: PlanGroup.other, bookId: 's1_level-1_k');
+      final c = card('s1', 'Ravi', [open]);
+      await _open(tester, planDoc(today: [c], left: 0));
+      expect(tester.widget<Text>(find.byKey(ValueKey('plan-point-title-${c.id}-0'))).data, 'Overdue book', reason: 'the topic, and its chip on the row');
+      expect(find.textContaining('Overdue by 2 days — has he finished it? If not, when will he finish? Set a new date.'), findsOneWidget);
+      expect(find.textContaining('due Wed 28 Oct'), findsOneWidget);
+      expect(find.descendant(of: find.byKey(ValueKey('plan-action-${c.id}-0')), matching: find.text('Update book')), findsOneWidget);
+      expect(topicActionOf(open), TopicAction.updateBook);
+      final done = card('s1', 'Ravi', [pt('bookDue', 'Overdue book', 'Bhagavad-gita, due Wed 28 Oct. Overdue by 2 days — has he finished it?', group: PlanGroup.other, bookId: 's1_level-1_k', done: true)]);
+      await _open(tester, planDoc(today: [done], left: 0));
+      expect(find.byKey(ValueKey('plan-action-${done.id}-0')), findsNothing, reason: 'done: ticked, no button');
+    });
+
     testWidgets('a button OPENS the place and NEVER TICKS: the topic and the counts are unchanged', (tester) async {
       await prepareApp(tester);
       final seen = _Seen();

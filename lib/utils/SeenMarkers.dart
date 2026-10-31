@@ -36,6 +36,24 @@ class SeenMarkers {
 
   static CollectionReference<Map<String, dynamic>> get _col => GuideDb.instance.collection('seenMarkers');
 
+  /// "Everything is seen": what a seen-field reads as while the admin's OWN write of it is still on its way to the server. Firestore's local snapshot
+  /// shows a pending `serverTimestamp()` as null, and null means "never seen" - which made the orange dot flash (and the "N new" count come back) for the
+  /// split second between a tap and the server's answer, although nothing was new. A pending write of one's own seen-field is a seen-field.
+  static final Timestamp everythingSeen = Timestamp(253402300799, 0);
+
+  /// A snapshot is LIVE when it is not just the stale local cache (the first frame after a start can be an old cache that says "unseen" before the
+  /// server has answered): from the server, or carrying the admin's own pending write. Until one arrives, no dot and no count is shown.
+  @visibleForTesting
+  static bool isLive({required bool fromCache, required bool hasPendingWrites}) => !fromCache || hasPendingWrites;
+
+  /// The value of a seen-field in a snapshot: its timestamp; while the admin's own write of it is pending, [everythingSeen] (never null then); else null (never seen).
+  @visibleForTesting
+  static Timestamp? seenValue(Object? raw, {required bool pending}) => raw is Timestamp ? raw : (pending ? everythingSeen : null);
+
+  /// The admin's marker document: only live snapshots (see [isLive]), metadata changes included so the server's answer to a local write arrives too.
+  static Stream<DocumentSnapshot<Map<String, dynamic>>> _live(String viewerId) =>
+      _col.doc(viewerId).snapshots(includeMetadataChanges: true).where((s) => isLive(fromCache: s.metadata.isFromCache, hasPendingWrites: s.metadata.hasPendingWrites));
+
   /// A flat, whole-feature cursor — `seenMarkers/{viewerId}.{featureKey}`.
   ///
   /// ⚠️ Call ONCE per feature and hoist the returned `Stream` to a field
@@ -44,10 +62,7 @@ class SeenMarkers {
   /// apps already follows since the size/performance audit.
   static Stream<Timestamp?> seenAt(String viewerId, String featureKey) {
     if (viewerId.isEmpty) return Stream.value(null);
-    return _col
-        .doc(viewerId)
-        .snapshots()
-        .map((doc) => doc.data()?[featureKey] as Timestamp?);
+    return _live(viewerId).map((doc) => seenValue(doc.data()?[featureKey], pending: doc.metadata.hasPendingWrites));
   }
 
   static Future<void> markSeen(String viewerId, String featureKey) async {
@@ -64,10 +79,9 @@ class SeenMarkers {
   static Stream<Timestamp?> seenAtSub(
       String viewerId, String featureKey, String subKey) {
     if (viewerId.isEmpty || subKey.isEmpty) return Stream.value(null);
-    return _col.doc(viewerId).snapshots().map((doc) {
+    return _live(viewerId).map((doc) {
       final feature = doc.data()?[featureKey];
-      if (feature is Map) return feature[subKey] as Timestamp?;
-      return null;
+      return seenValue(feature is Map ? feature[subKey] : null, pending: doc.metadata.hasPendingWrites);
     });
   }
 
@@ -86,7 +100,7 @@ class SeenMarkers {
   static Stream<Map<String, Timestamp>> subCursors(
       String viewerId, String featureKey) {
     if (viewerId.isEmpty) return Stream.value(const {});
-    return _col.doc(viewerId).snapshots().map((doc) {
+    return _live(viewerId).map((doc) {
       final feature = doc.data()?[featureKey];
       if (feature is! Map) return const {};
       final out = <String, Timestamp>{};
@@ -117,7 +131,7 @@ class SeenMarkers {
   /// `{studentUid: {bookDocId: seenAt}}` for every book this viewer has seen.
   static Stream<Map<String, Map<String, Timestamp>>> bookCursors(String viewerId) {
     if (viewerId.isEmpty) return Stream.value(const {});
-    return _col.doc(viewerId).snapshots().map((doc) {
+    return _live(viewerId).map((doc) {
       final feature = doc.data()?[bookKey];
       if (feature is! Map) return const <String, Map<String, Timestamp>>{};
       final out = <String, Map<String, Timestamp>>{};

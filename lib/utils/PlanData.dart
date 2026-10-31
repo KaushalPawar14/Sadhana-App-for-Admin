@@ -607,6 +607,23 @@ class NewChanges {
   bool isNewFor({String studentUid = '', bool isTarget = false}) => (studentUid.isNotEmpty && studentUids.contains(studentUid)) || (isTarget && hasTarget);
 }
 
+/// What this app run knows of the admin's looks at the new changes (see [PlanData.looked]); one per [PlanData] instance.
+class _Looks {
+  /// Per admin: the newest change (by the SERVER's own stamp, so no clock difference counts) he had on screen when he looked: nothing up to it is new any more.
+  final Map<String, DateTime> viewedUpTo = {};
+
+  /// Per admin: the newest change stamp of the pending list as last heard.
+  final Map<String, DateTime> latestAt = {};
+
+  /// Per admin: the "seen" cursor as it was BEFORE the first look since the Plan page was last left (the "New" tags keep it, so a look at the list on Home does not
+  /// strip the tags off the rows).
+  final Map<String, DateTime?> tagBase = {};
+
+  /// The last "seen" cursor heard from the server, per admin.
+  final Map<String, DateTime?> heardSeen = {};
+  final StreamController<String> looked = StreamController<String>.broadcast(sync: true);
+}
+
 /// What the Plan page and the dots read, behind one interface (tests hand in a fake).
 abstract class PlanData {
   const PlanData();
@@ -622,36 +639,88 @@ abstract class PlanData {
   /// The moment the admin last LEFT the Plan page (null: never).
   Stream<DateTime?> seenAt(String adminId) => Stream.value(null);
 
-  /// The admin has left the Plan page: what is in it now is seen (the badge clears, the "New" tags are gone on his next visit).
+  /// Saves "seen" on the server (the screens call [looked] / [leftPlan], which clear everything on screen at once first).
   Future<void> markPlanSeen(String adminId) async {}
 
-  /// The NEW changes of one admin, live: [pending] newer than [seenAt]. (One subscription of each; cancelled with this one.)
-  Stream<NewChanges> newChanges(String adminId) {
+  // ---- what the admin has just LOOKED at (kept in this app run, so the badge and the dot clear at once, whatever the network does) -----------------------------
+
+  static final Expando<_Looks> _looks = Expando<_Looks>('planLooks');
+  _Looks get _l => _looks[this] ??= _Looks();
+
+  /// The admin LOOKS at the new changes (the list, or the Plan page): the badge and the dots clear AT ONCE, here, before the server has answered. A failed or slow save
+  /// changes nothing on screen; a change that arrives after this look is new again. [save]: also write "seen" to the server now (the list does; the Plan page does it when
+  /// the admin leaves it, so the page's own "New" tags keep the server's cursor while he is on it).
+  void looked(String adminId, {bool save = true}) {
+    if (adminId.isEmpty) return;
+    final l = _l;
+    if (!l.tagBase.containsKey(adminId) && l.heardSeen.containsKey(adminId)) l.tagBase[adminId] = l.heardSeen[adminId];
+    final latest = l.latestAt[adminId];
+    if (latest != null) l.viewedUpTo[adminId] = latest;
+    l.looked.add(adminId);
+    if (save) markPlanSeen(adminId).catchError((_) {});
+  }
+
+  /// The admin LEFT the Plan page: what arrived while he was on it is looked at too, "seen" is saved, and the "New" tags are over.
+  void leftPlan(String adminId) {
+    if (adminId.isEmpty) return;
+    looked(adminId);
+    _l.tagBase.remove(adminId);
+  }
+
+  /// The NEW changes of one admin, live: [pending] newer than [seenAt] and than what he has just looked at. Nothing is emitted until BOTH are known (never a stale first
+  /// frame). [forPage]: the Plan page's own view - its "New" tags and bar keep the server's cursor from before the first look, so they stay while he is on the page.
+  /// (One subscription of each; cancelled with this one.)
+  Stream<NewChanges> newChanges(String adminId, {bool forPage = false}) {
+    final l = _l;
     late final StreamController<NewChanges> c;
     StreamSubscription<PendingChanges>? a;
     StreamSubscription<DateTime?>? b;
+    StreamSubscription<String>? lk;
     PendingChanges? items;
     DateTime? seen;
+    DateTime? frozen;
+    var frozenKnown = false;
     var seenKnown = false;
     void emit() {
-      if (items != null && seenKnown) c.add(NewChanges.of(items!, seen, now()));
+      if (items == null || !seenKnown || c.isClosed) return;
+      DateTime? cursor;
+      if (forPage) {
+        if (!frozenKnown) {
+          frozen = l.tagBase.containsKey(adminId) ? l.tagBase[adminId] : seen;
+          frozenKnown = true;
+        }
+        cursor = frozen;
+      } else {
+        cursor = seen;
+        final v = l.viewedUpTo[adminId];
+        if (v != null && (cursor == null || v.isAfter(cursor))) cursor = v;
+      }
+      c.add(NewChanges.of(items!, cursor, now()));
     }
 
     c = StreamController<NewChanges>(
       onListen: () {
         a = pending(adminId).listen((v) {
           items = v;
+          DateTime? newest;
+          for (final x in v.items) {
+            if (x.at != null && (newest == null || x.at!.isAfter(newest))) newest = x.at;
+          }
+          if (newest != null) l.latestAt[adminId] = newest;
           emit();
         }, onError: c.addError);
         b = seenAt(adminId).listen((v) {
           seen = v;
+          l.heardSeen[adminId] = v;
           seenKnown = true;
           emit();
         }, onError: c.addError);
+        lk = l.looked.stream.where((id) => id == adminId).listen((_) => emit());
       },
       onCancel: () async {
         await a?.cancel();
         await b?.cancel();
+        await lk?.cancel();
       },
     );
     return c.stream;

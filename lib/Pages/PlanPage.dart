@@ -94,7 +94,13 @@ class _PlanPageState extends State<PlanPage> {
   /// What is NEW (not seen yet): the badge, the list a tap shows and the "New" tags. It stays as it was when the page opened plus whatever arrives while it is open;
   /// leaving the page marks it seen.
   NewChanges _new = NewChanges.none;
+
+  /// The new changes he has already looked at in the list (a tap on the badge): the bar says "Nothing new" at once; a change arriving later counts again.
+  final Set<String> _listed = {};
   Timer? _highlight;
+
+  static String _key(PendingChange c) => '${c.text}|${c.at?.millisecondsSinceEpoch}';
+  int get _unlisted => _new.items.where((c) => !_listed.contains(_key(c))).length;
 
   /// Opened from a Home count: scroll to that section once the plan is on screen.
   /// One GlobalKey per student card in Today (a tap on his name in This week scrolls to it).
@@ -112,10 +118,14 @@ class _PlanPageState extends State<PlanPage> {
   @override
   void initState() {
     super.initState();
-    // opening the plan clears its orange dot
-    if (_me.isNotEmpty) SeenMarkers.markSeen(_me, 'plan').catchError((_) {});
-    // the live badge and the "New" tags: what changed since the admin last LEFT this page (recorded by the server, no AI)
-    _newSub = PlanData.instance.newChanges(_me).listen((p) {
+    // opening the plan clears its orange dot AND the badge on the Home widgets at once (here, before the server has answered; the save goes on in the background)
+    if (_me.isNotEmpty) {
+      SeenMarkers.markSeen(_me, 'plan').catchError((_) {});
+      PlanData.instance.looked(_me, save: false);
+    }
+    // the live badge and the "New" tags: what changed since the admin last LEFT this page (recorded by the server, no AI). They keep the cursor from before this look,
+    // so they stay on the page while the badges outside are already clear.
+    _newSub = PlanData.instance.newChanges(_me, forPage: true).listen((p) {
       if (mounted) setState(() => _new = p);
     }, onError: (_) {});
     _sub = PlanData.instance.plan(_me).listen(
@@ -172,8 +182,8 @@ class _PlanPageState extends State<PlanPage> {
     _sub?.cancel();
     _newSub?.cancel();
     _highlight?.cancel();
-    // LEFT: what was new is seen now (the next visit has no "New" tags, the badge outside is cleared)
-    if (_me.isNotEmpty) PlanData.instance.markPlanSeen(_me).catchError((_) {});
+    // LEFT: what arrived while he was here is seen now too (the next visit has no "New" tags); the badge outside is cleared at once, not after the server's answer
+    if (_me.isNotEmpty) PlanData.instance.leftPlan(_me);
     super.dispose();
   }
 
@@ -232,22 +242,31 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
+  /// The list: looking at it clears the badge here and outside at once.
+  void _showList() {
+    final shown = _new;
+    setState(() => _listed.addAll(shown.items.map(_key)));
+    PlanData.instance.looked(_me);
+    showNewChanges(context, shown);
+  }
+
   /// THE BADGE at the top: "3 new" (the changes not seen yet; a tap lists them), or "✓ Nothing new". There are no refresh buttons.
   Widget _newBar(BuildContext context) {
     final t = context.gText;
     final g = context.g;
-    if (_new.count == 0) {
+    final unlisted = _unlisted;
+    if (unlisted == 0) {
       return Text('✓ Nothing new', key: const ValueKey('plan-pending-ok'), style: t.small.copyWith(color: g.success, fontWeight: FontWeight.w600));
     }
     return GestureDetector(
       key: const ValueKey('plan-pending-line'),
       behavior: HitTestBehavior.opaque,
-      onTap: () => showNewChanges(context, _new),
+      onTap: _showList,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: GuideShape.touchTarget),
         child: Row(
           children: [
-            PendingBadge(key: const ValueKey('plan-refresh-badge'), count: _new.count, onTap: () => showNewChanges(context, _new)),
+            PendingBadge(key: const ValueKey('plan-refresh-badge'), count: unlisted, onTap: _showList),
             const SizedBox(width: 8),
             Text('new — tap to see', style: t.small.copyWith(color: g.warning, fontWeight: FontWeight.w600)),
           ],
@@ -989,7 +1008,7 @@ Future<void> showNewChanges(BuildContext context, NewChanges changes) => showDia
               children: [
                 for (final c in changes.items) Padding(key: ValueKey('new-change-${c.text}'), padding: const EdgeInsets.only(bottom: 6), child: Text('• ${c.text}', style: t.body.copyWith(fontSize: 14, height: 1.35))),
                 const SizedBox(height: 4),
-                Text('They are marked "New" in the plan until you have looked at it.', style: t.caption),
+                Text('They are marked "New" in the plan while you are on it.', style: t.caption),
               ],
             ),
           ),
