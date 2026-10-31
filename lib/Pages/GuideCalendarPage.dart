@@ -74,6 +74,9 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
     return [for (final e in all) if (e.guideId.isEmpty || e.guideId == widget.selectedGuide) e];
   }
 
+  /// How many events of the day the HOD's "My items" view leaves out (other guides').
+  int _hiddenOn(DateTime day) => eventsCoveringDay([..._manual, ..._auto], day).length - eventsCoveringDay(_events, day).length;
+
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
 
@@ -630,6 +633,13 @@ class _GuideCalendarPageState extends State<GuideCalendarPage> {
                 GuideChoiceChip(key: const ValueKey('cal-all-guides'), label: 'All guides', selected: _allGuides, onSelected: (_) => setState(() => _allGuides = true)),
               ],
             ),
+          ),
+        // nothing is hidden silently: a HOD's "My items" view says how many items of other guides it leaves out, on every day
+        if (_isHod && !_allGuides && _hiddenOn(day) > 0)
+          Padding(
+            key: const ValueKey('cal-hidden-hint'),
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text('${_hiddenOn(day)} item${_hiddenOn(day) == 1 ? '' : 's'} of other guides hidden on this day — tap "All guides" to see ${_hiddenOn(day) == 1 ? 'it' : 'them'}.', style: t.caption),
           ),
         Row(
           crossAxisAlignment: CrossAxisAlignment.baseline,

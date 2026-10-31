@@ -69,6 +69,7 @@ Future<bool> assignBook({
           'commitmentDate': commitmentDate,
           'commitmentSetAt': FieldValue.serverTimestamp(),
           'commitmentSetBy': 'guide',
+          'commitmentSetById': guideId,
         },
         SetOptions(merge: true));
     return true;

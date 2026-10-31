@@ -199,8 +199,9 @@ List<CalendarEvent> meetingEvents(Iterable<QueryDocumentSnapshot<Map<String, dyn
   return out;
 }
 
-/// Book due dates: every unfinished book that has a finish-by date, on that date ([names] gives the students' names by uid).
-List<CalendarEvent> bookDueEvents(Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> books, Map<String, String> names) {
+/// Book due dates: every unfinished book that has a finish-by date, on that date ([names] gives the students' names by uid): "📖 Ravi — Bhagavad-gita due".
+/// A HOD sees EVERY one by default ([forHod]: they carry no guide, so the "own items" view of the calendar never hides them): he assigns books to anybody's students.
+List<CalendarEvent> bookDueEvents(Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> books, Map<String, String> names, {bool forHod = false}) {
   final out = <CalendarEvent>[];
   for (final d in books) {
     final m = d.data();
@@ -214,12 +215,12 @@ List<CalendarEvent> bookDueEvents(Iterable<QueryDocumentSnapshot<Map<String, dyn
       id: 'book_${d.id}',
       source: kSourceBook,
       start: due,
-      title: 'Book due: $who',
+      title: '📖 $who — $title due',
       note: title,
       refId: d.id,
       studentUid: uid,
       studentName: who,
-      guideId: _s(m['scopeGuide']),
+      guideId: forHod ? '' : _s(m['scopeGuide']),
       section: 'others',
     ));
   }
@@ -385,7 +386,7 @@ class AutoCalendarFeed {
     await part(() async => laterEvents((await scope.historyGet('topicPostponements')).docs));
     await part(() async {
       final names = {for (final d in (await scope.studentsGet()).docs) d.id: _s(d.data()['name'])};
-      return bookDueEvents((await scope.historyGet('booksRead')).docs, names);
+      return bookDueEvents((await scope.historyGet('booksRead')).docs, names, forHod: profile.isHod);
     });
     await part(() async => planCalendarEvents(await PlanData.instance.plan(profile.id).first.timeout(const Duration(seconds: 4))));
     await part(() async {
@@ -458,13 +459,13 @@ class AutoCalendarFeed {
         subs.add(Stream.fromFuture(scope.studentsGet()).listen((snap) {
           studentNames = {for (final d in snap.docs) d.id: _s(d.data()['name'])};
           if (lastBooks != null) {
-            parts['books'] = bookDueEvents(lastBooks!, studentNames);
+            parts['books'] = bookDueEvents(lastBooks!, studentNames, forHod: profile.isHod);
             emit();
           }
         }, onError: (_) {}));
         subs.add(scope.historyStream('booksRead').listen((s) {
           lastBooks = s.docs.cast<QueryDocumentSnapshot<Map<String, dynamic>>>();
-          parts['books'] = bookDueEvents(lastBooks!, studentNames);
+          parts['books'] = bookDueEvents(lastBooks!, studentNames, forHod: profile.isHod);
           emit();
         }, onError: (_) {
           parts['books'] = const [];

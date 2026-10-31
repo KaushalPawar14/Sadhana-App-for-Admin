@@ -184,8 +184,8 @@ void masterCCalendarReads() {
       final r = await kAgentReads['list_calendar']!({'fromDate': '2026-10-30', 'toDate': '2026-12-31'}, env('G', 'GUIDE'));
       final events = [for (final e in ((r.data as Map)['events'] as List)) Map<String, dynamic>.from(e as Map)];
       final titles = events.map((e) => e['title']).toList();
-      expect(titles, contains('Book due: Own'));
-      expect(titles, isNot(contains('Book due: Other')), reason: 'another guide\'s student');
+      expect(titles, contains('📖 Own — Gita due'));
+      expect(titles, isNot(contains('📖 Other — Other book due')), reason: 'another guide\'s student');
       expect(titles, contains('Meeting request: Own'));
       final hostel = events.firstWhere((e) => e['title'] == 'Hostel exams');
       expect(hostel['forCategories'], ['hostel']);
@@ -197,7 +197,7 @@ void masterCCalendarReads() {
     test('the HOD hears of every guide\'s book due dates', () async {
       final r = await kAgentReads['list_calendar']!({'fromDate': '2026-10-30', 'toDate': '2026-12-31'}, env('H', 'HOD'));
       final titles = [for (final e in ((r.data as Map)['events'] as List)) (e as Map)['title']];
-      expect(titles, containsAll(['Book due: Own', 'Book due: Other']));
+      expect(titles, containsAll(['📖 Own — Gita due', '📖 Other — Other book due']));
     });
 
     test('adding an event for named students through the assistant saves who it is for', () async {

@@ -192,7 +192,7 @@ void main() {
       final sub = AutoCalendarFeed(p, clock: () => DateTime(2026, 10, 30, 12)).events().listen((e) => latest = e);
       await tick();
       final b = _byId(latest)['book_s1_l1_b1']!;
-      expect([_day(b.eventDate), b.title, b.note, b.source], ['2026-11-10', 'Book due: Ayush Shah', 'Gita', kSourceBook]);
+      expect([_day(b.eventDate), b.title, b.note, b.source], ['2026-11-10', '📖 Ayush Shah — Gita due', 'Gita', kSourceBook]);
       expect(_byId(latest).containsKey('book_s1_l1_b2'), isFalse, reason: 'finished');
       await db.collection('booksRead').doc('s1_l1_b1').update({'commitmentDate': '2026-11-20'});
       await tick();
@@ -201,6 +201,41 @@ void main() {
       await tick();
       expect(_byId(latest).containsKey('book_s1_l1_b1'), isFalse, reason: 'finished: gone');
       await sub.cancel();
+    });
+
+    test('A BOOK ASSIGNED BY (OR TO THE STUDENT OF) ANOTHER GUIDE: the HOD sees its due date at once in his default view; each role sees its own students books; a book assigned just now appears by itself', () async {
+      for (final u in [('s1', 'Ayush Shah', 'G', 'G', 'male'), ('s2', 'Foram Kapadia', 'F', '', 'female'), ('s3', 'Eka Boy', 'E', 'G', 'male')]) {
+        await db.collection('users').doc(u.$1).set({'name': u.$2, 'guideId': u.$3, 'teamGuide': u.$4, 'gender': u.$5, 'scopeGuide': u.$3, 'scopeTeam': u.$4, 'scopeGender': u.$5});
+      }
+      Future<void> assign(String uid, String guide, String team, String gender, {String by = 'guide'}) => db.collection('booksRead').doc('${uid}_l1_b1').set({
+            'uid': uid, 'bookTitle': 'IQ EQ SQ', 'commitmentDate': '2026-11-30', 'isCurrentBook': true, 'commitmentSetBy': by, 'commitmentSetById': 'H',
+            'scopeGuide': guide, 'scopeTeam': team, 'scopeGender': gender,
+          });
+      final hod = _profile('H', 'HOD');
+      AdminProfileProvider.instance.debugSet(hod);
+      var latest = <CalendarEvent>[];
+      final sub = AutoCalendarFeed(hod, clock: () => DateTime(2026, 10, 30, 12)).events().listen((e) => latest = e);
+      await tick();
+      expect(latest.where((e) => e.source == kSourceBook), isEmpty);
+      await assign('s2', 'F', '', 'female'); // Foram, a Female Enabler's student: assigned a moment ago
+      await tick();
+      final e = _byId(latest)['book_s2_l1_b1']!;
+      expect([_day(e.eventDate), e.title, e.guideId], ['2026-11-30', '📖 Foram Kapadia — IQ EQ SQ due', ''], reason: 'no guide on it: the HOD My items view never hides a book');
+      await assign('s1', 'G', 'G', 'male', by: 'student');
+      await tick();
+      expect(_byId(latest).containsKey('book_s1_l1_b1'), isTrue, reason: 'a student-set date too');
+      await sub.cancel();
+      // a Guide sees his team's, a Female Enabler only hers
+      for (final (id, role, expected) in [('G', 'GUIDE', {'book_s1_l1_b1', 'book_s3_l1_b1'}), ('F', 'FEMALE_ENABLER', {'book_s2_l1_b1'})]) {
+        await assign('s3', 'E', 'G', 'male');
+        final p = _profile(id, role);
+        AdminProfileProvider.instance.debugSet(p);
+        var seen = <CalendarEvent>[];
+        final s2 = AutoCalendarFeed(p, clock: () => DateTime(2026, 10, 30, 12)).events().listen((x) => seen = x);
+        await tick();
+        expect({for (final x in seen) if (x.source == kSourceBook) x.id}, expected, reason: role);
+        await s2.cancel();
+      }
     });
 
     test('THE PLAN IS LIVE ON THE CALENDAR: a tick, a new task or a changed week arrives without any Refresh', () async {
@@ -290,6 +325,7 @@ void main() {
       expect(find.byKey(const ValueKey('cal-all-guides')), findsOneWidget);
       expect(find.text('Book due: Other guide\'s boy'), findsNothing, reason: 'another guide\'s item: only under All guides');
       expect(find.text('Trip: HOD trip'), findsOneWidget, reason: 'his own');
+      expect(tester.widget<Text>(find.descendant(of: find.byKey(const ValueKey('cal-hidden-hint')), matching: find.byType(Text))).data, '1 item of other guides hidden on this day — tap "All guides" to see it.', reason: 'nothing is hidden silently');
       expect(find.text('Ravi — Worry'), findsOneWidget, reason: 'his own plan');
       await tester.tap(find.byKey(const ValueKey('cal-all-guides')));
       await tester.pump();

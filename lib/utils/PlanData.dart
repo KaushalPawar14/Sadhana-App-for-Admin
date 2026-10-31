@@ -129,13 +129,27 @@ class PlanPoint {
 
 /// One student's step in a target ("Testing 12 → 16").
 class PlanStep {
-  const PlanStep({required this.name, required this.from, required this.to, this.done = false, this.book = ''});
+  const PlanStep({required this.name, required this.from, required this.to, this.done = false, this.book = '', this.due = ''});
 
   /// A book target's step also names the book he is reading ("Testing — 📖 Bhagavad-gita"), the same words as his topic in Today.
   final String book;
 
-  /// The words of the step in This week and the calendar: "Testing 12 → 16", and for a book "Testing — 📖 Bhagavad-gita (1 → 2)".
-  String get words => book.isEmpty ? '$name $from → $to' : '$name — 📖 $book ($from → $to)';
+  /// The finish-by date of that book (yyyy-MM-dd) while it is still ahead: the student is ON TRACK until then, not someone to contact.
+  final String due;
+
+  /// He is reading a book that is due later: on track, nothing to do until the date.
+  bool get onTrack => !done && due.isNotEmpty;
+
+  /// "30 Nov" of a yyyy-MM-dd.
+  String get dueShort {
+    final d = DateTime.tryParse(due);
+    if (d == null) return due;
+    const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${d.day} ${m[d.month - 1]}';
+  }
+
+  /// The words of the step in This week and the calendar: "Testing 12 → 16", and for a book "Testing — 📖 Bhagavad-gita (1 → 2)", with "on track — due 30 Nov" while his book is not due yet.
+  String get words => (book.isEmpty ? '$name $from → $to' : '$name — 📖 $book ($from → $to)') + (onTrack ? ' · on track — due $dueShort' : '');
   final String name;
   final int from;
   final int to;
@@ -327,7 +341,7 @@ class PlanItem {
         steps: [
           if (m['steps'] is List)
             for (final e in (m['steps'] as List))
-              if (e is Map) PlanStep(name: (e['name'] ?? '').toString(), from: e['from'] is num ? (e['from'] as num).round() : 0, to: e['to'] is num ? (e['to'] as num).round() : 0, done: e['done'] == true, book: (e['book'] ?? '').toString()),
+              if (e is Map) PlanStep(name: (e['name'] ?? '').toString(), from: e['from'] is num ? (e['from'] as num).round() : 0, to: e['to'] is num ? (e['to'] as num).round() : 0, done: e['done'] == true, book: (e['book'] ?? '').toString(), due: (e['due'] ?? '').toString()),
         ],
         cardGroups: [
           if (m['groups'] is List)
